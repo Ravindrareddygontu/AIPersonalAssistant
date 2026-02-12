@@ -626,6 +626,70 @@ function formatMessage(text) {
         return `__INLINE_CODE_${index}__`;
     });
 
+    // Tool action blocks - extract and protect them
+    const toolBlocks = [];
+
+    // Terminal commands with results (multi-line)
+    text = text.replace(/^(Terminal)\s*-\s*(.+?)(?:\n(↳[^\n]+))?$/gm, (match, action, cmd, result) => {
+        const index = toolBlocks.length;
+        let html = `<div class="tool-block tool-terminal">
+            <div class="tool-header"><i class="fas fa-terminal"></i> Terminal</div>
+            <div class="tool-command"><code>${cmd.trim()}</code></div>`;
+        if (result) {
+            const resultText = result.replace(/^↳\s*/, '');
+            html += `<div class="tool-result"><span class="result-arrow">↳</span> ${resultText}</div>`;
+        }
+        html += `</div>`;
+        toolBlocks.push(html);
+        return `__TOOL_BLOCK_${index}__`;
+    });
+
+    // Read Directory/File operations
+    text = text.replace(/^(Read Directory|Read File|Read Process)\s*-\s*(.+?)(?:\n(↳[^\n]+))?$/gm, (match, action, path, result) => {
+        const index = toolBlocks.length;
+        const icon = action === 'Read Directory' ? 'fa-folder-open' : action === 'Read File' ? 'fa-file-code' : 'fa-stream';
+        let html = `<div class="tool-block tool-read">
+            <div class="tool-header"><i class="fas ${icon}"></i> ${action}</div>
+            <div class="tool-path"><code>${path.trim()}</code></div>`;
+        if (result) {
+            const resultText = result.replace(/^↳\s*/, '');
+            html += `<div class="tool-result"><span class="result-arrow">↳</span> ${resultText}</div>`;
+        }
+        html += `</div>`;
+        toolBlocks.push(html);
+        return `__TOOL_BLOCK_${index}__`;
+    });
+
+    // Generic tool actions (Write File, Search, etc.)
+    text = text.replace(/^(Write File|Search|Codebase Search|Web Search|Edit File)\s*-\s*(.+?)(?:\n(↳[^\n]+))?$/gm, (match, action, detail, result) => {
+        const index = toolBlocks.length;
+        const iconMap = {
+            'Write File': 'fa-file-pen',
+            'Search': 'fa-search',
+            'Codebase Search': 'fa-code',
+            'Web Search': 'fa-globe',
+            'Edit File': 'fa-edit'
+        };
+        const icon = iconMap[action] || 'fa-cog';
+        let html = `<div class="tool-block tool-action">
+            <div class="tool-header"><i class="fas ${icon}"></i> ${action}</div>
+            <div class="tool-detail">${detail.trim()}</div>`;
+        if (result) {
+            const resultText = result.replace(/^↳\s*/, '');
+            html += `<div class="tool-result"><span class="result-arrow">↳</span> ${resultText}</div>`;
+        }
+        html += `</div>`;
+        toolBlocks.push(html);
+        return `__TOOL_BLOCK_${index}__`;
+    });
+
+    // Standalone result lines (↳) that weren't captured above
+    text = text.replace(/^(↳)\s+(.+)$/gm, (match, arrow, content) => {
+        const index = toolBlocks.length;
+        toolBlocks.push(`<div class="tool-result standalone"><span class="result-arrow">↳</span> ${content}</div>`);
+        return `__TOOL_BLOCK_${index}__`;
+    });
+
     // Tables - detect and convert markdown tables
     text = text.replace(/^(\|.+\|)\n(\|[-:\s|]+\|)\n((?:\|.+\|\n?)+)/gm, (match, header, separator, body) => {
         const headerCells = header.split('|').filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join('');
@@ -676,8 +740,12 @@ function formatMessage(text) {
             }
             processedLines.push(`<li>${numberedMatch[2]}</li>`);
         } else if (subItemMatch) {
-            // Sub-items (↳ or ⎿)
-            processedLines.push(`<div class="sub-item"><span class="sub-arrow">↳</span> ${subItemMatch[2]}</div>`);
+            // Sub-items (↳ or ⎿) - only if not already processed as tool block
+            if (!line.includes('__TOOL_BLOCK_')) {
+                processedLines.push(`<div class="sub-item"><span class="sub-arrow">↳</span> ${subItemMatch[2]}</div>`);
+            } else {
+                processedLines.push(line);
+            }
         } else {
             if (inList) {
                 processedLines.push(listType === 'ul' ? '</ul>' : '</ol>');
@@ -706,6 +774,11 @@ function formatMessage(text) {
     text = text.replace(/<p>\s*<(ul|ol|table|h[1-6]|pre)/g, '<$1');
     text = text.replace(/<\/(ul|ol|table|h[1-6]|pre)>\s*<\/p>/g, '</$1>');
 
+    // Restore tool blocks first (they may contain code)
+    toolBlocks.forEach((block, index) => {
+        text = text.replace(`__TOOL_BLOCK_${index}__`, block);
+    });
+
     // Restore code blocks
     codeBlocks.forEach((block, index) => {
         text = text.replace(`__CODE_BLOCK_${index}__`, block);
@@ -715,6 +788,12 @@ function formatMessage(text) {
     inlineCodes.forEach((code, index) => {
         text = text.replace(`__INLINE_CODE_${index}__`, code);
     });
+
+    // Clean up tool blocks wrapped in paragraphs
+    text = text.replace(/<p>(<div class="tool-block)/g, '$1');
+    text = text.replace(/(<\/div>)<\/p>/g, '$1');
+    text = text.replace(/<br>(<div class="tool-)/g, '$1');
+    text = text.replace(/(<\/div>)<br>/g, '$1');
 
     return text;
 }

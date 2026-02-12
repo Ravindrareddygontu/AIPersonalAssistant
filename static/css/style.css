@@ -660,6 +660,142 @@ body {
     margin-right: 6px;
 }
 
+/* Tool Action Blocks (Terminal, Read File, etc.) */
+.tool-block {
+    margin: 12px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 0.9rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+}
+
+.tool-block .tool-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tool-block .tool-header i {
+    font-size: 0.85rem;
+}
+
+/* Terminal blocks */
+.tool-block.tool-terminal {
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    border-color: #0f3460;
+}
+
+.tool-block.tool-terminal .tool-header {
+    background: rgba(0, 255, 136, 0.1);
+    color: #00ff88;
+    border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+}
+
+.tool-block.tool-terminal .tool-command {
+    padding: 12px 16px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    color: #e0e0e0;
+    background: rgba(0, 0, 0, 0.3);
+    overflow-x: auto;
+}
+
+.tool-block.tool-terminal .tool-command code {
+    color: #00ff88;
+    background: none;
+    padding: 0;
+    border: none;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.tool-block.tool-terminal .tool-result {
+    padding: 10px 16px;
+    color: #a0a0a0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 0.85rem;
+}
+
+/* Read Directory/File blocks */
+.tool-block.tool-read {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(124, 58, 237, 0.05));
+    border-color: rgba(99, 102, 241, 0.3);
+}
+
+.tool-block.tool-read .tool-header {
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--primary);
+    border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.tool-block.tool-read .tool-path {
+    padding: 10px 16px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.tool-block.tool-read .tool-path code {
+    color: var(--text);
+    background: rgba(99, 102, 241, 0.1);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+
+.tool-block.tool-read .tool-result {
+    padding: 8px 16px;
+    color: var(--text-muted);
+    border-top: 1px solid rgba(99, 102, 241, 0.15);
+    font-size: 0.85rem;
+}
+
+/* Generic action blocks */
+.tool-block.tool-action {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(234, 88, 12, 0.05));
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+.tool-block.tool-action .tool-header {
+    background: rgba(245, 158, 11, 0.1);
+    color: #f59e0b;
+    border-bottom: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.tool-block.tool-action .tool-detail {
+    padding: 10px 16px;
+    color: var(--text-secondary);
+}
+
+.tool-block.tool-action .tool-result {
+    padding: 8px 16px;
+    color: var(--text-muted);
+    border-top: 1px solid rgba(245, 158, 11, 0.15);
+    font-size: 0.85rem;
+}
+
+/* Result arrow styling */
+.tool-result .result-arrow {
+    color: var(--primary);
+    margin-right: 6px;
+    font-weight: 600;
+}
+
+/* Standalone result */
+.tool-result.standalone {
+    margin: 6px 0 6px 16px;
+    padding: 8px 12px;
+    background: rgba(99, 102, 241, 0.05);
+    border-left: 3px solid var(--primary);
+    border-radius: 0 6px 6px 0;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
 /* Headers in messages */
 .message-content h2 {
     font-size: 1.3rem;
