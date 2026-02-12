@@ -1,0 +1,40 @@
+{
+  "name": "augment-chat",
+  "version": "1.0.0",
+  "description": "Desktop chat interface for Augment Code AI",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron . --no-sandbox",
+    "build": "electron-builder"
+  },
+  "keywords": [
+    "augment",
+    "ai",
+    "chat",
+    "desktop"
+  ],
+  "author": "User",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^40.4.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.augment.chat",
+    "productName": "Augment Chat",
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development"
+    },
+    "files": [
+      "main.js",
+      "app.py",
+      "templates/**/*",
+      "static/**/*",
+      "venv/**/*"
+    ]
+  }
+}
