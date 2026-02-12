@@ -7,6 +7,33 @@ let currentWorkspace = '~';
 let browserCurrentPath = '';
 let sidebarOpen = true;
 
+// Shared welcome message HTML
+const WELCOME_HTML = `
+    <div class="welcome-message">
+        <h2>What can I help you with?</h2>
+        <div class="quick-actions">
+            <button class="action-btn" onclick="sendSuggestion('Show me the structure of this project')">
+                <i class="fas fa-sitemap"></i> Project structure
+            </button>
+            <button class="action-btn" onclick="sendSuggestion('List all files in the current directory')">
+                <i class="fas fa-folder-tree"></i> List files
+            </button>
+            <button class="action-btn" onclick="sendSuggestion('Help me fix a bug in my code')">
+                <i class="fas fa-bug"></i> Fix bug
+            </button>
+            <button class="action-btn" onclick="sendSuggestion('Write a function that')">
+                <i class="fas fa-code"></i> Write code
+            </button>
+            <button class="action-btn" onclick="sendSuggestion('Explain this code:')">
+                <i class="fas fa-book-open"></i> Explain code
+            </button>
+            <button class="action-btn" onclick="sendSuggestion('Run the tests')">
+                <i class="fas fa-flask"></i> Run tests
+            </button>
+        </div>
+    </div>
+`;
+
 // Initialize the app
 document.addEventListener('DOMContentLoaded', async () => {
     loadSettings();
@@ -91,104 +118,109 @@ async function checkAuthStatus() {
     }
 }
 
-// Send message function with streaming status updates
+// Send message with streaming
 async function sendMessage() {
     const input = document.getElementById('messageInput');
     const message = input.value.trim();
 
-    console.log('sendMessage called, message:', message);
+    console.log('[DEBUG] sendMessage called, message:', message);
 
     if (!message || isProcessing) {
-        console.log('Skipping - empty message or processing');
+        console.log('[DEBUG] Skipping - empty message or isProcessing:', isProcessing);
         return;
     }
 
-    // Clear input and hide welcome
     input.value = '';
     autoResize(input);
     hideWelcome();
-
-    // Add user message
     addMessage('user', message);
-    console.log('User message added');
-
-    // Show typing indicator with initial status
     showTypingIndicator('Connecting...');
     isProcessing = true;
     document.getElementById('sendBtn').disabled = true;
 
     try {
-        console.log('Sending to streaming API...');
+        console.log('[DEBUG] Fetching /api/chat/stream with workspace:', currentWorkspace);
         const response = await fetch('/api/chat/stream', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                message: message,
-                workspace: currentWorkspace
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message, workspace: currentWorkspace })
         });
+
+        console.log('[DEBUG] Response received, status:', response.status, 'ok:', response.ok);
+
+        if (!response.ok) {
+            console.error('[DEBUG] Response not OK:', response.status, response.statusText);
+        }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        let streamingCompleted = false;  // Track if streaming was used
+        let streamingCompleted = false;
+        let eventCount = 0;
+
+        console.log('[DEBUG] Starting to read stream...');
 
         while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done) {
+                console.log('[DEBUG] Stream done, total events processed:', eventCount);
+                break;
+            }
 
-            buffer += decoder.decode(value, { stream: true });
+            const chunk = decoder.decode(value, { stream: true });
+            buffer += chunk;
             const lines = buffer.split('\n');
-            buffer = lines.pop(); // Keep incomplete line in buffer
+            buffer = lines.pop();
 
             for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    try {
-                        const data = JSON.parse(line.slice(6));
-                        console.log('SSE event:', data);
-
-                        if (data.type === 'status') {
+                if (!line.startsWith('data: ')) continue;
+                try {
+                    const data = JSON.parse(line.slice(6));
+                    eventCount++;
+                    if (eventCount <= 5 || data.type !== 'stream') {
+                        console.log('[DEBUG] Event #' + eventCount + ':', data.type, data.type === 'stream' ? data.content : '');
+                    }
+                    switch (data.type) {
+                        case 'status':
                             updateTypingStatus(data.message);
-                        } else if (data.type === 'stream_start') {
-                            // Start streaming - create message container
+                            break;
+                        case 'stream_start':
+                            console.log('[DEBUG] stream_start received');
                             hideTypingIndicator();
                             startStreamingMessage();
-                        } else if (data.type === 'stream') {
-                            // Append streaming content
+                            break;
+                        case 'stream':
                             appendStreamingContent(data.content);
-                        } else if (data.type === 'stream_end') {
-                            // Finalize streaming with complete formatted content
+                            break;
+                        case 'stream_end':
+                            console.log('[DEBUG] stream_end received, content length:', data.content?.length);
                             finalizeStreamingMessage(data.content);
-                            hideTypingIndicator();  // Remove status box
+                            hideTypingIndicator();
                             streamingCompleted = true;
-                            console.log('Streaming complete');
-                        } else if (data.type === 'response') {
-                            // Only add message if streaming wasn't used
+                            break;
+                        case 'response':
+                            console.log('[DEBUG] response received, streamingCompleted:', streamingCompleted);
                             if (!streamingCompleted) {
                                 hideTypingIndicator();
                                 addMessage('assistant', data.message);
-                                console.log('Assistant message added (non-streaming)');
                             }
                             if (data.workspace && data.workspace !== currentWorkspace) {
                                 currentWorkspace = data.workspace;
                                 updateWorkspaceDisplay();
                             }
-                        } else if (data.type === 'error') {
+                            break;
+                        case 'error':
                             hideTypingIndicator();
                             addMessage('assistant', `❌ Error: ${data.message}`);
-                        }
-                    } catch (e) {
-                        console.log('Parse error:', e, 'Line:', line);
+                            break;
                     }
-                }
+                } catch (e) { /* ignore parse errors */ }
             }
         }
     } catch (error) {
         console.error('Error:', error);
         hideTypingIndicator();
-        addMessage('assistant', '❌ Sorry, there was an error connecting to the server. Make sure the server is running and try again.');
+        addMessage('assistant', '❌ Connection error. Make sure the server is running.');
     }
 
     isProcessing = false;
@@ -200,48 +232,21 @@ function addMessage(role, content) {
     const container = document.getElementById('chatMessages');
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
-    const messageIndex = chatHistory.length; // Index before adding
-
-    const icon = role === 'user' ? 'fa-user' : 'fa-robot';
-
-    // User messages get edit button, assistant messages get copy button
-    const actionBtn = role === 'assistant' ? `
-        <div class="message-actions">
-            <button class="copy-btn" onclick="copyMessage(this, '${encodeURIComponent(content)}')">
-                <i class="fas fa-copy"></i> Copy
-            </button>
-        </div>
-    ` : `
-        <div class="message-actions user-actions">
-            <button class="edit-btn" onclick="editMessage(this, ${messageIndex}, '${encodeURIComponent(content)}')">
-                <i class="fas fa-edit"></i> Edit
-            </button>
-        </div>
-    `;
-
-    messageDiv.innerHTML = `
-        <div class="message-avatar">
-            <i class="fas ${icon}"></i>
-        </div>
-        <div class="message-content">
-            ${actionBtn}
-            <div class="message-text">${formatMessage(content)}</div>
-        </div>
-    `;
-
+    messageDiv.innerHTML = createMessageHTML(role, content, chatHistory.length);
     container.appendChild(messageDiv);
-
-    // Add copy buttons to code blocks
     addCodeCopyButtons(messageDiv);
-
-    // Add to history
     chatHistory.push({ role, content });
     saveCurrentChatToServer();
+    setTimeout(() => container.scrollTop = container.scrollHeight, 50);
+}
 
-    // Scroll to bottom after DOM update
-    setTimeout(() => {
-        container.scrollTop = container.scrollHeight;
-    }, 50);
+// Create message element HTML
+function createMessageHTML(role, content, index) {
+    const icon = role === 'user' ? 'fa-user' : 'fa-robot';
+    const actionBtn = role === 'assistant'
+        ? `<div class="message-actions"><button class="copy-btn" onclick="copyMessage(this, '${encodeURIComponent(content)}')"><i class="fas fa-copy"></i> Copy</button></div>`
+        : `<div class="message-actions user-actions"><button class="edit-btn" onclick="editMessage(this, ${index}, '${encodeURIComponent(content)}')"><i class="fas fa-edit"></i> Edit</button></div>`;
+    return `<div class="message-avatar"><i class="fas ${icon}"></i></div><div class="message-content">${actionBtn}<div class="message-text">${formatMessage(content)}</div></div>`;
 }
 
 // Streaming message state
@@ -578,24 +583,14 @@ const genericStatuses = [
 function showTypingIndicator(statusMessage = 'Thinking...') {
     const container = document.getElementById('chatMessages');
 
-    // Remove any existing status log from previous question (prevent duplicate IDs)
-    const existingStatusLog = document.getElementById('statusLog');
-    if (existingStatusLog && !existingStatusLog.classList.contains('complete')) {
-        existingStatusLog.remove();
-    }
+    // Remove existing status log and typing indicator
+    document.getElementById('statusLog')?.remove();
+    document.getElementById('typingIndicator')?.remove();
 
-    // Remove any existing typing indicator
-    const existingTyping = document.getElementById('typingIndicator');
-    if (existingTyping) {
-        existingTyping.remove();
-    }
-
-    // Create status log container with unique ID
-    const uniqueId = Date.now();
+    // Create status log
     const statusLogDiv = document.createElement('div');
     statusLogDiv.className = 'status-log';
     statusLogDiv.id = 'statusLog';
-    statusLogDiv.setAttribute('data-id', uniqueId);
     statusLogDiv.innerHTML = `
         <div class="status-generic" id="statusGeneric">
             <i class="fas fa-circle-notch fa-spin"></i> <span id="genericStatusText">${statusMessage}</span>
@@ -604,90 +599,54 @@ function showTypingIndicator(statusMessage = 'Thinking...') {
     `;
     container.appendChild(statusLogDiv);
 
-    // Create typing indicator (just dots)
+    // Create typing indicator
     const typingDiv = document.createElement('div');
     typingDiv.className = 'message assistant';
     typingDiv.id = 'typingIndicator';
     typingDiv.innerHTML = `
-        <div class="message-avatar">
-            <i class="fas fa-robot"></i>
-        </div>
+        <div class="message-avatar"><i class="fas fa-robot"></i></div>
         <div class="message-content">
-            <div class="typing-indicator">
-                <div class="typing-dots">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </div>
-            </div>
+            <div class="typing-indicator"><div class="typing-dots"><span></span><span></span><span></span></div></div>
         </div>
     `;
     container.appendChild(typingDiv);
-    setTimeout(() => {
-        container.scrollTop = container.scrollHeight;
-    }, 50);
+    setTimeout(() => container.scrollTop = container.scrollHeight, 50);
 }
 
-// Get the current (non-complete) status log
+// Get current status log
 function getCurrentStatusLog() {
-    // Get all status logs and find the one that's NOT complete
-    const allStatusLogs = document.querySelectorAll('.status-log:not(.complete)');
-    if (allStatusLogs.length > 0) {
-        return allStatusLogs[allStatusLogs.length - 1]; // Return the last non-complete one
-    }
-    return null;
+    const logs = document.querySelectorAll('.status-log:not(.complete)');
+    return logs.length > 0 ? logs[logs.length - 1] : null;
 }
 
-// Update typing status message
+// Update typing status
 function updateTypingStatus(message) {
     const statusLog = getCurrentStatusLog();
     if (!statusLog) return;
 
-    // Check if it's a generic status (overwrite) or detailed status (stack)
     const isGeneric = genericStatuses.some(g => message.includes(g) || g.includes(message));
-
     if (isGeneric) {
-        // Overwrite the generic status line
         const genericText = statusLog.querySelector('#genericStatusText');
-        if (genericText) {
-            genericText.textContent = message;
-        }
+        if (genericText) genericText.textContent = message;
     } else {
-        // Add to detailed status list (these are the action messages)
         const statusDetails = statusLog.querySelector('#statusDetails');
         if (statusDetails) {
+            const isSubAction = message.trim().startsWith('↳') || message.trim().startsWith('⎿');
             const statusItem = document.createElement('div');
-            statusItem.className = 'status-item';
-            // Check if it's a sub-action (starts with ↳ or spaces)
-            if (message.trim().startsWith('↳') || message.trim().startsWith('⎿')) {
-                statusItem.className = 'status-item sub-action';
-                statusItem.innerHTML = `<i class="fas fa-check"></i> ${message.trim()}`;
-            } else {
-                statusItem.innerHTML = `<i class="fas fa-circle-notch fa-spin"></i> ${message}`;
-            }
+            statusItem.className = isSubAction ? 'status-item sub-action' : 'status-item';
+            statusItem.innerHTML = isSubAction
+                ? `<i class="fas fa-check"></i> ${message.trim()}`
+                : `<i class="fas fa-circle-notch fa-spin"></i> ${message}`;
             statusDetails.appendChild(statusItem);
         }
     }
-
-    const container = document.getElementById('chatMessages');
-    setTimeout(() => {
-        container.scrollTop = container.scrollHeight;
-    }, 50);
+    setTimeout(() => document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight, 50);
 }
 
 function hideTypingIndicator() {
-    const indicator = document.getElementById('typingIndicator');
-    if (indicator) indicator.remove();
-
-    // Remove the status log completely
-    const statusLog = getCurrentStatusLog();
-    if (statusLog) {
-        statusLog.remove();
-    }
-
-    // Also remove any status logs marked as complete
-    const completeLogs = document.querySelectorAll('.status-log.complete');
-    completeLogs.forEach(log => log.remove());
+    document.getElementById('typingIndicator')?.remove();
+    getCurrentStatusLog()?.remove();
+    document.querySelectorAll('.status-log.complete').forEach(log => log.remove());
 }
 
 // Hide welcome message
@@ -949,42 +908,7 @@ async function createNewChat() {
         currentChatId = chat.id;
         chatHistory = [];
         localStorage.setItem('currentChatId', currentChatId);
-
-        // Reset the chat UI
-        const container = document.getElementById('chatMessages');
-        container.innerHTML = `
-            <div class="welcome-message">
-                <h2>What can I help you with?</h2>
-                <div class="quick-actions">
-                    <button class="action-btn" onclick="sendSuggestion('Show me the structure of this project')">
-                        <i class="fas fa-sitemap"></i>
-                        Project structure
-                    </button>
-                    <button class="action-btn" onclick="sendSuggestion('List all files in the current directory')">
-                        <i class="fas fa-folder-tree"></i>
-                        List files
-                    </button>
-                    <button class="action-btn" onclick="sendSuggestion('Help me fix a bug in my code')">
-                        <i class="fas fa-bug"></i>
-                        Fix bug
-                    </button>
-                    <button class="action-btn" onclick="sendSuggestion('Write a function that')">
-                        <i class="fas fa-code"></i>
-                        Write code
-                    </button>
-                    <button class="action-btn" onclick="sendSuggestion('Explain this code:')">
-                        <i class="fas fa-book-open"></i>
-                        Explain code
-                    </button>
-                    <button class="action-btn" onclick="sendSuggestion('Run the tests')">
-                        <i class="fas fa-flask"></i>
-                        Run tests
-                    </button>
-                </div>
-            </div>
-        `;
-
-        // Refresh the chat history sidebar
+        document.getElementById('chatMessages').innerHTML = WELCOME_HTML;
         loadChatsFromServer();
     } catch (error) {
         console.error('Failed to create chat:', error);
@@ -1003,7 +927,6 @@ async function saveCurrentChatToServer() {
             body: JSON.stringify({ messages: chatHistory })
         });
 
-        // Refresh the sidebar to show updated title
         loadChatsFromServer();
     } catch (error) {
         console.error('Failed to save chat:', error);
@@ -1015,11 +938,7 @@ async function loadChatFromServer(chatId) {
     try {
         const response = await fetch(`/api/chats/${chatId}`);
         const chat = await response.json();
-
-        if (chat.error) {
-            showNotification('Chat not found');
-            return;
-        }
+        if (chat.error) { showNotification('Chat not found'); return; }
 
         currentChatId = chatId;
         chatHistory = chat.messages || [];
@@ -1029,68 +948,17 @@ async function loadChatFromServer(chatId) {
         container.innerHTML = '';
 
         if (chatHistory.length === 0) {
-            container.innerHTML = `
-                <div class="welcome-message">
-                    <h2>What can I help you with?</h2>
-                    <div class="quick-actions">
-                        <button class="action-btn" onclick="sendSuggestion('Show me the structure of this project')">
-                            <i class="fas fa-sitemap"></i>
-                            Project structure
-                        </button>
-                        <button class="action-btn" onclick="sendSuggestion('List all files in the current directory')">
-                            <i class="fas fa-folder-tree"></i>
-                            List files
-                        </button>
-                        <button class="action-btn" onclick="sendSuggestion('Help me fix a bug in my code')">
-                            <i class="fas fa-bug"></i>
-                            Fix bug
-                        </button>
-                        <button class="action-btn" onclick="sendSuggestion('Write a function that')">
-                            <i class="fas fa-code"></i>
-                            Write code
-                        </button>
-                    </div>
-                </div>
-            `;
+            container.innerHTML = WELCOME_HTML;
         } else {
             chatHistory.forEach((msg, idx) => {
                 const messageDiv = document.createElement('div');
                 messageDiv.className = `message ${msg.role}`;
-                const icon = msg.role === 'user' ? 'fa-user' : 'fa-robot';
-
-                // User messages get edit button, assistant messages get copy button
-                const actionBtn = msg.role === 'assistant' ? `
-                    <div class="message-actions">
-                        <button class="copy-btn" onclick="copyMessage(this, '${encodeURIComponent(msg.content)}')">
-                            <i class="fas fa-copy"></i> Copy
-                        </button>
-                    </div>
-                ` : `
-                    <div class="message-actions user-actions">
-                        <button class="edit-btn" onclick="editMessage(this, ${idx}, '${encodeURIComponent(msg.content)}')">
-                            <i class="fas fa-edit"></i> Edit
-                        </button>
-                    </div>
-                `;
-
-                messageDiv.innerHTML = `
-                    <div class="message-avatar">
-                        <i class="fas ${icon}"></i>
-                    </div>
-                    <div class="message-content">
-                        ${actionBtn}
-                        <div class="message-text">${formatMessage(msg.content)}</div>
-                    </div>
-                `;
+                messageDiv.innerHTML = createMessageHTML(msg.role, msg.content, idx);
                 container.appendChild(messageDiv);
                 addCodeCopyButtons(messageDiv);
             });
-            setTimeout(() => {
-                container.scrollTop = container.scrollHeight;
-            }, 50);
+            setTimeout(() => container.scrollTop = container.scrollHeight, 50);
         }
-
-        // Update sidebar selection
         loadChatsFromServer();
     } catch (error) {
         console.error('Failed to load chat:', error);
