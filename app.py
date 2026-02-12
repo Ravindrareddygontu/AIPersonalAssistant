@@ -19,8 +19,30 @@ import time
 import sys
 import pty
 import select
+import signal
+import errno
+
+# Ignore SIGPIPE to prevent crashes when writing to closed pipes
+# This is common when clients disconnect during streaming
+signal.signal(signal.SIGPIPE, signal.SIG_IGN)
 
 app = Flask(__name__)
+
+
+# Global error handler for BrokenPipeError
+@app.errorhandler(BrokenPipeError)
+def handle_broken_pipe(e):
+    """Handle broken pipe errors gracefully (client disconnected)"""
+    # Log but don't crash - this is normal when clients disconnect
+    print(f"[INFO] Client disconnected (broken pipe)", file=sys.stderr)
+    return '', 499  # Client Closed Request
+
+
+@app.errorhandler(ConnectionResetError)
+def handle_connection_reset(e):
+    """Handle connection reset errors gracefully"""
+    print(f"[INFO] Connection reset by client", file=sys.stderr)
+    return '', 499
 
 # Store settings - workspace is the directory auggie will work in
 settings = {
@@ -395,30 +417,75 @@ def chat_stream():
 
                     session.initialized = True
                 else:
-                    # Existing session - just use it
-                    yield f"data: {json.dumps({'type': 'status', 'message': 'Connecting...'})}\n\n"
-                    master_fd = session.master_fd
+                    # Existing session - verify it's still alive before using
+                    if not session.is_alive():
+                        # Session died, restart it
+                        yield f"data: {json.dumps({'type': 'status', 'message': 'Reconnecting to Augment...'})}\n\n"
+                        session.cleanup()
+                        master_fd = session.start()
 
-                    # Drain any pending output from previous interaction
-                    drain_start = time.time()
-                    while time.time() - drain_start < 0.5:
-                        r, _, _ = select.select([master_fd], [], [], 0.1)
-                        if r:
-                            try:
-                                _ = os.read(master_fd, 8192)  # Discard old output
-                            except:
+                        # Wait for initial prompt
+                        start_time = time.time()
+                        prompt_ready = False
+                        while time.time() - start_time < 15:
+                            ready, _, _ = select.select([master_fd], [], [], 0.3)
+                            if ready:
+                                try:
+                                    chunk = os.read(master_fd, 8192).decode('utf-8', errors='ignore')
+                                    if chunk and '›' in chunk:
+                                        prompt_ready = True
+                                        time.sleep(0.5)
+                                        # Drain remaining output
+                                        while True:
+                                            r, _, _ = select.select([master_fd], [], [], 0.2)
+                                            if r:
+                                                try:
+                                                    os.read(master_fd, 8192)
+                                                except:
+                                                    break
+                                            else:
+                                                break
+                                        break
+                                except OSError:
+                                    break
+
+                        if not prompt_ready:
+                            session.cleanup()
+                            yield f"data: {json.dumps({'type': 'error', 'message': 'Failed to reconnect to Augment'})}\n\n"
+                            return
+
+                        session.initialized = True
+                    else:
+                        # Session is alive, use it
+                        yield f"data: {json.dumps({'type': 'status', 'message': 'Connecting...'})}\n\n"
+                        master_fd = session.master_fd
+
+                        # Drain any pending output from previous interaction
+                        drain_start = time.time()
+                        while time.time() - drain_start < 0.5:
+                            r, _, _ = select.select([master_fd], [], [], 0.1)
+                            if r:
+                                try:
+                                    _ = os.read(master_fd, 8192)  # Discard old output
+                                except:
+                                    break
+                            else:
                                 break
-                        else:
-                            break
 
                 yield f"data: {json.dumps({'type': 'status', 'message': 'Sending your message...'})}\n\n"
 
-                # Send message
-                os.write(master_fd, message.encode('utf-8'))
-                time.sleep(0.1)
-                os.write(master_fd, b'\r')
-                time.sleep(0.1)
-                os.write(master_fd, b'\n')
+                # Send message with error handling for broken pipe
+                try:
+                    os.write(master_fd, message.encode('utf-8'))
+                    time.sleep(0.1)
+                    os.write(master_fd, b'\r')
+                    time.sleep(0.1)
+                    os.write(master_fd, b'\n')
+                except (BrokenPipeError, OSError) as e:
+                    # Process died, clean up and report error
+                    session.cleanup()
+                    yield f"data: {json.dumps({'type': 'error', 'message': 'Connection to Augment lost. Please try again.'})}\n\n"
+                    return
 
                 # Track output
                 all_output = ""
@@ -457,8 +524,20 @@ def chat_stream():
                                     )
 
                                     if current_response:
-                                        # Stream new content
+                                        # IMPORTANT: Due to screen refreshes, we may get shorter
+                                        # responses temporarily. Only update if we have MORE content.
+                                        # Also check if the new response STARTS with what we have
+                                        # (meaning it's a continuation) or is completely different
+                                        # (meaning it's a new extraction from a different screen state)
+                                        should_update = False
                                         if len(current_response) > len(last_streamed_content):
+                                            should_update = True
+                                        elif current_response.startswith(last_streamed_content[:50]) if last_streamed_content else True:
+                                            # Same prefix, might have more content
+                                            if len(current_response) > len(last_streamed_content):
+                                                should_update = True
+
+                                        if should_update:
                                             if not streaming_started:
                                                 streaming_started = True
                                                 saw_response_marker = True
@@ -515,9 +594,10 @@ def chat_stream():
                         idx = response_text.find(prev_resp_normalized)
                         response_text = response_text[idx + len(prev_resp_normalized):].lstrip('\n')
 
-                # Send stream_end
+                # Send stream_end with the FULL final response
                 if streaming_started:
-                    yield f"data: {json.dumps({'type': 'stream_end', 'content': ''})}\n\n"
+                    # Send the complete response text so frontend can display it fully
+                    yield f"data: {json.dumps({'type': 'stream_end', 'content': response_text or ''})}\n\n"
                 elif response_text:
                     # No streaming started, send all at once
                     yield f"data: {json.dumps({'type': 'stream_start'})}\n\n"
@@ -574,6 +654,22 @@ def strip_ansi(text):
     result = text
     for pattern in ansi_patterns:
         result = re.sub(pattern, '', result)
+
+    # Additional cleanup for leftover color code fragments (e.g., "38;2;78")
+    # These appear when ANSI sequences are partially stripped
+    result = re.sub(r'\b\d+;2;\d+;\d+;\d+\b', '', result)  # 24-bit color codes
+    result = re.sub(r'\b\d+;2;\d+\b', '', result)  # Partial 24-bit codes
+    result = re.sub(r'\b38;5;\d+\b', '', result)  # 256-color codes
+    result = re.sub(r'\b48;5;\d+\b', '', result)  # 256-color background
+
+    # Remove braille spinner characters
+    result = re.sub(r'[\u2800-\u28FF]', '', result)
+
+    # Remove spinner status messages
+    result = re.sub(r'Processing response\.\.\. \([^)]+\)', '', result)
+    result = re.sub(r'Sending request\.\.\. \([^)]+\)', '', result)
+    result = re.sub(r'\([^)]*esc to interrupt[^)]*\)', '', result)
+
     return result
 
 
@@ -631,6 +727,84 @@ def extract_print_mode_response(raw_output):
     response_text = re.sub(r'\n{3,}', '\n\n', response_text)
 
     return response_text
+
+
+def _extract_response_parts(after_message, skip_patterns):
+    """
+    Helper function to extract response parts from content after a submitted message.
+    Returns a list of (type, content) tuples.
+    """
+    response_parts = []
+
+    # Split into lines and process sequentially to capture multi-line responses
+    lines = after_message.split('\n')
+    current_type = None
+    current_content = []
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Skip empty lines
+        if not stripped:
+            if current_content:
+                current_content.append('')  # Preserve paragraph breaks
+            continue
+
+        # Skip UI chrome and box-drawing
+        if re.match(r'^[╭╮╯╰│─╗╔║╚╝═\s]+$', stripped):
+            continue
+        if stripped.startswith('│ ›') or stripped == '│':
+            # End of response - new input prompt
+            break
+
+        # Skip known UI patterns
+        if any(skip in stripped for skip in skip_patterns):
+            continue
+
+        # Check for thinking marker (~)
+        if stripped.startswith('~'):
+            # Save previous content if any
+            if current_type and current_content:
+                content = ' '.join(current_content).strip()
+                if content and len(content) > 3:
+                    response_parts.append((current_type, content))
+            # Start new thinking section
+            current_type = 'thinking'
+            content = stripped[1:].strip()
+            current_content = [content] if content else []
+            continue
+
+        # Check for response marker (●)
+        if stripped.startswith('●'):
+            # Save previous content if any
+            if current_type and current_content:
+                content = ' '.join(current_content).strip()
+                if content and len(content) > 3:
+                    response_parts.append((current_type, content))
+            # Start new response section
+            current_type = 'response'
+            content = stripped[1:].strip()
+            current_content = [content] if content else []
+            continue
+
+        # Check for sub-action marker (⎿)
+        if stripped.startswith('⎿'):
+            content = stripped[1:].strip()
+            if content:
+                current_content.append(f"↳ {content}")
+            continue
+
+        # Regular content line - append to current section
+        if current_type:
+            current_content.append(stripped)
+
+    # Don't forget the last section
+    if current_type and current_content:
+        content = ' '.join(current_content).strip()
+        if content and len(content) > 3:
+            response_parts.append((current_type, content))
+
+    return response_parts
 
 
 def extract_new_response_content(clean_output, current_message, previous_response):
@@ -706,8 +880,10 @@ def extract_new_response_content(clean_output, current_message, previous_respons
 
     # Filter out input box matches - look for SUBMITTED format only
     # A submitted message line doesn't have │ character after the message
-    last_submitted_pos = -1
-    for match in reversed(matches):
+    # IMPORTANT: Due to screen refreshes, we need to check ALL occurrences
+    # and find the one with the MOST response content
+    submitted_positions = []
+    for match in matches:
         match_end = match.end()
         # Check if this is in an input box (has │ after message on same line)
         # Look at next ~80 chars (line might have padding)
@@ -718,51 +894,36 @@ def extract_new_response_content(clean_output, current_message, previous_respons
 
         # If there's no │ or ╰ in the rest of the line, it's a submitted message
         if '│' not in lookahead and '╰' not in lookahead:
-            last_submitted_pos = match.start()
-            break
+            submitted_positions.append(match.start())
         # Also check: if followed by response markers (~, ●), it's definitely submitted
         elif '~' in lookahead or '●' in lookahead:
-            last_submitted_pos = match.start()
-            break
-
-    # Debug logging moved to after extraction
+            submitted_positions.append(match.start())
 
     # If NOT found in submitted format, return empty - message not yet processed
-    # This is crucial: we MUST wait until the message is submitted and appears
-    # with the › marker before extracting any response content
-    if last_submitted_pos < 0:
+    if not submitted_positions:
         return ""
 
-    # Get content AFTER the submitted message position
-    after_message = clean_output[last_submitted_pos:]
+    # Try each submitted position and find the one with the most response content
+    best_response_parts = []
+    best_after_message = ""
 
-    # Find all response sections - content after ~ (thinking) or ● (response)
-    # But ONLY in the after_message portion
-    # IMPORTANT: Response markers in auggie TUI appear at the START of a line with a leading space
-    # Format: "\n ~ thinking content" or "\n ● response content"
-    # This distinguishes them from UI elements like "Version ... ● email" or "[Claude] ~"
-    response_parts = []
+    for pos in submitted_positions:
+        after_message = clean_output[pos:]
+        response_parts = _extract_response_parts(after_message, skip_patterns)
+        if len(response_parts) > len(best_response_parts):
+            best_response_parts = response_parts
+            best_after_message = after_message
+        elif len(response_parts) == len(best_response_parts) and response_parts:
+            # Same number of parts - check total content length
+            current_len = sum(len(p[1]) for p in response_parts)
+            best_len = sum(len(p[1]) for p in best_response_parts)
+            if current_len > best_len:
+                best_response_parts = response_parts
+                best_after_message = after_message
 
-    # Pattern 1: Find thinking content (~ marker at start of line)
-    # Match: newline + optional spaces + ~ + space + content
-    for match in re.finditer(r'\n\s*~\s+(.+?)(?=\n\n|\n\s*●|\n\s*~|\n\s*›|╭|╰|$)', after_message, re.DOTALL):
-        content = match.group(1).strip()
-        # Clean up line continuations
-        content = re.sub(r'\s+', ' ', content)
-        if content and len(content) > 3:
-            # Skip UI elements
-            if not any(skip in content for skip in skip_patterns):
-                response_parts.append(('thinking', content))
-
-    # Pattern 2: Find response content (● marker at start of line)
-    for match in re.finditer(r'\n\s*●\s+(.+?)(?=\n\n|\n\s*●|\n\s*~|\n\s*›|╭|╰|$)', after_message, re.DOTALL):
-        content = match.group(1).strip()
-        # Clean up line continuations
-        content = re.sub(r'\s+', ' ', content)
-        if content and len(content) > 3:
-            # Skip UI elements
-            if not any(skip in content for skip in skip_patterns):
-                response_parts.append(('response', content))
+    response_parts = best_response_parts
+    after_message = best_after_message
+    last_submitted_pos = submitted_positions[-1] if submitted_positions else -1
 
     # Normalize previous response for comparison
     prev_normalized = re.sub(r'\s+', ' ', previous_response.strip()) if previous_response else ""
@@ -795,17 +956,20 @@ def extract_new_response_content(clean_output, current_message, previous_respons
         f.write(f"\n=== extract_new_response_content RESULT ===\n")
         f.write(f"Current message: {msg_short}\n")
         f.write(f"last_submitted_pos: {last_submitted_pos}\n")
+        f.write(f"after_message length: {len(after_message)}\n")
+        f.write(f"after_message (first 1500 chars):\n{after_message[:1500]}\n---END AFTER_MESSAGE---\n")
+        f.write(f"Number of lines in after_message: {len(after_message.split(chr(10)))}\n")
         f.write(f"prev_normalized (first 100): {prev_normalized[:100] if prev_normalized else 'EMPTY'}\n")
         f.write(f"response_parts found: {len(response_parts)}\n")
-        for i, (ptype, pcontent) in enumerate(response_parts[:3]):
-            f.write(f"  Part {i} ({ptype}): {pcontent[:80]}...\n")
+        for i, (ptype, pcontent) in enumerate(response_parts[:5]):
+            f.write(f"  Part {i} ({ptype}): {pcontent[:500]}...\n")
             # Check filtering
             pcontent_norm = re.sub(r'\s+', ' ', pcontent)
             in_prev = prev_normalized and pcontent_norm in prev_normalized
             f.write(f"    content in prev_normalized: {in_prev}\n")
         f.write(f"new_content_parts: {len(new_content_parts)}\n")
         result = '\n'.join(new_content_parts)
-        f.write(f"Result (first 200): {result[:200]}\n")
+        f.write(f"Result (first 500): {result[:500]}\n")
 
     # Return combined new content
     return '\n'.join(new_content_parts)
@@ -1089,6 +1253,14 @@ def extract_auggie_response(raw_output, user_message):
         if len(stripped) < 100 and ('Sending request' in stripped or 'esc to interrupt' in stripped):
             response_text = ""
 
+    # Debug logging for final extraction
+    with open('/tmp/auggie_extract_debug.log', 'a') as f:
+        f.write(f"\n=== extract_auggie_response FINAL ===\n")
+        f.write(f"User message: {user_message[:50]}...\n")
+        f.write(f"Response length: {len(response_text) if response_text else 0}\n")
+        f.write(f"Response (first 1000): {response_text[:1000] if response_text else 'EMPTY'}\n")
+        f.write(f"---END FINAL---\n")
+
     return response_text
 
 
@@ -1166,11 +1338,23 @@ def call_auggie(message, workspace):
         response_start_time = time.time()
 
         # Send the user's message followed by Enter (CR+LF to submit)
-        os.write(master_fd, message.encode('utf-8'))
-        time.sleep(0.1)
-        os.write(master_fd, b'\r')  # Carriage return
-        time.sleep(0.1)
-        os.write(master_fd, b'\n')  # Line feed to submit
+        try:
+            os.write(master_fd, message.encode('utf-8'))
+            time.sleep(0.1)
+            os.write(master_fd, b'\r')  # Carriage return
+            time.sleep(0.1)
+            os.write(master_fd, b'\n')  # Line feed to submit
+        except (BrokenPipeError, OSError) as e:
+            # Clean up and re-raise with a clearer message
+            try:
+                os.close(master_fd)
+            except:
+                pass
+            try:
+                os.kill(process.pid, signal.SIGKILL)
+            except:
+                pass
+            raise Exception("Connection to Augment lost (broken pipe). Please try again.")
 
         # Read the response - wait for AI to think and respond
         # Start with initial_output so we can track what's new

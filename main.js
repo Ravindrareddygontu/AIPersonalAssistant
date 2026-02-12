@@ -12,22 +12,53 @@ let flaskProcess;
 function startFlaskServer() {
     const venvPython = path.join(__dirname, 'venv', 'bin', 'python');
     const appPath = path.join(__dirname, 'app.py');
-    
+
     flaskProcess = spawn(venvPython, [appPath], {
         cwd: __dirname,
-        env: { ...process.env, FLASK_ENV: 'production' }
+        env: { ...process.env, FLASK_ENV: 'production' },
+        stdio: ['pipe', 'pipe', 'pipe']
     });
 
-    flaskProcess.stdout.on('data', (data) => {
-        console.log(`Flask: ${data}`);
-    });
+    // Handle stdout with error handling for EPIPE
+    if (flaskProcess.stdout) {
+        flaskProcess.stdout.on('data', (data) => {
+            console.log(`Flask: ${data}`);
+        });
+        flaskProcess.stdout.on('error', (err) => {
+            if (err.code !== 'EPIPE') {
+                console.error('Flask stdout error:', err);
+            }
+        });
+    }
 
-    flaskProcess.stderr.on('data', (data) => {
-        console.log(`Flask: ${data}`);
-    });
+    // Handle stderr with error handling for EPIPE
+    if (flaskProcess.stderr) {
+        flaskProcess.stderr.on('data', (data) => {
+            console.log(`Flask: ${data}`);
+        });
+        flaskProcess.stderr.on('error', (err) => {
+            if (err.code !== 'EPIPE') {
+                console.error('Flask stderr error:', err);
+            }
+        });
+    }
+
+    // Handle stdin with error handling for EPIPE
+    if (flaskProcess.stdin) {
+        flaskProcess.stdin.on('error', (err) => {
+            if (err.code !== 'EPIPE') {
+                console.error('Flask stdin error:', err);
+            }
+        });
+    }
 
     flaskProcess.on('error', (err) => {
         console.error('Failed to start Flask server:', err);
+    });
+
+    flaskProcess.on('close', (code) => {
+        console.log(`Flask process exited with code ${code}`);
+        flaskProcess = null;
     });
 
     // Wait for Flask to start
@@ -88,14 +119,22 @@ app.on('window-all-closed', () => {
 
 // Clean up Flask process on quit
 app.on('before-quit', () => {
-    if (flaskProcess) {
-        flaskProcess.kill('SIGTERM');
+    if (flaskProcess && !flaskProcess.killed) {
+        try {
+            flaskProcess.kill('SIGTERM');
+        } catch (err) {
+            // Ignore errors if process already exited
+        }
     }
 });
 
 app.on('quit', () => {
-    if (flaskProcess) {
-        flaskProcess.kill('SIGKILL');
+    if (flaskProcess && !flaskProcess.killed) {
+        try {
+            flaskProcess.kill('SIGKILL');
+        } catch (err) {
+            // Ignore errors if process already exited
+        }
     }
 });
 
