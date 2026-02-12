@@ -5,6 +5,9 @@ import signal
 import select
 import subprocess
 import threading
+import logging
+
+log = logging.getLogger('session')
 
 _sessions = {}
 _lock = threading.Lock()
@@ -68,16 +71,24 @@ class AuggieSession:
                     break
         return False, output
 
-    def drain_output(self, timeout=0.5):
+    def drain_output(self, timeout=1.0):
+        """Drain all pending output from the terminal buffer"""
         end = time.time() + timeout
+        drained = 0
         while time.time() < end:
             if select.select([self.master_fd], [], [], 0.1)[0]:
                 try:
-                    os.read(self.master_fd, 8192)
+                    data = os.read(self.master_fd, 8192)
+                    drained += len(data)
                 except:
                     break
             else:
-                break
+                # No more data available, wait a bit and check again
+                time.sleep(0.1)
+                if not select.select([self.master_fd], [], [], 0.1)[0]:
+                    break  # Still no data, we're done
+        log.info(f"[SESSION] drain_output: drained {drained} bytes")
+        return drained
 
 
 class SessionManager:

@@ -1,15 +1,12 @@
 import os
-import json
+import uuid
 from datetime import datetime
 from flask import Blueprint, request, jsonify
-from backend.config import settings, CHATS_DIR
+from backend.config import settings
 from backend.session import SessionManager
+from backend.database import get_chats_collection
 
 settings_bp = Blueprint('settings', __name__)
-
-
-def get_chat_filepath(chat_id):
-    return os.path.join(CHATS_DIR, f'{chat_id}.json')
 
 
 @settings_bp.route('/api/settings', methods=['GET'])
@@ -39,50 +36,62 @@ def reset_session():
 
 @settings_bp.route('/api/chats', methods=['GET'])
 def list_chats():
+    chats_collection = get_chats_collection()
     chats = []
-    for filename in os.listdir(CHATS_DIR):
-        if filename.endswith('.json'):
-            try:
-                with open(os.path.join(CHATS_DIR, filename), 'r') as f:
-                    d = json.load(f)
-                    chats.append({'id': d.get('id'), 'title': d.get('title', 'Untitled'),
-                                  'created_at': d.get('created_at'), 'updated_at': d.get('updated_at'),
-                                  'message_count': len(d.get('messages', []))})
-            except:
-                pass
-    chats.sort(key=lambda x: x.get('updated_at', ''), reverse=True)
+    for doc in chats_collection.find().sort('updated_at', -1):
+        chats.append({
+            'id': doc.get('id'),
+            'title': doc.get('title', 'Untitled'),
+            'created_at': doc.get('created_at'),
+            'updated_at': doc.get('updated_at'),
+            'message_count': len(doc.get('messages', []))
+        })
     return jsonify(chats)
 
 
 @settings_bp.route('/api/chats', methods=['POST'])
 def create_chat():
-    import uuid
+    chats_collection = get_chats_collection()
     chat_id = str(uuid.uuid4())[:8]
     now = datetime.now().isoformat()
-    chat_data = {'id': chat_id, 'title': 'New Chat', 'created_at': now,
-                 'updated_at': now, 'messages': [], 'workspace': settings.workspace}
-    with open(get_chat_filepath(chat_id), 'w') as f:
-        json.dump(chat_data, f, indent=2)
+    chat_data = {
+        'id': chat_id,
+        'title': 'New Chat',
+        'created_at': now,
+        'updated_at': now,
+        'messages': [],
+        'workspace': settings.workspace
+    }
+    chats_collection.insert_one(chat_data)
+    # Remove MongoDB's _id field for JSON response
+    chat_data.pop('_id', None)
     return jsonify(chat_data)
 
 
 @settings_bp.route('/api/chats/<chat_id>', methods=['GET'])
 def get_chat(chat_id):
-    filepath = get_chat_filepath(chat_id)
-    if not os.path.exists(filepath):
+    chats_collection = get_chats_collection()
+    chat_data = chats_collection.find_one({'id': chat_id})
+    if not chat_data:
         return jsonify({'error': 'Chat not found'}), 404
-    with open(filepath, 'r') as f:
-        return jsonify(json.load(f))
+    chat_data.pop('_id', None)
+    return jsonify(chat_data)
 
 
 @settings_bp.route('/api/chats/<chat_id>', methods=['PUT'])
 def update_chat(chat_id):
-    filepath = get_chat_filepath(chat_id)
-    if not os.path.exists(filepath):
+    chats_collection = get_chats_collection()
+    chat_data = chats_collection.find_one({'id': chat_id})
+    if not chat_data:
         return jsonify({'error': 'Chat not found'}), 404
-    with open(filepath, 'r') as f:
-        chat_data = json.load(f)
+
     data = request.json
+
+    # Log incoming data for debugging
+    msg_count = len(data.get('messages', []))
+    roles = [m.get('role') for m in data.get('messages', [])]
+    print(f"[SAVE] PUT /api/chats/{chat_id} - {msg_count} messages, roles: {roles}", flush=True)
+
     if 'title' in data:
         chat_data['title'] = data['title']
     if 'messages' in data:
@@ -94,24 +103,26 @@ def update_chat(chat_id):
                 chat_data['title'] = content[:50] + ('...' if len(content) > 50 else '')
                 break
     chat_data['updated_at'] = datetime.now().isoformat()
-    with open(filepath, 'w') as f:
-        json.dump(chat_data, f, indent=2)
+
+    chats_collection.update_one({'id': chat_id}, {'$set': chat_data})
+
+    print(f"[SAVE] Saved chat {chat_id} with {len(chat_data.get('messages', []))} messages", flush=True)
+    chat_data.pop('_id', None)
     return jsonify(chat_data)
 
 
 @settings_bp.route('/api/chats/<chat_id>', methods=['DELETE'])
 def delete_chat(chat_id):
-    filepath = get_chat_filepath(chat_id)
-    if not os.path.exists(filepath):
+    chats_collection = get_chats_collection()
+    result = chats_collection.delete_one({'id': chat_id})
+    if result.deleted_count == 0:
         return jsonify({'error': 'Chat not found'}), 404
-    os.remove(filepath)
     return jsonify({'status': 'deleted', 'id': chat_id})
 
 
 @settings_bp.route('/api/chats/clear', methods=['DELETE'])
 def clear_all_chats():
-    for f in os.listdir(CHATS_DIR):
-        if f.endswith('.json'):
-            os.remove(os.path.join(CHATS_DIR, f))
+    chats_collection = get_chats_collection()
+    chats_collection.delete_many({})
     return jsonify({'status': 'cleared'})
 

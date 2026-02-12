@@ -6,6 +6,7 @@ let isProcessing = false;
 let currentWorkspace = '~';
 let browserCurrentPath = '';
 let sidebarOpen = true;
+let currentAbortController = null;
 
 // Shared welcome message HTML
 const WELCOME_HTML = `
@@ -53,6 +54,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     const savedChatId = localStorage.getItem('currentChatId');
     if (savedChatId) {
         await loadChatFromServer(savedChatId);
+    }
+});
+
+// Save chat before page unload (refresh/close)
+window.addEventListener('beforeunload', (event) => {
+    console.log('[UNLOAD] beforeunload triggered, streamingMessageDiv:', !!streamingMessageDiv);
+    // If there's an active streaming message, finalize it before leaving
+    if (streamingMessageDiv && streamingContent) {
+        console.log('[UNLOAD] Finalizing streaming message before unload');
+        // Synchronously add to history (can't use async here)
+        chatHistory.push({ role: 'assistant', content: streamingContent });
+        // Use sendBeacon for reliable save on unload
+        if (currentChatId && navigator.sendBeacon) {
+            const data = JSON.stringify({ messages: chatHistory });
+            navigator.sendBeacon(`/api/chats/${currentChatId}`, new Blob([data], { type: 'application/json' }));
+            console.log('[UNLOAD] Sent beacon to save chat');
+        }
     }
 });
 
@@ -123,34 +141,32 @@ async function sendMessage() {
     const input = document.getElementById('messageInput');
     const message = input.value.trim();
 
-    console.log('[DEBUG] sendMessage called, message:', message);
+    console.log('[API] sendMessage - message:', message.substring(0, 50) + (message.length > 50 ? '...' : ''));
 
-    if (!message || isProcessing) {
-        console.log('[DEBUG] Skipping - empty message or isProcessing:', isProcessing);
-        return;
-    }
+    if (!message || isProcessing) return;
 
     input.value = '';
     autoResize(input);
     hideWelcome();
-    addMessage('user', message);
+    addMessage('user', message, true);  // skipSave: backend handles saving
     showTypingIndicator('Connecting...');
     isProcessing = true;
     document.getElementById('sendBtn').disabled = true;
+    showStopButton();
+
+    // Create abort controller for this request
+    currentAbortController = new AbortController();
 
     try {
-        console.log('[DEBUG] Fetching /api/chat/stream with workspace:', currentWorkspace);
+        console.log('[API] POST /api/chat/stream - workspace:', currentWorkspace, 'chatId:', currentChatId);
         const response = await fetch('/api/chat/stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message, workspace: currentWorkspace })
+            body: JSON.stringify({ message, workspace: currentWorkspace, chatId: currentChatId }),
+            signal: currentAbortController.signal
         });
 
-        console.log('[DEBUG] Response received, status:', response.status, 'ok:', response.ok);
-
-        if (!response.ok) {
-            console.error('[DEBUG] Response not OK:', response.status, response.statusText);
-        }
+        console.log('[API] Response status:', response.status);
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -158,12 +174,10 @@ async function sendMessage() {
         let streamingCompleted = false;
         let eventCount = 0;
 
-        console.log('[DEBUG] Starting to read stream...');
-
         while (true) {
             const { done, value } = await reader.read();
             if (done) {
-                console.log('[DEBUG] Stream done, total events processed:', eventCount);
+                console.log('[API] Stream complete - total events:', eventCount);
                 break;
             }
 
@@ -177,15 +191,13 @@ async function sendMessage() {
                 try {
                     const data = JSON.parse(line.slice(6));
                     eventCount++;
-                    if (eventCount <= 5 || data.type !== 'stream') {
-                        console.log('[DEBUG] Event #' + eventCount + ':', data.type, data.type === 'stream' ? data.content : '');
-                    }
+                    if (data.type === 'status') console.log('[API] Status:', data.message);
                     switch (data.type) {
                         case 'status':
                             updateTypingStatus(data.message);
                             break;
                         case 'stream_start':
-                            console.log('[DEBUG] stream_start received');
+                            console.log('[API] stream_start');
                             hideTypingIndicator();
                             startStreamingMessage();
                             break;
@@ -193,16 +205,22 @@ async function sendMessage() {
                             appendStreamingContent(data.content);
                             break;
                         case 'stream_end':
-                            console.log('[DEBUG] stream_end received, content length:', data.content?.length);
-                            finalizeStreamingMessage(data.content);
+                            console.log('[API] stream_end - content length:', data.content?.length, ', streamingContent length:', streamingContent?.length);
+                            // Use data.content if provided and non-empty, otherwise use accumulated streamingContent
+                            const finalContent = (data.content && data.content.trim()) ? data.content : streamingContent;
+                            console.log('[API] Using finalContent length:', finalContent?.length);
+                            finalizeStreamingMessage(finalContent);
                             hideTypingIndicator();
                             streamingCompleted = true;
                             break;
                         case 'response':
-                            console.log('[DEBUG] response received, streamingCompleted:', streamingCompleted);
+                            console.log('[API] response - length:', data.message?.length, 'streamingCompleted:', streamingCompleted);
                             if (!streamingCompleted) {
+                                console.log('[API] Adding response via addMessage (streaming was not used)');
                                 hideTypingIndicator();
                                 addMessage('assistant', data.message);
+                            } else {
+                                console.log('[API] Skipping response - already handled via streaming');
                             }
                             if (data.workspace && data.workspace !== currentWorkspace) {
                                 currentWorkspace = data.workspace;
@@ -213,22 +231,115 @@ async function sendMessage() {
                             hideTypingIndicator();
                             addMessage('assistant', `❌ Error: ${data.message}`);
                             break;
+                        case 'done':
+                            // Response complete - immediately re-enable input
+                            console.log('[API] done event received');
+                            console.log('[API] State: streamingMessageDiv=', !!streamingMessageDiv, ', streamingCompleted=', streamingCompleted, ', chatHistory.length=', chatHistory.length);
+
+                            // Ensure streaming message is finalized if still active
+                            if (streamingMessageDiv && !streamingCompleted) {
+                                console.log('[API] Finalizing streaming message on done event, content length:', streamingContent?.length);
+                                finalizeStreamingMessage(streamingContent);
+                                streamingCompleted = true;
+                            }
+
+                            isProcessing = false;
+                            hideTypingIndicator();
+                            const sendBtnDone = document.getElementById('sendBtn');
+                            const inputDone = document.getElementById('messageInput');
+                            if (sendBtnDone) {
+                                sendBtnDone.disabled = false;
+                                console.log('[API] Send button enabled');
+                            }
+                            if (inputDone) {
+                                inputDone.disabled = false;
+                                inputDone.readOnly = false;
+                                inputDone.style.pointerEvents = 'auto';
+                                inputDone.focus();
+                                console.log('[API] Input field enabled and focused');
+                            }
+                            hideStopButton();
+                            console.log('[API] Done processing complete');
+                            break;
                     }
                 } catch (e) { /* ignore parse errors */ }
             }
         }
     } catch (error) {
-        console.error('Error:', error);
-        hideTypingIndicator();
-        addMessage('assistant', '❌ Connection error. Make sure the server is running.');
-    }
+        if (error.name === 'AbortError') {
+            console.log('[API] Request aborted by user');
+            hideTypingIndicator();
+            // Finalize any streaming message with current content
+            if (streamingMessageDiv) {
+                finalizeStreamingMessage(streamingContent + '\n\n*[Response stopped by user]*');
+            }
+        } else {
+            console.error('Error:', error);
+            hideTypingIndicator();
+            addMessage('assistant', '❌ Connection error. Make sure the server is running.');
+        }
+    } finally {
+        // Always reset state, even if there's an error
+        console.log('[API] Resetting state in finally block');
 
-    isProcessing = false;
-    document.getElementById('sendBtn').disabled = false;
+        // Ensure streaming message is finalized if still active
+        if (streamingMessageDiv) {
+            console.log('[API] Finalizing streaming message in finally block');
+            finalizeStreamingMessage(streamingContent);
+        }
+
+        currentAbortController = null;
+        isProcessing = false;
+
+        // Hide typing indicator if still visible
+        hideTypingIndicator();
+
+        const sendBtn = document.getElementById('sendBtn');
+        const input = document.getElementById('messageInput');
+        if (sendBtn) {
+            sendBtn.disabled = false;
+            console.log('[API] Send button re-enabled');
+        }
+        if (input) {
+            input.disabled = false;
+            input.readOnly = false;
+            input.style.pointerEvents = 'auto';
+            input.focus();
+            console.log('[API] Input field re-enabled and focused');
+        }
+        hideStopButton();
+    }
+}
+
+// Stop the current streaming request
+function stopStreaming() {
+    if (currentAbortController) {
+        console.log('[API] Stopping stream...');
+        currentAbortController.abort();
+        // Also notify the backend to stop
+        fetch('/api/chat/abort', { method: 'POST' }).catch(() => {});
+    }
+}
+
+// Show stop button
+function showStopButton() {
+    const stopBtn = document.getElementById('stopBtn');
+    const sendBtn = document.getElementById('sendBtn');
+    if (stopBtn) stopBtn.style.display = 'flex';
+    if (sendBtn) sendBtn.style.display = 'none';
+}
+
+// Hide stop button
+function hideStopButton() {
+    const stopBtn = document.getElementById('stopBtn');
+    const sendBtn = document.getElementById('sendBtn');
+    if (stopBtn) stopBtn.style.display = 'none';
+    if (sendBtn) sendBtn.style.display = 'flex';
 }
 
 // Add message to chat
-function addMessage(role, content) {
+// skipSave: if true, don't save to server (for streaming where backend handles saving)
+function addMessage(role, content, skipSave = false) {
     const container = document.getElementById('chatMessages');
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
@@ -236,7 +347,9 @@ function addMessage(role, content) {
     container.appendChild(messageDiv);
     addCodeCopyButtons(messageDiv);
     chatHistory.push({ role, content });
-    saveCurrentChatToServer();
+    if (!skipSave) {
+        saveCurrentChatToServer();
+    }
     setTimeout(() => container.scrollTop = container.scrollHeight, 50);
 }
 
@@ -257,6 +370,7 @@ let lastStreamingUpdate = 0;
 
 // Start a new streaming message
 function startStreamingMessage() {
+    console.log('[STREAM] startStreamingMessage called');
     const container = document.getElementById('chatMessages');
 
     // Create the message container
@@ -276,6 +390,8 @@ function startStreamingMessage() {
     streamingContent = '';
     streamingUpdatePending = false;
     lastStreamingUpdate = 0;
+    streamingFinalized = false;  // Reset finalization flag for new stream
+    console.log('[STREAM] streamingMessageDiv created, streamingContent reset, streamingFinalized=false');
 
     // Scroll to bottom
     container.scrollTop = container.scrollHeight;
@@ -322,8 +438,27 @@ function updateStreamingDisplay() {
 }
 
 // Finalize streaming message with complete formatted content
+// Track if we've already finalized to prevent double-save
+let streamingFinalized = false;
+
 function finalizeStreamingMessage(finalContent) {
-    if (!streamingMessageDiv) return;
+    console.log('[STREAM] finalizeStreamingMessage called');
+    console.log('[STREAM] streamingMessageDiv exists:', !!streamingMessageDiv, ', streamingFinalized:', streamingFinalized);
+    console.log('[STREAM] finalContent length:', finalContent?.length || 0, ', streamingContent length:', streamingContent?.length || 0);
+
+    // Prevent double finalization
+    if (streamingFinalized) {
+        console.log('[STREAM] Already finalized, skipping');
+        return;
+    }
+
+    if (!streamingMessageDiv) {
+        console.log('[STREAM] No streamingMessageDiv, skipping');
+        return;
+    }
+
+    // Mark as finalized immediately to prevent race conditions
+    streamingFinalized = true;
 
     const container = document.getElementById('chatMessages');
 
@@ -337,6 +472,12 @@ function finalizeStreamingMessage(finalContent) {
 
     // Use finalContent if provided, otherwise keep the streamed content
     const contentToUse = finalContent && finalContent.trim() ? finalContent : (streamingContent || '');
+
+    console.log('[STREAM] contentToUse length:', contentToUse?.length || 0);
+
+    if (!contentToUse || !contentToUse.trim()) {
+        console.log('[STREAM] WARNING: No content to save!');
+    }
 
     textDiv.className = 'message-text';
     textDiv.innerHTML = formatMessage(contentToUse);
@@ -355,13 +496,19 @@ function finalizeStreamingMessage(finalContent) {
     // Add copy buttons to code blocks
     addCodeCopyButtons(streamingMessageDiv);
 
-    // Add to history
+    // Add to local history (for UI display)
+    // Note: Backend saves the assistant response to MongoDB
+    console.log('[STREAM] Adding assistant message to local chatHistory');
     chatHistory.push({ role: 'assistant', content: contentToUse });
-    saveCurrentChatToServer();
+    console.log('[STREAM] chatHistory now has', chatHistory.length, 'messages');
+
+    // Refresh sidebar to show updated chat
+    loadChatsFromServer();
 
     // Reset streaming state
     streamingMessageDiv = null;
     streamingContent = '';
+    console.log('[STREAM] Streaming state reset complete');
 
     // Final scroll
     container.scrollTop = container.scrollHeight;
@@ -918,18 +1065,21 @@ async function createNewChat() {
 
 // Save current chat to server
 async function saveCurrentChatToServer() {
+    console.log('[SAVE] saveCurrentChatToServer called, chatId:', currentChatId, ', history length:', chatHistory.length);
     if (!currentChatId || chatHistory.length === 0) return;
 
     try {
+        console.log('[SAVE] Saving', chatHistory.length, 'messages to server');
         await fetch(`/api/chats/${currentChatId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ messages: chatHistory })
         });
+        console.log('[SAVE] Save successful');
 
         loadChatsFromServer();
     } catch (error) {
-        console.error('Failed to save chat:', error);
+        console.error('[SAVE] Failed to save chat:', error);
     }
 }
 
@@ -938,7 +1088,13 @@ async function loadChatFromServer(chatId) {
     try {
         const response = await fetch(`/api/chats/${chatId}`);
         const chat = await response.json();
-        if (chat.error) { showNotification('Chat not found'); return; }
+        if (chat.error) {
+            // Chat not found - create a new one
+            console.log('[LOAD] Chat not found, creating new chat');
+            localStorage.removeItem('currentChatId');
+            await createNewChat();
+            return;
+        }
 
         currentChatId = chatId;
         chatHistory = chat.messages || [];
@@ -962,7 +1118,9 @@ async function loadChatFromServer(chatId) {
         loadChatsFromServer();
     } catch (error) {
         console.error('Failed to load chat:', error);
-        showNotification('Failed to load chat');
+        // On error, create a new chat
+        localStorage.removeItem('currentChatId');
+        await createNewChat();
     }
 }
 

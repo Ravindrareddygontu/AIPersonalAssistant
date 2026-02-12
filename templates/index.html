@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Augment Chat</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=43">
+    <link rel="stylesheet" href="/static/css/style.css?v=44">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -107,6 +107,9 @@
                     <button class="send-btn" onclick="sendMessage()" id="sendBtn">
                         <i class="fas fa-arrow-up"></i>
                     </button>
+                    <button class="stop-btn" onclick="stopStreaming()" id="stopBtn" style="display: none;" title="Stop generating">
+                        <i class="fas fa-stop"></i>
+                    </button>
                 </div>
             </div>
         </main>
@@ -159,6 +162,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=20"></script>
+    <script src="/static/js/app.js?v=29"></script>
 </body>
 </html>

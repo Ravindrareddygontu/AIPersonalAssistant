@@ -16,6 +16,11 @@ SKIP_PATTERNS = [
 
 BOX_CHARS_PATTERN = re.compile(r'^[╭╮╯╰│─╗╔║╚╝═█▇▆▅▄▃▂▁░▒▓\s]+$')
 
+# MongoDB Configuration
+MONGODB_URI = os.environ.get('MONGODB_URI', 'mongodb://localhost:27017')
+MONGODB_DB_NAME = os.environ.get('MONGODB_DB_NAME', 'ai_chat_app')
+
+# Legacy file-based storage (kept for reference, no longer used)
 CHATS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'chats')
 os.makedirs(CHATS_DIR, exist_ok=True)
 
