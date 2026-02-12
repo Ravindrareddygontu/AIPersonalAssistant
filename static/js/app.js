@@ -247,6 +247,8 @@ function addMessage(role, content) {
 // Streaming message state
 let streamingMessageDiv = null;
 let streamingContent = '';
+let streamingUpdatePending = false;
+let lastStreamingUpdate = 0;
 
 // Start a new streaming message
 function startStreamingMessage() {
@@ -267,16 +269,41 @@ function startStreamingMessage() {
 
     container.appendChild(streamingMessageDiv);
     streamingContent = '';
+    streamingUpdatePending = false;
+    lastStreamingUpdate = 0;
 
     // Scroll to bottom
     container.scrollTop = container.scrollHeight;
 }
 
-// Append content to streaming message
+// Append content to streaming message with batched updates for performance
 function appendStreamingContent(newContent) {
     if (!streamingMessageDiv) return;
 
     streamingContent += newContent;
+
+    // Batch updates: only update DOM every 30ms or when we have significant content
+    const now = Date.now();
+    const timeSinceLastUpdate = now - lastStreamingUpdate;
+
+    // Update immediately if it's been a while, or batch small updates
+    if (timeSinceLastUpdate > 30 || newContent.includes('\n') || streamingContent.length < 50) {
+        updateStreamingDisplay();
+        lastStreamingUpdate = now;
+    } else if (!streamingUpdatePending) {
+        // Schedule an update
+        streamingUpdatePending = true;
+        requestAnimationFrame(() => {
+            updateStreamingDisplay();
+            streamingUpdatePending = false;
+            lastStreamingUpdate = Date.now();
+        });
+    }
+}
+
+// Actually update the streaming display
+function updateStreamingDisplay() {
+    if (!streamingMessageDiv) return;
 
     const textDiv = streamingMessageDiv.querySelector('.streaming-text');
     if (textDiv) {

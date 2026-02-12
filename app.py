@@ -494,20 +494,25 @@ def chat_stream():
                 saw_message_echo = False
                 saw_response_marker = False
                 streaming_started = False
-                last_streamed_content = ""
+                last_streamed_length = 0  # Track how much we've streamed (by position in raw output)
+                last_streamed_content = ""  # Track actual streamed content for final comparison
+                in_response_section = False  # Are we currently in a response section?
+                response_buffer = ""  # Buffer for accumulating response content
 
                 yield f"data: {json.dumps({'type': 'status', 'message': 'Waiting for AI response...'})}\n\n"
 
                 while time.time() - message_sent_time < 300:
                     # Use very short timeout for real-time streaming
-                    ready, _, _ = select.select([master_fd], [], [], 0.01)
+                    ready, _, _ = select.select([master_fd], [], [], 0.005)  # Even shorter timeout
                     if ready:
                         try:
-                            chunk = os.read(master_fd, 512).decode('utf-8', errors='ignore')
+                            chunk = os.read(master_fd, 256).decode('utf-8', errors='ignore')  # Smaller chunks
                             if chunk:
                                 all_output += chunk
                                 last_data_time = time.time()
 
+                                # Strip ANSI from the new chunk for processing
+                                clean_chunk = strip_ansi(chunk)
                                 clean_output = strip_ansi(all_output)
 
                                 # Check if our message was echoed back
@@ -516,46 +521,111 @@ def chat_stream():
                                     yield f"data: {json.dumps({'type': 'status', 'message': 'Processing your request...'})}\n\n"
 
                                 if saw_message_echo:
-                                    # Extract response content
-                                    current_response = extract_new_response_content(
-                                        clean_output,
-                                        message,
-                                        session.last_response if session else ""
-                                    )
+                                    # Real-time streaming: detect response markers and stream immediately
+                                    # Look for response markers in the accumulated output
 
-                                    if current_response:
-                                        # IMPORTANT: Due to screen refreshes, we may get shorter
-                                        # responses temporarily. Only update if we have MORE content.
-                                        # Also check if the new response STARTS with what we have
-                                        # (meaning it's a continuation) or is completely different
-                                        # (meaning it's a new extraction from a different screen state)
-                                        should_update = False
-                                        if len(current_response) > len(last_streamed_content):
-                                            should_update = True
-                                        elif current_response.startswith(last_streamed_content[:50]) if last_streamed_content else True:
-                                            # Same prefix, might have more content
-                                            if len(current_response) > len(last_streamed_content):
-                                                should_update = True
+                                    # Find the position after our submitted message
+                                    msg_short = message[:30] if len(message) > 30 else message
+                                    pattern = r'›\s*' + re.escape(msg_short)
+                                    matches = list(re.finditer(pattern, clean_output))
 
-                                        if should_update:
-                                            if not streaming_started:
-                                                streaming_started = True
-                                                saw_response_marker = True
-                                                yield f"data: {json.dumps({'type': 'stream_start'})}\n\n"
+                                    if matches:
+                                        # Find the last submitted message position
+                                        last_match = None
+                                        for match in matches:
+                                            match_end = match.end()
+                                            lookahead = clean_output[match_end:match_end+100] if match_end < len(clean_output) else ""
+                                            first_newline = lookahead.find('\n')
+                                            if first_newline > 0:
+                                                lookahead = lookahead[:first_newline]
+                                            # Check if it's a submitted message (not in input box)
+                                            if '│' not in lookahead and '╰' not in lookahead:
+                                                last_match = match
+                                            elif '~' in lookahead or '●' in lookahead:
+                                                last_match = match
 
-                                            # Send only the NEW content (delta)
-                                            new_text = current_response[len(last_streamed_content):]
-                                            if new_text and len(new_text.strip()) > 2:
-                                                # Stream word by word for smooth effect
-                                                words = new_text.split(' ')
-                                                for i, word in enumerate(words):
-                                                    if word or i < len(words) - 1:
-                                                        content = word + (' ' if i < len(words) - 1 else '')
-                                                        if content and len(content.strip()) > 0:
-                                                            yield f"data: {json.dumps({'type': 'stream', 'content': content})}\n\n"
-                                                            yield ": padding" + " " * 2048 + "\n\n"
-                                                            time.sleep(0.015)
-                                            last_streamed_content = current_response
+                                        if last_match:
+                                            # Get content after the submitted message
+                                            after_msg_start = last_match.end()
+                                            after_message = clean_output[after_msg_start:]
+
+                                            # Stream content in real-time
+                                            # Process character by character looking for response content
+                                            new_content_to_stream = ""
+
+                                            # Find response markers and extract content
+                                            lines = after_message.split('\n')
+                                            current_line_content = []
+
+                                            for line in lines:
+                                                stripped = line.strip()
+
+                                                # Skip empty lines at the start
+                                                if not stripped and not in_response_section:
+                                                    continue
+
+                                                # Skip UI chrome
+                                                if re.match(r'^[╭╮╯╰│─╗╔║╚╝═\s]+$', stripped):
+                                                    continue
+
+                                                # Check for end of response (new input prompt)
+                                                if stripped.startswith('│ ›') or stripped == '│':
+                                                    break
+
+                                                # Skip known UI patterns
+                                                skip_patterns = ['Processing response...', 'esc to interrupt', 'Sending request...']
+                                                if any(skip in stripped for skip in skip_patterns):
+                                                    continue
+
+                                                # Detect response markers
+                                                if stripped.startswith('~') or stripped.startswith('●'):
+                                                    in_response_section = True
+                                                    saw_response_marker = True
+                                                    # Extract content after marker
+                                                    marker_content = stripped[1:].strip()
+                                                    if marker_content:
+                                                        current_line_content.append(marker_content)
+                                                    continue
+
+                                                # Sub-action marker
+                                                if stripped.startswith('⎿'):
+                                                    content = stripped[1:].strip()
+                                                    if content and in_response_section:
+                                                        current_line_content.append(f"↳ {content}")
+                                                    continue
+
+                                                # Regular content in response section
+                                                if in_response_section and stripped:
+                                                    # Filter out noise
+                                                    if not any(skip in stripped for skip in ['Claude Opus', 'Version 0.', '@veefin.com', '@gmail.com', 'ravindrar@']):
+                                                        current_line_content.append(stripped)
+
+                                            # Build the response content
+                                            if current_line_content:
+                                                new_content_to_stream = '\n'.join(current_line_content)
+
+                                            # Stream new content if we have more than before
+                                            if new_content_to_stream and len(new_content_to_stream) > len(last_streamed_content):
+                                                if not streaming_started:
+                                                    streaming_started = True
+                                                    yield f"data: {json.dumps({'type': 'stream_start'})}\n\n"
+
+                                                # Get only the new part
+                                                if last_streamed_content and new_content_to_stream.startswith(last_streamed_content):
+                                                    delta = new_content_to_stream[len(last_streamed_content):]
+                                                else:
+                                                    # Content changed structure, send all new content
+                                                    delta = new_content_to_stream
+
+                                                if delta and delta.strip():
+                                                    # Stream character by character for real-time effect
+                                                    for char in delta:
+                                                        if char:
+                                                            yield f"data: {json.dumps({'type': 'stream', 'content': char})}\n\n"
+                                                    # Small delay to prevent overwhelming
+                                                    time.sleep(0.001)
+
+                                                last_streamed_content = new_content_to_stream
 
                                     # Check for completion (new prompt appearing)
                                     if streaming_started and (re.search(r'│ ›\s*│', clean_output) or re.search(r'╰─+╯', clean_output[-300:] if len(clean_output) > 300 else clean_output)):
