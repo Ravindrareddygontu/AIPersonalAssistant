@@ -67,15 +67,14 @@ class ChatRepository:
             log.error(f"Failed to save question: {e}")
             return None
 
-    def save_answer(self, message_id: str, cleaned_content: str, raw_content: str = None) -> bool:
+    def save_answer(self, message_id: str, cleaned_content: str) -> bool:
         """
         Save an answer to an existing question.
-        
+
         Args:
             message_id: The ID of the Q&A pair to update
             cleaned_content: Cleaned response for display
-            raw_content: Original raw response (optional)
-            
+
         Returns:
             True if save succeeded, False otherwise
         """
@@ -89,7 +88,7 @@ class ChatRepository:
                 return False
 
             messages = chat.get('messages', [])
-            messages = msg_svc.add_answer(messages, message_id, cleaned_content, raw_answer=raw_content)
+            messages = msg_svc.add_answer(messages, message_id, cleaned_content)
 
             self._update_chat(messages)
             log.info(f"Saved answer to chat {self.chat_id}, message_id: {message_id}")

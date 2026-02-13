@@ -8,8 +8,7 @@ DB Schema (internal):
             id: 'unique-id',
             index: 0,
             question: 'user question',
-            answer: 'cleaned response (sent to frontend)',
-            rawAnswer: 'original provider response',
+            answer: 'cleaned response for display',
             questionTime: 'ISO timestamp',
             answerTime: 'ISO timestamp'
         },
@@ -170,15 +169,14 @@ def add_question(chat_id, db_messages, question_content):
     return db_messages, msg_id
 
 
-def add_answer(db_messages, message_id, answer_content, raw_answer=None):
+def add_answer(db_messages, message_id, answer_content):
     """
     Add an answer to an existing question by message_id.
 
     Args:
         db_messages: List of Q&A pairs
         message_id: The ID of the Q&A pair to update
-        answer_content: Cleaned response (sent to frontend)
-        raw_answer: Original provider response
+        answer_content: Cleaned response for display
 
     Returns:
         Updated messages list
@@ -186,7 +184,6 @@ def add_answer(db_messages, message_id, answer_content, raw_answer=None):
     for pair in db_messages:
         if pair.get('id') == message_id:
             pair['answer'] = answer_content
-            pair['rawAnswer'] = raw_answer if raw_answer else answer_content
             pair['answerTime'] = datetime.utcnow().isoformat()
             break
     return db_messages

@@ -130,42 +130,49 @@ body {
 .chat-history {
     flex: 1;
     overflow-y: auto;
-    padding: 8px;
+    padding: 12px;
 }
 
 .chat-history-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
+    gap: 8px;
+    padding: 10px 16px;
     border-radius: 8px;
     cursor: pointer;
     margin-bottom: 4px;
-    transition: background 0.15s;
+    transition: all 0.15s;
     position: relative;
+    border: 1px solid transparent;
 }
 
 .chat-history-item:hover {
     background: var(--bg-hover);
+    border-color: var(--border);
 }
 
 .chat-history-item.active {
     background: var(--bg-hover);
-    border: 1px solid var(--border);
+    border-color: var(--primary);
 }
 
 .chat-history-item i {
     color: var(--text-muted);
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     flex-shrink: 0;
+}
+
+.chat-history-item.active i {
+    color: var(--primary);
 }
 
 .chat-history-item .chat-title {
     flex: 1;
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    color: var(--text);
 }
 
 .chat-history-item .chat-date {
@@ -173,18 +180,19 @@ body {
     color: var(--text-muted);
     position: absolute;
     bottom: 4px;
-    right: 12px;
+    right: 16px;
 }
 
 .chat-history-item .delete-chat-btn {
     opacity: 0;
     background: none;
     border: none;
-    color: var(--error);
+    color: var(--text-muted);
     cursor: pointer;
-    padding: 4px;
+    padding: 4px 6px;
     border-radius: 4px;
-    transition: opacity 0.15s;
+    transition: all 0.15s;
+    font-size: 0.8rem;
 }
 
 .chat-history-item:hover .delete-chat-btn {
@@ -192,7 +200,8 @@ body {
 }
 
 .chat-history-item .delete-chat-btn:hover {
-    background: rgba(248, 81, 73, 0.1);
+    background: rgba(248, 81, 73, 0.15);
+    color: var(--error);
 }
 
 .sidebar-footer {
@@ -1335,7 +1344,7 @@ body {
 
 /* Chat Input */
 .chat-input-container {
-    padding: 16px 20px;
+    padding: 16px 20px 48px 20px;
     display: flex;
     justify-content: center;
     width: 970px;

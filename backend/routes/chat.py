@@ -433,7 +433,7 @@ class StreamGenerator:
 
         # Save to database
         if final_content and self.repository and self.message_id:
-            self.repository.save_answer(self.message_id, final_content, raw_content)
+            self.repository.save_answer(self.message_id, final_content)
 
         # Send final events
         _log("Sending done event")

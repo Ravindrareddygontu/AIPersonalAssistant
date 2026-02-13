@@ -1795,10 +1795,6 @@ function autoResize(textarea) {
 }
 
 // New chat (legacy - calls createNewChat)
-function newChat() {
-    createNewChat();
-}
-
 // Refresh page
 function refreshPage() {
     location.reload();
@@ -2087,13 +2083,6 @@ function renderChatHistory(chats) {
     });
 }
 
-// Escape HTML to prevent XSS
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
 // Create new chat
 async function createNewChat() {
     try {
@@ -2252,11 +2241,6 @@ async function clearAllChats() {
         console.error('Failed to clear chats:', error);
         showNotification('Failed to clear chats');
     }
-}
-
-// Legacy function - kept for compatibility
-function loadChatHistory() {
-    loadChatsFromServer();
 }
 
 // Show notification
