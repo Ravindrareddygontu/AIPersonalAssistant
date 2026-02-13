@@ -225,11 +225,13 @@ class StreamGenerator:
                 log.info(f"[AUGMENT] Sending to auggie: {self.message[:30]}...")
                 yield self._send({'type': 'status', 'message': 'Sending your message...'})
                 try:
+                    # Send message first
                     os.write(session.master_fd, self.message.encode('utf-8'))
-                    time.sleep(0.1)
+                    time.sleep(0.3)
+                    # Send just \r (carriage return) - this is what Enter sends in raw terminal mode
                     os.write(session.master_fd, b'\r')
-                    time.sleep(0.1)
-                    os.write(session.master_fd, b'\n')
+                    time.sleep(0.2)
+                    log.info(f"[AUGMENT] Message sent with CR, waiting for response...")
                 except (BrokenPipeError, OSError) as e:
                     log.error(f"[AUGMENT] Write error: {e}")
                     session.cleanup()
@@ -288,6 +290,10 @@ class StreamGenerator:
                     if not state['saw_message_echo'] and self.message in clean:
                         state['saw_message_echo'] = True
                         log.info(f"[STREAM] saw_message_echo=True, all_output length={len(state['all_output'])}")
+
+                    # Debug: Log raw output periodically to see what auggie is sending
+                    if len(state['all_output']) % 500 < 256:  # Log every ~500 bytes
+                        log.debug(f"[STREAM] Raw output sample (last 300 chars): {repr(clean[-300:])}")
                         yield self._send({'type': 'status', 'message': 'Processing your request...'})
 
                     if state['saw_message_echo']:
@@ -341,7 +347,9 @@ class StreamGenerator:
 
                 # Case 4: Very long wait without response marker - probably stuck (reduced from 120s to 30s)
                 if state['saw_message_echo'] and not state['saw_response_marker'] and time.time() - state['message_sent_time'] > 30:
-                    _log("Exiting: timeout waiting for response marker")
+                    clean = TextCleaner.strip_ansi(state['all_output'])
+                    _log(f"Exiting: timeout waiting for response marker. Total output: {len(state['all_output'])} bytes")
+                    _log(f"[DEBUG] Last 500 chars of clean output: {repr(clean[-500:])}")
                     break
 
         response_text = ResponseExtractor.extract_full(state['all_output'], self.message)
