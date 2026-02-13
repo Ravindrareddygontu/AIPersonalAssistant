@@ -899,9 +899,55 @@ function escapeHtml(text) {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Clean garbage characters from terminal output
+function cleanGarbageCharacters(text) {
+    if (!text) return '';
+
+    // Remove trailing semicolon with numbers (e.g., ";132", ";1;2;")
+    text = text.replace(/;[\d;]+\s*$/gm, '');
+    text = text.replace(/;\s*$/gm, '');
+
+    // Remove box drawing characters and related artifacts
+    text = text.replace(/[╭╮╰╯│─┌┐└┘├┤┬┴┼]+\d*\s*$/gm, '');
+    text = text.replace(/^[╭╮╰╯│─┌┐└┘├┤┬┴┼]+\d*\s*/gm, '');
+
+    // Remove ANSI escape code remnants
+    text = text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+    text = text.replace(/\[\d+;\d+[Hm]/g, '');
+
+    // Remove control characters except newlines and tabs
+    text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+
+    // Clean up multiple consecutive blank lines
+    text = text.replace(/\n{3,}/g, '\n\n');
+
+    // Trim trailing whitespace from each line
+    text = text.split('\n').map(line => line.trimEnd()).join('\n');
+
+    return text.trim();
+}
+
+// Detect and format section headers (text ending with colon on its own line)
+function formatSectionHeaders(text) {
+    // Match lines that look like section headers (bold text or text ending with colon)
+    // But not if they're part of a list or code block
+    text = text.replace(/^(<strong>([^<]+)<\/strong>)\s*$/gm, '<div class="section-header">$1</div>');
+    text = text.replace(/^([A-Z][A-Za-z\s]+):?\s*$/gm, (match, header) => {
+        // Only if it looks like a section header (capitalized, not too long)
+        if (header.length < 50 && !header.includes('|')) {
+            return `<div class="section-header"><strong>${header}</strong></div>`;
+        }
+        return match;
+    });
+    return text;
+}
+
 // Format message with code blocks and markdown
 function formatMessage(text) {
     if (!text) return '';
+
+    // Clean garbage characters first
+    text = cleanGarbageCharacters(text);
 
     // Normalize line endings
     text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -945,14 +991,20 @@ function formatMessage(text) {
     }
     text = rebuiltLines.join('\n');
 
-    // Tables - detect and convert markdown tables
+    // Tables - detect and convert markdown tables (improved to handle more formats)
+    // First, normalize tables that might have broken lines
     text = text.replace(/^(\|.+\|)\n(\|[-:\s|]+\|)\n((?:\|.+\|\n?)+)/gm, (match, header, separator, body) => {
-        const headerCells = header.split('|').filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join('');
-        const bodyRows = body.trim().split('\n').map(row => {
-            const cells = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
-            return `<tr>${cells}</tr>`;
-        }).join('');
-        return `<table class="md-table"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>`;
+        try {
+            const headerCells = header.split('|').filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join('');
+            const bodyRows = body.trim().split('\n').map(row => {
+                if (!row.includes('|')) return null;
+                const cells = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
+                return cells ? `<tr>${cells}</tr>` : null;
+            }).filter(Boolean).join('');
+            return `<table class="md-table"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>`;
+        } catch (e) {
+            return match; // Return original if parsing fails
+        }
     });
 
     // Headers
@@ -963,6 +1015,9 @@ function formatMessage(text) {
     // Bold and Italic
     text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     text = text.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
+
+    // Section headers (standalone bold text or capitalized text before content)
+    text = formatSectionHeaders(text);
 
     // Lists
     const lines = text.split('\n');
@@ -1009,18 +1064,20 @@ function formatMessage(text) {
 
     // Clean up
     text = text.replace(/<p>\s*<\/p>/g, '');
-    text = text.replace(/<p>\s*<(ul|ol|table|h[1-6]|pre)/g, '<$1');
-    text = text.replace(/<\/(ul|ol|table|h[1-6]|pre)>\s*<\/p>/g, '</$1>');
+    text = text.replace(/<p>\s*<(ul|ol|table|h[1-6]|pre|div)/g, '<$1');
+    text = text.replace(/<\/(ul|ol|table|h[1-6]|pre|div)>\s*<\/p>/g, '</$1>');
 
     // Restore protected blocks
     toolBlocks.forEach((block, i) => { text = text.replace(`__TOOL_BLOCK_${i}__`, block); });
     codeBlocks.forEach((block, i) => { text = text.replace(`__CODE_BLOCK_${i}__`, block); });
     inlineCodes.forEach((code, i) => { text = text.replace(`__INLINE_CODE_${i}__`, code); });
 
-    // Clean up tool blocks in paragraphs
+    // Clean up tool blocks and section headers in paragraphs
     text = text.replace(/<p>(<div class="tool-block)/g, '$1');
+    text = text.replace(/<p>(<div class="section-header)/g, '$1');
     text = text.replace(/(<\/div>)<\/p>/g, '$1');
     text = text.replace(/<br>(<div class="tool-)/g, '$1');
+    text = text.replace(/<br>(<div class="section-header)/g, '$1');
     text = text.replace(/(<\/div>)<br>/g, '$1');
 
     return text;
