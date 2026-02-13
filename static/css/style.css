@@ -792,7 +792,7 @@ body {
 
 .message-content .md-table th {
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(124, 58, 237, 0.08));
-    padding: 12px 16px;
+    padding: 6px 12px;
     text-align: left;
     font-weight: 600;
     color: var(--text);
@@ -803,10 +803,10 @@ body {
 }
 
 .message-content .md-table td {
-    padding: 12px 16px;
+    padding: 5px 12px;
     border-bottom: 1px solid var(--border);
     color: var(--text);
-    line-height: 1.6;
+    line-height: 1.4;
     vertical-align: top;
 }
 
