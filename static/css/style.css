@@ -967,7 +967,7 @@ body {
     background: var(--bg-secondary);
     border: 2px solid var(--border);
     border-radius: 24px;
-    padding: 8px 12px 8px 20px;
+    padding: 6px 12px 6px 20px;
     transition: all 0.2s ease;
     max-width: 770px;
     width: 100%;
