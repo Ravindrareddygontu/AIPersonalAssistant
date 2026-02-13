@@ -1499,3 +1499,28 @@ function showNotification(message) {
     setTimeout(() => notification.remove(), 3000);
 }
 
+// Close modals when clicking outside
+document.addEventListener('click', function(e) {
+    const settingsModal = document.getElementById('settingsModal');
+    const browserModal = document.getElementById('browserModal');
+
+    // Close settings modal if clicking outside
+    if (settingsModal.classList.contains('active')) {
+        const settingsContent = settingsModal.querySelector('.modal-content');
+        if (!settingsContent.contains(e.target) &&
+            !e.target.closest('.icon-btn[onclick*="toggleSettings"]') &&
+            !e.target.closest('#workspaceBadge')) {
+            settingsModal.classList.remove('active');
+        }
+    }
+
+    // Close browser modal if clicking outside
+    if (browserModal.classList.contains('active')) {
+        const browserContent = browserModal.querySelector('.modal-content');
+        if (!browserContent.contains(e.target) &&
+            !e.target.closest('.browse-btn')) {
+            browserModal.classList.remove('active');
+        }
+    }
+});
+

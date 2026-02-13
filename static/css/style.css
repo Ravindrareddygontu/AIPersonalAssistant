@@ -1198,34 +1198,31 @@ body {
 /* Modal */
 .modal {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
+    top: 80px;
+    left: 300px;
     display: none;
-    align-items: flex-start;
-    justify-content: flex-start;
-    padding: 80px 0 0 40px;
     z-index: 1000;
 }
 
 .modal.active {
-    display: flex;
+    display: block;
+}
+
+/* Adjust modal position when sidebar is collapsed */
+body:has(.sidebar.collapsed) .modal {
+    left: 40px;
 }
 
 .modal-content {
     background: var(--bg-secondary);
-    border-radius: 14px;
-    width: 90%;
-    max-width: 420px;
+    border-radius: 12px;
+    width: 380px;
     border: 1px solid var(--border);
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
 }
 
 .modal-header {
-    padding: 18px 22px;
+    padding: 12px 16px;
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
@@ -1233,19 +1230,19 @@ body {
 }
 
 .modal-header h2 {
-    font-size: 1.05rem;
-    font-weight: 600;
+    font-size: 0.9rem;
+    font-weight: 500;
     color: var(--text);
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 }
 
 .modal-header h2::before {
     content: '\f013';
     font-family: 'Font Awesome 6 Free';
     font-weight: 900;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     color: var(--text-muted);
 }
 
@@ -1253,10 +1250,10 @@ body {
     background: transparent;
     border: none;
     color: var(--text-muted);
-    font-size: 1rem;
+    font-size: 0.85rem;
     cursor: pointer;
-    padding: 6px 8px;
-    border-radius: 6px;
+    padding: 4px 6px;
+    border-radius: 4px;
     transition: all 0.15s ease;
 }
 
@@ -1266,19 +1263,19 @@ body {
 }
 
 .modal-body {
-    padding: 22px;
+    padding: 16px;
 }
 
 .setting-item {
-    margin-bottom: 18px;
+    margin-bottom: 14px;
 }
 
 .setting-item label {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 10px;
-    font-size: 0.85rem;
+    gap: 6px;
+    margin-bottom: 8px;
+    font-size: 0.8rem;
     font-weight: 500;
     color: var(--text-muted);
 }
@@ -1345,12 +1342,12 @@ body {
 
 .save-settings-btn {
     width: 100%;
-    padding: 12px 18px;
+    padding: 10px 18px;
     background: var(--primary);
     border: none;
     border-radius: 8px;
     color: white;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s ease;
