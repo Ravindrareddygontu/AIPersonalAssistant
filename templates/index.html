@@ -56,6 +56,9 @@
                     <button class="icon-btn" onclick="toggleTheme()" title="Toggle Theme" id="themeToggle">
                         <i class="fas fa-moon"></i>
                     </button>
+                    <button class="icon-btn" onclick="toggleDevTools()" title="Developer Tools">
+                        <i class="fas fa-terminal"></i>
+                    </button>
                     <button class="icon-btn" onclick="toggleSettings()" title="Settings">
                         <i class="fas fa-cog"></i>
                     </button>
@@ -145,6 +148,28 @@
         </div>
     </div>
 
+    <!-- Developer Tools Modal -->
+    <div class="modal" id="devToolsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Developer Tools</h2>
+                <button class="close-btn" onclick="toggleDevTools()" title="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="dev-tools-buttons">
+                    <button class="dev-tool-btn" onclick="openLogsTerminal()" title="Open terminal with live Python logs">
+                        <i class="fas fa-file-alt"></i> View Logs
+                    </button>
+                    <button class="dev-tool-btn" onclick="resetSession()" title="Reset the AI session">
+                        <i class="fas fa-redo"></i> Reset Session
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Directory Browser Modal -->
     <div class="modal" id="browserModal">
         <div class="modal-content">
@@ -162,6 +187,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=44"></script>
+    <script src="/static/js/app.js?v=46"></script>
 </body>
 </html>

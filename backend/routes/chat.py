@@ -27,6 +27,29 @@ from backend.services.stream_processor import StreamProcessor
 log = logging.getLogger('chat')
 chat_bp = Blueprint('chat', __name__)
 
+
+def _sanitize_message(message: str) -> str:
+    """
+    Sanitize a message for terminal input.
+
+    Replaces newlines with spaces and converts special Unicode characters
+    that auggie uses for formatting (●, •, ⎿, etc.) to ASCII equivalents.
+    This prevents confusion in response marker detection.
+    """
+    sanitized = message.replace('\n', ' ').replace('\r', ' ')
+    return (sanitized
+        .replace('●', '*')
+        .replace('•', '-')
+        .replace('⎿', '|')
+        .replace('›', '>')
+        .replace('╭', '+')
+        .replace('╮', '+')
+        .replace('╯', '+')
+        .replace('╰', '+')
+        .replace('│', '|')
+        .replace('─', '-'))
+
+
 # Global abort flag for current streaming request
 _abort_flag = threading.Event()
 
@@ -84,12 +107,15 @@ class SessionHandler:
             if drained > 0:
                 log.info(f"Drained {drained} bytes before sending")
 
+            # Sanitize message for terminal (newlines → spaces, special chars → ASCII)
+            sanitized_message = _sanitize_message(message)
+
             # Send message with carriage return - reduced delays for faster response
-            os.write(session.master_fd, message.encode('utf-8'))
+            os.write(session.master_fd, sanitized_message.encode('utf-8'))
             time.sleep(0.1)  # Reduced from 0.5s - minimal delay needed
             os.write(session.master_fd, b'\r')
             time.sleep(0.05)  # Reduced from 0.3s
-            log.info(f"Message sent: {message[:30]}...")
+            log.info(f"Message sent: {sanitized_message[:30]}...")
             return True
         except (BrokenPipeError, OSError) as e:
             log.error(f"Write error: {e}")
@@ -265,7 +291,9 @@ class StreamGenerator:
 
     def _check_message_echo(self, clean: str, state: StreamState) -> None:
         """Check if we've seen the message echo in output."""
-        msg_prefix = self.message[:50] if len(self.message) > 50 else self.message
+        # Use sanitized message (same sanitization as send_message) since that's what's sent to terminal
+        sanitized = _sanitize_message(self.message)
+        msg_prefix = sanitized[:50] if len(sanitized) > 50 else sanitized
         if msg_prefix in clean:
             msg_pos = clean.rfind(msg_prefix)
             state.mark_message_echo_found(msg_pos)
@@ -455,5 +483,21 @@ def chat_abort():
     _abort_flag.set()
     response_data = {'status': 'ok', 'message': 'Abort signal sent'}
     log.info(f"[RESPONSE] POST /api/chat/abort | Status: 200 | {response_data}")
+    return jsonify(response_data)
+
+
+@chat_bp.route('/api/chat/reset', methods=['POST'])
+def chat_reset():
+    """Reset the auggie session for the current workspace."""
+    data = request.json or {}
+    workspace = data.get('workspace', settings.workspace)
+    workspace = os.path.expanduser(workspace)
+
+    log.info(f"[REQUEST] POST /api/chat/reset | workspace: '{workspace}'")
+
+    SessionManager.reset(workspace)
+
+    response_data = {'status': 'ok', 'message': 'Session reset successfully'}
+    log.info(f"[RESPONSE] POST /api/chat/reset | Status: 200 | {response_data}")
     return jsonify(response_data)
 

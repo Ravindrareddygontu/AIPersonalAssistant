@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const http = require('http');
@@ -20,6 +20,7 @@ function log(message) {
 let mainWindow;
 let splashWindow;
 let flaskProcess;
+let logsTerminalProcess = null;
 
 function createSplashWindow() {
     splashWindow = new BrowserWindow({
@@ -83,7 +84,11 @@ function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1200, height: 800, minWidth: 600, minHeight: 500,
         title: 'Digistant', icon: path.join(__dirname, 'static', 'icon.png'),
-        webPreferences: { nodeIntegration: false, contextIsolation: true },
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            preload: path.join(__dirname, 'preload.js')
+        },
         backgroundColor: '#0d1117', autoHideMenuBar: true,
         show: false
     });
@@ -93,6 +98,66 @@ function createWindow() {
 
     return mainWindow;
 }
+
+// Open terminal with live logs
+function openLogsTerminal() {
+    // Kill existing terminal if open
+    if (logsTerminalProcess && !logsTerminalProcess.killed) {
+        try { logsTerminalProcess.kill(); } catch (e) {}
+    }
+
+    // Command to tail the journalctl logs for this app
+    const logCommand = `journalctl --user -f -n 100 | grep -E "(Flask:|\\[CHAT\\]|\\[SESSION\\]|\\[RENDERER)"`;
+
+    // Try different terminal emulators (gnome-terminal.real first for Ubuntu systems where gnome-terminal wrapper may be broken)
+    const terminals = [
+        { cmd: 'gnome-terminal.real', args: ['--', 'bash', '-c', `${logCommand}; read -p "Press Enter to close..."`] },
+        { cmd: 'gnome-terminal', args: ['--', 'bash', '-c', `${logCommand}; read -p "Press Enter to close..."`] },
+        { cmd: 'xfce4-terminal', args: ['-e', `bash -c '${logCommand}; read -p "Press Enter to close..."'`] },
+        { cmd: 'konsole', args: ['-e', 'bash', '-c', `${logCommand}; read -p "Press Enter to close..."`] },
+        { cmd: 'xterm', args: ['-e', `bash -c '${logCommand}; read -p "Press Enter to close..."'`] },
+    ];
+
+    for (const term of terminals) {
+        try {
+            // Check if terminal exists
+            const which = require('child_process').spawnSync('which', [term.cmd]);
+            if (which.status === 0) {
+                log(`Opening logs in ${term.cmd}...`);
+                logsTerminalProcess = spawn(term.cmd, term.args, {
+                    detached: true,
+                    stdio: 'ignore'
+                });
+                logsTerminalProcess.unref();
+                return { success: true, terminal: term.cmd };
+            }
+        } catch (e) {
+            continue;
+        }
+    }
+
+    log('No terminal emulator found');
+    return { success: false, error: 'No terminal emulator found' };
+}
+
+// IPC handler for opening logs terminal
+ipcMain.handle('open-logs-terminal', async () => {
+    return openLogsTerminal();
+});
+
+// IPC handler for resetting the session
+ipcMain.handle('reset-session', async () => {
+    try {
+        const response = await fetch('http://localhost:5000/api/chat/reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        return { success: response.ok };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
 
 function closeSplashAndShowMain() {
     if (splashWindow && !splashWindow.isDestroyed()) {

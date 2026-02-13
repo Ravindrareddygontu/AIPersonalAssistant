@@ -620,45 +620,57 @@ body {
     opacity: 1;
 }
 
-/* Edit button outside the question box */
-.message-edit-outside {
+/* Edit and copy buttons outside user message box, bottom right */
+.message-actions-outside {
+    position: absolute;
+    bottom: -24px;
+    right: 0;
     display: flex;
-    align-items: flex-start;
-    padding-top: 8px;
+    align-items: center;
+    gap: 6px;
     opacity: 0;
     transition: opacity 0.2s ease;
 }
 
-.message.user:hover .message-edit-outside {
+.message.user {
+    position: relative;
+}
+
+.message.user:hover .message-actions-outside {
     opacity: 1;
 }
 
+.user-copy-btn,
 .edit-btn-outside {
     background: transparent;
     border: none;
     color: var(--text-muted);
-    padding: 6px;
+    padding: 5px 8px;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.2s ease;
 }
 
+.user-copy-btn:hover,
 .edit-btn-outside:hover {
     background: rgba(99, 102, 241, 0.15);
     color: var(--primary);
-    transform: scale(1.1);
+}
+
+.user-copy-btn.copied {
+    color: #22c55e;
 }
 
 /* Inline edit textarea and buttons */
 .edit-textarea {
     width: 100%;
-    min-height: 50px;
+    min-height: 24px;
     max-height: 200px;
-    padding: 10px 12px;
+    padding: 6px 10px;
     border: 1px solid var(--border);
     border-radius: 12px;
     background: var(--bg-secondary);
@@ -1326,6 +1338,8 @@ body {
     padding: 16px 20px;
     display: flex;
     justify-content: center;
+    width: 970px;
+    margin: 0 auto;
 }
 
 .chat-input-wrapper {
@@ -1337,8 +1351,8 @@ body {
     border-radius: 24px;
     padding: 8px 8px 8px 16px;
     transition: border-color 0.2s, box-shadow 0.2s;
-    max-width: 770px;
-    width: 100%;
+    width: calc(100% - 10%);
+    margin-right: 10%;
 }
 
 .chat-input-wrapper:focus-within {
@@ -1599,6 +1613,15 @@ body {
     color: var(--primary);
 }
 
+/* Terminal-style bullet points for streaming text */
+.streaming-text .stream-bullet {
+    color: var(--primary);
+    font-weight: 600;
+    margin-right: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    opacity: 0.9;
+}
+
 .message.streaming .streaming-text {
     display: inline;
 }
@@ -1698,8 +1721,27 @@ body:has(.sidebar.collapsed) .modal {
     gap: 8px;
 }
 
-.modal-header h2::before {
+/* Settings modal header icon */
+#settingsModal .modal-header h2::before {
     content: '\f013';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* Developer Tools modal header icon */
+#devToolsModal .modal-header h2::before {
+    content: '\f120';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* Browser modal header icon */
+#browserModal .modal-header h2::before {
+    content: '\f07b';
     font-family: 'Font Awesome 6 Free';
     font-weight: 900;
     font-size: 0.8rem;
@@ -1832,6 +1874,39 @@ body:has(.sidebar.collapsed) .modal {
     background: var(--bg-secondary);
     color: var(--text);
     padding: 8px;
+}
+
+/* Developer tools buttons */
+.dev-tools-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.dev-tool-btn {
+    flex: 1;
+    padding: 10px 14px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.dev-tool-btn:hover {
+    background: var(--bg-secondary);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.dev-tool-btn i {
+    font-size: 0.85rem;
 }
 
 .save-settings-btn {

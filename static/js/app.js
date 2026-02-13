@@ -480,13 +480,17 @@ function createMessageHTML(role, content, index, messageId = null) {
                 <div class="message-text">${formatMessage(content)}</div>
             </div>`;
     } else {
-        // Edit button outside the question box (after message-content)
+        // Edit and copy buttons outside the box, bottom right
+        const encodedContent = btoa(unescape(encodeURIComponent(content)));
         return `<div class="message-avatar"><i class="fas ${icon}"></i></div>
             <div class="message-content">
                 <div class="message-text">${formatMessage(content)}</div>
             </div>
-            <div class="message-edit-outside">
-                <button class="edit-btn-outside" onclick="editMessage(this, ${index}, '${encodeURIComponent(content)}', '${msgId}')">
+            <div class="message-actions-outside">
+                <button class="user-copy-btn" data-content="${encodedContent}" title="Copy message">
+                    <i class="fas fa-copy"></i>
+                </button>
+                <button class="edit-btn-outside" data-content="${encodedContent}" data-index="${index}" data-msgid="${msgId}" title="Edit message">
                     <i class="fas fa-edit"></i>
                 </button>
             </div>`;
@@ -684,9 +688,32 @@ function formatCompleteStructures(text) {
     result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
 
-    // Simple list handling
+    // Simple list handling - convert existing markdown lists
     result = result.replace(/^[\s]*[-•]\s+(.+)$/gm, '<li class="stream-li">$1</li>');
     result = result.replace(/^[\s]*(\d+)\.\s+(.+)$/gm, '<li class="stream-li-num">$1. $2</li>');
+
+    // Terminal-style bullet points: convert plain text lines to bullet points
+    // Skip lines that are already formatted (headers, list items, code, tables, etc.)
+    const lines = result.split('\n');
+    const formattedLines = lines.map((line, idx) => {
+        const trimmed = line.trim();
+        // Skip empty lines, headers, existing list items, code blocks, tables
+        if (!trimmed ||
+            trimmed.startsWith('<h') ||
+            trimmed.startsWith('<li') ||
+            trimmed.startsWith('<table') ||
+            trimmed.startsWith('<tr') ||
+            trimmed.startsWith('<th') ||
+            trimmed.startsWith('<td') ||
+            trimmed.startsWith('__CODEBLOCK_') ||
+            trimmed.startsWith('|') ||
+            trimmed.match(/^[-=]{3,}$/)) {
+            return line;
+        }
+        // Convert plain text to terminal-style bullet point
+        return `<span class="stream-bullet">~</span> ${line}`;
+    });
+    result = formattedLines.join('\n');
 
     // Line breaks
     result = result.replace(/\n/g, '<br>');
@@ -829,7 +856,7 @@ function editMessage(btn, messageIndex, encodedContent, messageId = null) {
 
     // Replace message content with editable textarea and buttons
     const contentDiv = userMessageEl.querySelector('.message-content');
-    const editOutside = userMessageEl.querySelector('.message-edit-outside');
+    const actionsOutside = userMessageEl.querySelector('.message-actions-outside');
     const textDiv = contentDiv.querySelector('.message-text');
 
     // Capture the original dimensions BEFORE any changes
@@ -840,8 +867,8 @@ function editMessage(btn, messageIndex, encodedContent, messageId = null) {
         width: contentDiv.style.width
     };
 
-    // Hide the edit button and add editing class
-    if (editOutside) editOutside.style.display = 'none';
+    // Hide the action buttons and add editing class
+    if (actionsOutside) actionsOutside.style.display = 'none';
     userMessageEl.classList.add('editing');
 
     // Save original text HTML before replacing
@@ -864,15 +891,25 @@ function editMessage(btn, messageIndex, encodedContent, messageId = null) {
     const submitBtn = textDiv.querySelector('.edit-submit-btn');
     const cancelBtn = textDiv.querySelector('.edit-cancel-btn');
 
-    // Auto-resize textarea to fit content
+    // Set textarea width to match original content width
+    const minWidth = Math.max(originalContentWidth, 280);
+    textarea.style.width = minWidth + 'px';
+    contentDiv.style.minWidth = minWidth + 'px';
+
+    // Let the textarea auto-size based on content using scrollHeight
+    textarea.style.height = 'auto';
+    textarea.style.height = textarea.scrollHeight + 'px';
+    const initialHeight = textarea.scrollHeight;
+
+    // Auto-resize textarea when user types
     const autoResizeTextarea = () => {
         textarea.style.height = 'auto';
-        textarea.style.height = Math.min(Math.max(textarea.scrollHeight, 40), 200) + 'px';
+        const newHeight = Math.min(Math.max(textarea.scrollHeight, initialHeight), 200);
+        textarea.style.height = newHeight + 'px';
     };
 
-    // Focus and set initial height
+    // Focus
     textarea.focus();
-    autoResizeTextarea();
 
     // Move cursor to end
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
@@ -884,7 +921,7 @@ function editMessage(btn, messageIndex, encodedContent, messageId = null) {
         console.log(`[EDIT] Cancelled edit at index ${messageIndex}`);
         textDiv.innerHTML = originalTextHTML;
         userMessageEl.classList.remove('editing');
-        if (editOutside) editOutside.style.display = '';
+        if (actionsOutside) actionsOutside.style.display = '';
     };
 
     // Submit button - update and resend
@@ -1411,15 +1448,64 @@ function copyToolCommand(btn) {
     });
 }
 
-// Add event delegation for copy buttons
+// Add event delegation for copy and edit buttons (tool commands and user messages)
 document.addEventListener('click', function(e) {
-    const copyBtn = e.target.closest('.tool-copy-btn');
-    if (copyBtn) {
+    // Tool copy button
+    const toolCopyBtn = e.target.closest('.tool-copy-btn');
+    if (toolCopyBtn) {
         e.preventDefault();
         e.stopPropagation();
-        copyToolCommand(copyBtn);
+        copyToolCommand(toolCopyBtn);
+        return;
+    }
+
+    // User message copy button
+    const userCopyBtn = e.target.closest('.user-copy-btn');
+    if (userCopyBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        copyUserMessage(userCopyBtn);
+        return;
+    }
+
+    // User message edit button
+    const editBtn = e.target.closest('.edit-btn-outside');
+    if (editBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const encodedContent = editBtn.getAttribute('data-content');
+        const index = parseInt(editBtn.getAttribute('data-index'), 10);
+        const msgId = editBtn.getAttribute('data-msgid');
+        if (encodedContent) {
+            // Decode from base64
+            const content = decodeURIComponent(escape(atob(encodedContent)));
+            editMessage(editBtn, index, encodeURIComponent(content), msgId);
+        }
+        return;
     }
 });
+
+// Copy user message to clipboard
+function copyUserMessage(btn) {
+    const encodedContent = btn.getAttribute('data-content');
+    if (!encodedContent) return;
+
+    // Decode from base64
+    const content = decodeURIComponent(escape(atob(encodedContent)));
+
+    navigator.clipboard.writeText(content).then(() => {
+        // Show success feedback
+        const icon = btn.querySelector('i');
+        icon.className = 'fas fa-check';
+        btn.classList.add('copied');
+        setTimeout(() => {
+            icon.className = 'fas fa-copy';
+            btn.classList.remove('copied');
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+    });
+}
 
 // Clean garbage characters from terminal output
 function cleanGarbageCharacters(text) {
@@ -1722,6 +1808,16 @@ function refreshPage() {
 function toggleSettings() {
     const modal = document.getElementById('settingsModal');
     modal.classList.toggle('active');
+    // Close dev tools if open
+    document.getElementById('devToolsModal')?.classList.remove('active');
+}
+
+// Toggle developer tools modal
+function toggleDevTools() {
+    const modal = document.getElementById('devToolsModal');
+    modal.classList.toggle('active');
+    // Close settings if open
+    document.getElementById('settingsModal')?.classList.remove('active');
 }
 
 // Toggle theme
@@ -1875,6 +1971,57 @@ function selectCurrentDir() {
 // Close browser modal
 function closeBrowser() {
     document.getElementById('browserModal').classList.remove('active');
+}
+
+// Open logs terminal (Electron only)
+async function openLogsTerminal() {
+    if (window.electronAPI && window.electronAPI.openLogsTerminal) {
+        try {
+            const result = await window.electronAPI.openLogsTerminal();
+            if (result.success) {
+                showNotification(`Logs opened in ${result.terminal}`);
+            } else {
+                showNotification('Failed to open logs terminal: ' + (result.error || 'Unknown error'));
+            }
+        } catch (e) {
+            showNotification('Error opening logs: ' + e.message);
+        }
+    } else {
+        // Fallback for browser - show instructions
+        showNotification('Run: journalctl --user -f | grep Flask');
+    }
+}
+
+// Reset AI session
+async function resetSession() {
+    if (window.electronAPI && window.electronAPI.resetSession) {
+        try {
+            const result = await window.electronAPI.resetSession();
+            if (result.success) {
+                showNotification('Session reset successfully');
+            } else {
+                showNotification('Failed to reset session');
+            }
+        } catch (e) {
+            showNotification('Error resetting session: ' + e.message);
+        }
+    } else {
+        // Direct API call for browser
+        try {
+            const response = await fetch('/api/chat/reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspace: currentWorkspace })
+            });
+            if (response.ok) {
+                showNotification('Session reset successfully');
+            } else {
+                showNotification('Failed to reset session');
+            }
+        } catch (e) {
+            showNotification('Error resetting session: ' + e.message);
+        }
+    }
 }
 
 // Toggle sidebar
@@ -2137,6 +2284,7 @@ function showNotification(message) {
 document.addEventListener('click', function(e) {
     const settingsModal = document.getElementById('settingsModal');
     const browserModal = document.getElementById('browserModal');
+    const devToolsModal = document.getElementById('devToolsModal');
 
     // Close settings modal if clicking outside
     if (settingsModal.classList.contains('active')) {
@@ -2145,6 +2293,15 @@ document.addEventListener('click', function(e) {
             !e.target.closest('.icon-btn[onclick*="toggleSettings"]') &&
             !e.target.closest('#workspaceBadge')) {
             settingsModal.classList.remove('active');
+        }
+    }
+
+    // Close dev tools modal if clicking outside
+    if (devToolsModal && devToolsModal.classList.contains('active')) {
+        const devToolsContent = devToolsModal.querySelector('.modal-content');
+        if (!devToolsContent.contains(e.target) &&
+            !e.target.closest('.icon-btn[onclick*="toggleDevTools"]')) {
+            devToolsModal.classList.remove('active');
         }
     }
 
