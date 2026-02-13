@@ -120,7 +120,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2>Settings</h2>
-                <button class="close-btn" onclick="toggleSettings()">
+                <button class="close-btn" onclick="toggleSettings()" title="Close">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -132,15 +132,15 @@
                     </div>
                 </div>
                 <div class="setting-item">
-                    <label>Workspace Directory</label>
+                    <label><i class="fas fa-folder-tree"></i> Workspace Directory</label>
                     <div class="workspace-input">
                         <input type="text" id="workspaceInput" placeholder="/home/dell/Projects">
-                        <button class="browse-btn" onclick="browseWorkspace()">
+                        <button class="browse-btn" onclick="browseWorkspace()" title="Browse folders">
                             <i class="fas fa-folder-open"></i>
                         </button>
                     </div>
                 </div>
-                <button class="save-settings-btn" onclick="saveWorkspace()">Save</button>
+                <button class="save-settings-btn" onclick="saveWorkspace()">Save Settings</button>
             </div>
         </div>
     </div>
@@ -150,14 +150,14 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2>Select Workspace</h2>
-                <button class="close-btn" onclick="closeBrowser()">
+                <button class="close-btn" onclick="closeBrowser()" title="Close">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             <div class="modal-body">
                 <div class="browser-path" id="browserPath"></div>
                 <div class="browser-list" id="browserList"></div>
-                <button class="save-settings-btn" onclick="selectCurrentDir()">Select</button>
+                <button class="save-settings-btn" onclick="selectCurrentDir()">Select This Folder</button>
             </div>
         </div>
     </div>

@@ -225,12 +225,17 @@ class StreamGenerator:
                 log.info(f"[AUGMENT] Sending to auggie: {self.message[:30]}...")
                 yield self._send({'type': 'status', 'message': 'Sending your message...'})
                 try:
+                    # For new sessions, give auggie extra time to fully initialize
+                    if is_new or not session.initialized:
+                        time.sleep(0.5)
+                        session.drain_output(timeout=0.5)
+
                     # Send message first
                     os.write(session.master_fd, self.message.encode('utf-8'))
-                    time.sleep(0.3)
+                    time.sleep(0.5)  # Increased delay to let TUI process the input
                     # Send just \r (carriage return) - this is what Enter sends in raw terminal mode
                     os.write(session.master_fd, b'\r')
-                    time.sleep(0.2)
+                    time.sleep(0.3)
                     log.info(f"[AUGMENT] Message sent with CR, waiting for response...")
                 except (BrokenPipeError, OSError) as e:
                     log.error(f"[AUGMENT] Write error: {e}")
