@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Augment Chat</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=74">
+    <title>Digistant</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=122">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -13,9 +13,9 @@
         <!-- Sidebar for Chat History -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <span class="logo">⚡ Augment</span>
-                <button class="icon-btn" onclick="toggleSidebar()" title="Close Sidebar">
-                    <i class="fas fa-times"></i>
+                <span class="logo"><img src="/static/images/assistant.jpg" alt="Digistant" class="logo-icon"> Digistant</span>
+                <button class="icon-btn" onclick="toggleSidebar()" title="Toggle Sidebar">
+                    <i class="fas fa-bars"></i>
                 </button>
             </div>
             <div class="sidebar-actions">
@@ -35,13 +35,15 @@
             </div>
         </aside>
 
+        <!-- Floating sidebar toggle (visible when sidebar is hidden) -->
+        <button class="sidebar-float-toggle" id="sidebarFloatToggle" onclick="toggleSidebar()" title="Open Sidebar">
+            <i class="fas fa-bars"></i>
+        </button>
+
         <!-- Main Chat Area -->
         <main class="chat-main">
             <header class="chat-header">
                 <div class="header-left">
-                    <button class="icon-btn sidebar-toggle" onclick="toggleSidebar()" title="Toggle Sidebar">
-                        <i class="fas fa-bars"></i>
-                    </button>
                     <div class="workspace-badge" id="workspaceBadge" onclick="toggleSettings()">
                         <i class="fas fa-folder"></i>
                         <span id="workspaceDisplay">~/</span>

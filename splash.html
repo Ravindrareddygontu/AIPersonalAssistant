@@ -3,157 +3,111 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Starting Augment Chat...</title>
+    <title>Starting Digistant...</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            background: #0d1117;
+            background: transparent;
             height: 100vh;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             color: #e6edf3;
             overflow: hidden;
             -webkit-app-region: drag;
-            border: 1px solid #30363d;
+            border: none;
             border-radius: 12px;
+            position: relative;
         }
-        
-        .splash-container {
-            text-align: center;
+        .particles { position: absolute; width: 100%; height: 100%; overflow: hidden; }
+        .particle {
+            position: absolute; width: 4px; height: 4px;
+            background: #58a6ff; border-radius: 50%; opacity: 0;
+            animation: float 4s ease-in-out infinite;
         }
-        
+        .particle:nth-child(1) { left: 10%; animation-delay: 0s; }
+        .particle:nth-child(2) { left: 25%; animation-delay: 0.5s; }
+        .particle:nth-child(3) { left: 40%; animation-delay: 1s; }
+        .particle:nth-child(4) { left: 55%; animation-delay: 1.5s; }
+        .particle:nth-child(5) { left: 70%; animation-delay: 2s; }
+        .particle:nth-child(6) { left: 85%; animation-delay: 2.5s; }
+        @keyframes float {
+            0% { bottom: -10px; opacity: 0; transform: scale(0.5); }
+            20% { opacity: 0.8; }
+            80% { opacity: 0.4; }
+            100% { bottom: 100%; opacity: 0; transform: scale(1.2); }
+        }
+        .splash-container { text-align: center; z-index: 10; animation: fadeIn 0.8s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .logo-wrapper { position: relative; display: inline-block; margin-bottom: 24px; }
+        .logo-glow {
+            position: absolute; width: 120px; height: 120px;
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: radial-gradient(circle, rgba(88,166,255,0.4) 0%, transparent 70%);
+            animation: glow 2s ease-in-out infinite; border-radius: 50%;
+        }
+        @keyframes glow {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.6; }
+            50% { transform: translate(-50%, -50%) scale(1.3); opacity: 1; }
+        }
         .logo {
-            font-size: 48px;
-            margin-bottom: 20px;
-            animation: pulse 2s ease-in-out infinite;
+            width: 90px; height: 90px; border-radius: 50%;
+            position: relative; z-index: 2;
+            animation: logoFloat 3s ease-in-out infinite;
+            box-shadow: 0 0 30px rgba(88,166,255,0.3), 0 0 60px rgba(163,113,247,0.2);
         }
-        
+        @keyframes logoFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+        .orbit-ring {
+            position: absolute; width: 130px; height: 130px;
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            border: 2px solid transparent; border-top-color: #58a6ff;
+            border-radius: 50%; animation: orbit 2s linear infinite;
+        }
+        @keyframes orbit { to { transform: translate(-50%, -50%) rotate(360deg); } }
         .app-name {
-            font-size: 28px;
-            font-weight: 600;
-            margin-bottom: 40px;
+            font-size: 32px; font-weight: 700; margin-bottom: 8px;
             background: linear-gradient(90deg, #58a6ff, #a371f7, #58a6ff);
             background-size: 200% auto;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: gradient 3s ease infinite;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            animation: gradient 2s ease infinite; letter-spacing: -0.5px;
         }
-        
-        .spinner-container {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-        
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid #30363d;
-            border-top-color: #58a6ff;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        
-        .loading-text {
-            font-size: 16px;
-            color: #8b949e;
-            animation: blink 1.5s ease-in-out infinite;
-        }
-        
-        .loading-dots::after {
-            content: '';
-            animation: dots 1.5s steps(4, end) infinite;
-        }
-        
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-        
-        @keyframes pulse {
-            0%, 100% {
-                transform: scale(1);
-            }
-            50% {
-                transform: scale(1.1);
-            }
-        }
-        
-        @keyframes gradient {
-            0% {
-                background-position: 0% center;
-            }
-            50% {
-                background-position: 100% center;
-            }
-            100% {
-                background-position: 0% center;
-            }
-        }
-        
-        @keyframes blink {
-            0%, 100% {
-                opacity: 1;
-            }
-            50% {
-                opacity: 0.5;
-            }
-        }
-        
-        @keyframes dots {
-            0% { content: ''; }
-            25% { content: '.'; }
-            50% { content: '..'; }
-            75% { content: '...'; }
-            100% { content: ''; }
-        }
-        
+        @keyframes gradient { 0%, 100% { background-position: 0% center; } 50% { background-position: 100% center; } }
+        .tagline { font-size: 13px; color: #8b949e; margin-bottom: 32px; letter-spacing: 2px; text-transform: uppercase; }
+        .loading-container { display: flex; flex-direction: column; align-items: center; gap: 12px; }
         .progress-bar {
-            width: 200px;
-            height: 4px;
-            background: #30363d;
-            border-radius: 2px;
-            overflow: hidden;
-            margin-top: 20px;
+            width: 180px; height: 3px; background: #21262d;
+            border-radius: 3px; overflow: hidden; position: relative;
         }
-        
         .progress-fill {
             height: 100%;
-            background: linear-gradient(90deg, #58a6ff, #a371f7);
-            width: 0%;
-            animation: progress 2.5s ease-out forwards;
+            background: linear-gradient(90deg, #58a6ff, #a371f7, #58a6ff);
+            background-size: 200% 100%; width: 0%;
+            animation: progress 2.5s ease-out forwards, shimmer 1.5s ease-in-out infinite;
         }
-        
-        @keyframes progress {
-            0% { width: 0%; }
-            20% { width: 20%; }
-            50% { width: 60%; }
-            80% { width: 85%; }
-            100% { width: 95%; }
-        }
+        @keyframes progress { 0% { width: 0%; } 30% { width: 35%; } 60% { width: 70%; } 90% { width: 90%; } 100% { width: 95%; } }
+        @keyframes shimmer { 0%, 100% { background-position: 0% center; } 50% { background-position: 100% center; } }
+        .loading-text { font-size: 12px; color: #6e7681; letter-spacing: 1px; }
+        .loading-text::after { content: ''; animation: dots 1.5s steps(4) infinite; }
+        @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
     </style>
 </head>
 <body>
+    <div class="particles">
+        <div class="particle"></div><div class="particle"></div><div class="particle"></div>
+        <div class="particle"></div><div class="particle"></div><div class="particle"></div>
+    </div>
     <div class="splash-container">
-        <div class="logo">⚡</div>
-        <div class="app-name">Augment Chat</div>
-        <div class="spinner-container">
-            <div class="spinner"></div>
+        <div class="logo-wrapper">
+            <div class="logo-glow"></div>
+            <div class="orbit-ring"></div>
+            <img src="static/images/assistant.jpg" alt="Digistant" class="logo">
         </div>
-        <div class="loading-text">Starting<span class="loading-dots"></span></div>
-        <div class="progress-bar">
-            <div class="progress-fill"></div>
+        <div class="app-name">Digistant</div>
+        <div class="tagline">Your Personal AI Assistant</div>
+        <div class="loading-container">
+            <div class="progress-bar"><div class="progress-fill"></div></div>
+            <div class="loading-text">Initializing</div>
         </div>
     </div>
 </body>

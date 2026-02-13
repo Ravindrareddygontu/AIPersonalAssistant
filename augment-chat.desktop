@@ -1,12 +1,12 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Augment Chat
-Comment=Desktop chat interface for Augment Code AI
+Name=Digistant
+Comment=Your Personal Digital Assistant
 Exec=bash -c 'cd "/home/dell/Projects/POC'"'"'S/ai-chat-app" && npm start'
 Icon=/home/dell/Projects/POC'S/ai-chat-app/static/icon.png
 Terminal=false
 Categories=Development;IDE;
 StartupWMClass=augment-chat
-Keywords=AI;Chat;Code;Assistant;Augment;
+Keywords=AI;Chat;Code;Assistant;Digistant;
 

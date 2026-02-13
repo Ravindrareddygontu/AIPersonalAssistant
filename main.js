@@ -29,7 +29,8 @@ function createSplashWindow() {
         center: true,
         skipTaskbar: false,
         icon: path.join(__dirname, 'static', 'icon.png'),
-        backgroundColor: '#0d1117',
+        transparent: true,
+        backgroundColor: '#00000000',
         webPreferences: { nodeIntegration: false, contextIsolation: true }
     });
     splashWindow.loadFile(path.join(__dirname, 'splash.html'));
@@ -81,7 +82,7 @@ function startFlaskServer() {
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1200, height: 800, minWidth: 600, minHeight: 500,
-        title: 'Augment Chat', icon: path.join(__dirname, 'static', 'icon.png'),
+        title: 'Digistant', icon: path.join(__dirname, 'static', 'icon.png'),
         webPreferences: { nodeIntegration: false, contextIsolation: true },
         backgroundColor: '#0d1117', autoHideMenuBar: true,
         show: false

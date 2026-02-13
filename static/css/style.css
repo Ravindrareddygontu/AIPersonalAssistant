@@ -65,6 +65,33 @@ body {
     visibility: hidden;
 }
 
+/* Floating toggle button when sidebar is hidden */
+.sidebar-float-toggle {
+    display: none;
+    position: fixed;
+    left: 10px;
+    top: 17px;
+    z-index: 100;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.sidebar-float-toggle:hover {
+    background: var(--bg-hover);
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+.sidebar.collapsed ~ .sidebar-float-toggle {
+    display: block;
+}
+
 .sidebar-header {
     padding: 14px 16px;
     display: flex;
@@ -232,10 +259,17 @@ body {
 .logo {
     font-size: 1.2rem;
     font-weight: 700;
-    background: linear-gradient(135deg, var(--primary), #7c3aed);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: #38bdf8;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.logo-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
 }
 
 .workspace-badge {
@@ -256,6 +290,11 @@ body {
 .workspace-badge:hover {
     border-color: var(--primary);
     color: var(--text);
+}
+
+/* Move workspace badge right when sidebar is collapsed */
+.sidebar.collapsed ~ .chat-main .workspace-badge {
+    margin-left: 31px;
 }
 
 .workspace-badge i {
@@ -445,21 +484,26 @@ body {
 }
 
 .message.user .message-content {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(124, 58, 237, 0.05));
-    padding: 14px 20px;
-    border-radius: 20px 20px 6px 20px;
+    background: rgba(99, 102, 241, 0.15);
+    padding: 6px 12px;
+    border-radius: 18px;
     color: var(--text);
-    border: 1px solid rgba(99, 102, 241, 0.2);
-    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.08);
-    transition: all 0.2s ease;
-    text-align: left;
-    flex: none;
+    border: 1px solid rgba(99, 102, 241, 0.3);
     max-width: 70%;
+    width: fit-content;
+    flex: 0 0 auto;
+}
+
+.message.user .message-content * {
+    border: none;
+    text-decoration: none;
+    border-bottom: none;
+    margin: 0;
+    padding: 0;
 }
 
 .message.user .message-content:hover {
-    border-color: rgba(99, 102, 241, 0.4);
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.12);
+    border-color: var(--text-muted);
 }
 
 .message.assistant {
@@ -1362,7 +1406,7 @@ body {
 
 /* Adjust modal position when sidebar is collapsed */
 body:has(.sidebar.collapsed) .modal {
-    left: 40px;
+    left: 60px;
 }
 
 .modal-content {

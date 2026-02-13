@@ -30,6 +30,10 @@ class AuggieSession:
     def start(self):
         master_fd, slave_fd = pty.openpty()
         env = os.environ.copy()
+        # Ensure nvm node path is in PATH (critical for desktop icon launch)
+        nvm_bin = '/home/dell/.nvm/versions/node/v20.20.0/bin'
+        if nvm_bin not in env.get('PATH', ''):
+            env['PATH'] = nvm_bin + ':' + env.get('PATH', '/usr/bin:/bin')
         env.update({'TERM': 'xterm-256color', 'AUGMENT_WORKSPACE': self.workspace, 'COLUMNS': '200', 'LINES': '100'})
 
         # Find auggie - try common locations
@@ -78,24 +82,59 @@ class AuggieSession:
         self.process = self.master_fd = None
         self.initialized = False
 
-    def wait_for_prompt(self, timeout=30):
+    def wait_for_prompt(self, timeout=60):
+        """Wait for auggie to be ready - including indexing completion."""
         start, output = time.time(), ""
-        log.info(f"[SESSION] Waiting for prompt (timeout={timeout}s)...")
+        prompt_seen = False
+        indexing_complete = False
+        indexing_started = False
+
+        log.info(f"[SESSION] Waiting for prompt and indexing (timeout={timeout}s)...")
+
         while time.time() - start < timeout:
             if select.select([self.master_fd], [], [], 0.3)[0]:
                 try:
                     chunk = os.read(self.master_fd, 8192).decode('utf-8', errors='ignore')
                     output += chunk
                     log.debug(f"[SESSION] Received chunk: {repr(chunk[:100])}")
-                    # Check for various prompt indicators
-                    if '›' in chunk or '>' in chunk or 'auggie' in chunk.lower():
-                        log.info(f"[SESSION] Prompt detected after {time.time()-start:.1f}s")
-                        time.sleep(0.5)
-                        self.drain_output()
-                        return True, output
+
+                    # Check for prompt
+                    if '›' in chunk or '>' in chunk:
+                        prompt_seen = True
+
+                    # Check for indexing status
+                    if 'Indexing...' in chunk or 'Indexing' in output:
+                        indexing_started = True
+                        log.info(f"[SESSION] Indexing in progress...")
+
+                    if 'Indexing complete' in chunk or 'Indexing complete' in output:
+                        indexing_complete = True
+                        log.info(f"[SESSION] Indexing complete after {time.time()-start:.1f}s")
+
+                    # Ready when: prompt seen AND (indexing complete OR no indexing started after 5s)
+                    if prompt_seen:
+                        if indexing_complete:
+                            log.info(f"[SESSION] Ready (indexing complete) after {time.time()-start:.1f}s")
+                            time.sleep(0.5)
+                            self.drain_output()
+                            return True, output
+                        elif not indexing_started and (time.time() - start) > 5:
+                            # No indexing seen after 5s, probably already indexed
+                            log.info(f"[SESSION] Ready (no indexing needed) after {time.time()-start:.1f}s")
+                            time.sleep(0.5)
+                            self.drain_output()
+                            return True, output
+
                 except OSError as e:
                     log.error(f"[SESSION] OSError reading: {e}")
                     break
+
+        # Timeout - but if prompt was seen, still try to proceed
+        if prompt_seen:
+            log.warning(f"[SESSION] Timeout but prompt seen, proceeding anyway")
+            self.drain_output()
+            return True, output
+
         log.warning(f"[SESSION] Timeout waiting for prompt. Output so far: {repr(output[:200])}")
         return False, output
 
