@@ -443,10 +443,10 @@ body {
 }
 
 .message.assistant .message-content {
-    background: var(--bg-secondary);
+    background: transparent;
     padding: 16px 22px;
-    border-radius: 20px 20px 20px 6px;
-    border: 1px solid var(--border);
+    border-radius: 0;
+    border: none;
     position: relative;
     box-shadow: none;
     transition: all 0.2s ease;
@@ -454,7 +454,7 @@ body {
 }
 
 .message.assistant .message-content:hover {
-    border-color: var(--border);
+    border-color: transparent;
     box-shadow: none;
 }
 
