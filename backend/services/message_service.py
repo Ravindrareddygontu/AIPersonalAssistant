@@ -29,14 +29,17 @@ API Schema (frontend-facing):
 """
 
 import hashlib
+import uuid
 from datetime import datetime
 
 
-def generate_message_id(chat_id, index, content):
-    """Generate a unique message ID based on chat_id, index, and content hash."""
-    content_str = content[:100] if content else ''
-    content_hash = hashlib.md5(content_str.encode()).hexdigest()[:8]
-    return f"{chat_id}-{index}-{content_hash}"
+def generate_message_id(chat_id, index, content=None):
+    """Generate a unique message ID based on chat_id, index, and a unique suffix.
+
+    Uses UUID to ensure uniqueness even when retrying the same question.
+    """
+    unique_suffix = uuid.uuid4().hex[:8]
+    return f"{chat_id}-{index}-{unique_suffix}"
 
 
 def db_to_api_format(chat_id, db_messages):

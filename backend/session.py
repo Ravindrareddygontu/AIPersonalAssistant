@@ -7,6 +7,8 @@ import subprocess
 import threading
 import logging
 
+from backend.config import get_auggie_model_id
+
 log = logging.getLogger('session')
 
 _sessions = {}
@@ -14,8 +16,9 @@ _lock = threading.Lock()
 
 
 class AuggieSession:
-    def __init__(self, workspace):
+    def __init__(self, workspace, model=None):
         self.workspace = workspace
+        self.model = model
         self.process = None
         self.master_fd = None
         self.last_used = time.time()
@@ -38,8 +41,15 @@ class AuggieSession:
                 auggie_cmd = path
                 break
 
-        log.info(f"[SESSION] Starting auggie from: {auggie_cmd}, workspace: {self.workspace}")
-        self.process = subprocess.Popen([auggie_cmd], stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
+        # Build command with model if specified
+        cmd = [auggie_cmd]
+        auggie_model_id = None
+        if self.model:
+            auggie_model_id = get_auggie_model_id(self.model)
+            cmd.extend(['-m', auggie_model_id])
+
+        log.info(f"[SESSION] Starting auggie from: {auggie_cmd}, workspace: {self.workspace}, model: {self.model} (auggie_id: {auggie_model_id})")
+        self.process = subprocess.Popen(cmd, stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
                                         cwd=self.workspace, env=env, preexec_fn=os.setsid)
         os.close(slave_fd)
         self.master_fd = master_fd
@@ -111,14 +121,20 @@ class AuggieSession:
 
 class SessionManager:
     @staticmethod
-    def get_or_create(workspace):
+    def get_or_create(workspace, model=None):
         with _lock:
             if workspace in _sessions and _sessions[workspace].is_alive():
+                # If model changed, restart the session
+                if model and _sessions[workspace].model != model:
+                    log.info(f"[SESSION] Model changed from {_sessions[workspace].model} to {model}, restarting session")
+                    _sessions[workspace].cleanup()
+                    _sessions[workspace] = AuggieSession(workspace, model)
+                    return _sessions[workspace], True
                 _sessions[workspace].last_used = time.time()
                 return _sessions[workspace], False
             if workspace in _sessions:
                 _sessions[workspace].cleanup()
-            _sessions[workspace] = AuggieSession(workspace)
+            _sessions[workspace] = AuggieSession(workspace, model)
             return _sessions[workspace], True
 
     @staticmethod

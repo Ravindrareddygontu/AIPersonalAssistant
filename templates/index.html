@@ -64,29 +64,29 @@
                 <div class="welcome-message">
                     <h2>What can I help you with?</h2>
                     <div class="quick-actions">
-                        <button class="action-btn" onclick="sendSuggestion('Show me the structure of this project')">
+                        <button class="action-btn" onclick="sendSuggestion('Show me the folder structure of this project with main files and their purposes')">
                             <i class="fas fa-sitemap"></i>
                             Project structure
                         </button>
-                        <button class="action-btn" onclick="sendSuggestion('List all files in the current directory')">
+                        <button class="action-btn" onclick="sendSuggestion('List all files in the current directory and briefly describe what each one does')">
                             <i class="fas fa-folder-tree"></i>
                             List files
                         </button>
-                        <button class="action-btn" onclick="sendSuggestion('Help me fix a bug in my code')">
-                            <i class="fas fa-bug"></i>
-                            Fix bug
+                        <button class="action-btn" onclick="sendSuggestion('Check if any application is running on port 5000 and show me the process details')">
+                            <i class="fas fa-server"></i>
+                            Check port
                         </button>
-                        <button class="action-btn" onclick="sendSuggestion('Write a function that')">
+                        <button class="action-btn" onclick="sendSuggestion('Write a Python function to check if a number is prime and test it with examples')">
                             <i class="fas fa-code"></i>
                             Write code
                         </button>
-                        <button class="action-btn" onclick="sendSuggestion('Explain this code:')">
-                            <i class="fas fa-book-open"></i>
-                            Explain code
+                        <button class="action-btn" onclick="sendSuggestion('Find all TODO comments in this project and list them with their file locations')">
+                            <i class="fas fa-search"></i>
+                            Find TODOs
                         </button>
-                        <button class="action-btn" onclick="sendSuggestion('Run the tests')">
-                            <i class="fas fa-flask"></i>
-                            Run tests
+                        <button class="action-btn" onclick="sendSuggestion('Show me the git status and recent commits in this repository')">
+                            <i class="fas fa-code-branch"></i>
+                            Git status
                         </button>
                     </div>
                 </div>
@@ -125,13 +125,19 @@
                 <div class="setting-item">
                     <label><i class="fas fa-folder-tree"></i> Workspace Directory</label>
                     <div class="workspace-input">
-                        <input type="text" id="workspaceInput" placeholder="/home/dell/Projects">
+                        <input type="text" id="workspaceInput" placeholder="/home/dell/Projects/POC'S/ai-chat-app">
                         <button class="browse-btn" onclick="browseWorkspace()" title="Browse folders">
                             <i class="fas fa-folder-open"></i>
                         </button>
                     </div>
                 </div>
-                <button class="save-settings-btn" onclick="saveWorkspace()">Save Settings</button>
+                <div class="setting-item">
+                    <label><i class="fas fa-robot"></i> AI Model</label>
+                    <select id="modelSelect" class="model-select">
+                        <!-- Options populated by JS -->
+                    </select>
+                </div>
+                <button class="save-settings-btn" onclick="saveSettings()">Save Settings</button>
             </div>
         </div>
     </div>
@@ -153,6 +159,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=40"></script>
+    <script src="/static/js/app.js?v=43"></script>
 </body>
 </html>

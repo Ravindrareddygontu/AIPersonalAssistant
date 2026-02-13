@@ -55,13 +55,12 @@ class StreamGenerator:
             if stripped.startswith('/') and ('/' in stripped[1:]) and len(stripped) < 100:
                 # Likely a path like "/Projects/POC'S/ai-chat-app"
                 break
-            # Stop at lines that are terminal box tops (these mark UI boundaries)
-            if stripped.startswith('╭') and '─' in stripped:
-                break  # Box top boundary - we've reached terminal UI
-            # Skip lines that look like terminal box/formatting
+            # NOTE: Do NOT break at box tops (╭───) - these are tool usage boxes
+            # which are part of the AI response. Only break at the input prompt.
+            # Skip lines that look like terminal box/formatting (empty box lines)
             if '│                                                                          │' in line:
                 continue
-            # Skip lines that are just box drawing characters
+            # Skip lines that are ONLY box drawing characters (no content)
             if stripped and all(c in '─│╭╮╰╯┌┐└┘├┤┬┴┼' for c in stripped):
                 continue
             # Skip lines that end with garbage numbers (terminal escape code remnants)
@@ -156,10 +155,16 @@ class StreamGenerator:
         search_start = state.get('output_start_pos', 0)
         search_output = clean_output[search_start:]
 
-        msg_short = self.message[:30] if len(self.message) > 30 else self.message
+        # Use shorter prefix for matching - terminal may wrap long messages
+        msg_short = self.message[:20] if len(self.message) > 20 else self.message
         pattern = r'›\s*' + re.escape(msg_short)
         matches = list(re.finditer(pattern, search_output))
         if not matches:
+            # Debug: log why we're not finding matches
+            if not state.get('_logged_no_match'):
+                log.debug(f"[PROCESS_CHUNK] No match for pattern in search_output. Pattern prefix: {repr(msg_short[:20])}")
+                log.debug(f"[PROCESS_CHUNK] search_output last 500 chars: {repr(search_output[-500:])}")
+                state['_logged_no_match'] = True
             return None, state
 
         # Use the LAST match in the new output section (most recent echo of our message)
@@ -226,8 +231,8 @@ class StreamGenerator:
         log.info(f"[AUGMENT] Starting generate for message: {self.message[:50]}...")
         yield ": " + " " * 2048 + "\n\n"
         try:
-            session, is_new = SessionManager.get_or_create(self.workspace)
-            log.info(f"[AUGMENT] Session: is_new={is_new}, initialized={session.initialized}")
+            session, is_new = SessionManager.get_or_create(self.workspace, settings.model)
+            log.info(f"[AUGMENT] Session: is_new={is_new}, initialized={session.initialized}, model={settings.model}")
             with session.lock:
                 if is_new or not session.initialized:
                     log.info("[AUGMENT] Starting new session...")
@@ -258,9 +263,15 @@ class StreamGenerator:
                     yield self._send({'type': 'done'})
                     return
 
-                log.info(f"[AUGMENT] Sending to auggie: {self.message[:30]}...")
+                log.info(f"[AUGMENT] Sending to auggie: {self.message[:30]}... | Model: {settings.model}")
                 yield self._send({'type': 'status', 'message': 'Sending your message...'})
                 try:
+                    # ALWAYS drain any leftover output from previous requests (especially aborted ones)
+                    # This prevents old content from appearing in the new response
+                    drained = session.drain_output(timeout=0.3)
+                    if drained > 0:
+                        log.info(f"[AUGMENT] Drained {drained} bytes of leftover output before sending new message")
+
                     # For new sessions, give auggie extra time to fully initialize
                     if is_new or not session.initialized:
                         time.sleep(0.5)
@@ -283,7 +294,15 @@ class StreamGenerator:
                 # Save user question to database (creates new Q&A pair)
                 self._save_question_to_db(self.message)
 
-                # Clear any cached response from previous messages
+                # Remember the previous response (if any) so we can aggressively
+                # filter it out of the next streamed answer. This defends against
+                # cases where the Augment TUI re-renders the prior answer when a
+                # new request starts (e.g. on retry), which would otherwise look
+                # like a fresh response to the frontend.
+                previous_response = getattr(session, 'last_response', '') or ''
+
+                # Clear any cached response from previous messages so this
+                # request becomes the new "last" response once complete.
                 session.last_response = ""
                 session.last_message = ""
 
@@ -292,7 +311,8 @@ class StreamGenerator:
                 state = {'all_output': '', 'last_data_time': time.time(), 'message_sent_time': time.time(),
                          'saw_message_echo': False, 'saw_response_marker': False, 'streaming_started': False,
                          'last_streamed_content': '', 'streamed_length': 0,
-                         'output_start_pos': 0}  # Track where current message output starts
+                         'output_start_pos': 0,  # Track where current message output starts
+                         'prev_response': previous_response}  # Last cleaned response (used for de-duplication)
                 yield self._send({'type': 'status', 'message': 'Waiting for AI response...'})
 
                 for item in self._stream_response(session, state):
@@ -318,8 +338,12 @@ class StreamGenerator:
                 # Send Ctrl+C to interrupt auggie
                 try:
                     os.write(fd, b'\x03')  # Ctrl+C
-                except:
-                    pass
+                    time.sleep(0.2)  # Give auggie time to process Ctrl+C
+                    # Drain any remaining output to prevent it from appearing in next request
+                    session.drain_output(timeout=0.5)
+                    log.info("[AUGMENT] Drained buffer after abort")
+                except Exception as e:
+                    log.warning(f"[AUGMENT] Error during abort cleanup: {e}")
                 break
 
             if select.select([fd], [], [], 0.005)[0]:
@@ -331,23 +355,45 @@ class StreamGenerator:
                     state['last_data_time'] = time.time()
                     clean = TextCleaner.strip_ansi(state['all_output'])
 
-                    if not state['saw_message_echo'] and self.message in clean:
-                        state['saw_message_echo'] = True
-                        # CRITICAL FIX: Record the position where we found our message echo
-                        # This ensures _process_chunk only looks at output AFTER this point
-                        # preventing it from matching old responses from previous questions
-                        msg_pos = clean.rfind(self.message)
-                        state['output_start_pos'] = max(0, msg_pos - 50)  # Start slightly before message
-                        log.info(f"[STREAM] saw_message_echo=True, all_output length={len(state['all_output'])}, output_start_pos={state['output_start_pos']}")
+                    # Check for message echo - use first 50 chars for long messages (terminal may wrap)
+                    if not state['saw_message_echo']:
+                        msg_prefix = self.message[:50] if len(self.message) > 50 else self.message
+                        if msg_prefix in clean:
+                            state['saw_message_echo'] = True
+                            # CRITICAL FIX: Record the position where we found our message echo
+                            # This ensures _process_chunk only looks at output AFTER this point
+                            # preventing it from matching old responses from previous questions
+                            msg_pos = clean.rfind(msg_prefix)
+                            state['output_start_pos'] = max(0, msg_pos - 50)  # Start slightly before message
+                            log.info(f"[STREAM] saw_message_echo=True, all_output length={len(state['all_output'])}, output_start_pos={state['output_start_pos']}")
+                        elif not state.get('_logged_no_echo') and len(clean) > 500:
+                            log.info(f"[STREAM] Waiting for message echo. Looking for: {repr(msg_prefix[:30])}")
+                            log.info(f"[STREAM] Clean output last 300 chars: {repr(clean[-300:])}")
+                            state['_logged_no_echo'] = True
 
                     # Debug: Log raw output periodically to see what auggie is sending
                     if len(state['all_output']) % 500 < 256:  # Log every ~500 bytes
-                        log.debug(f"[STREAM] Raw output sample (last 300 chars): {repr(clean[-300:])}")
+                        # log.debug(f"[STREAM] Raw output sample (last 300 chars): {repr(clean[-300:])}")
                         yield self._send({'type': 'status', 'message': 'Processing your request...'})
 
                     if state['saw_message_echo']:
                         content, state = self._process_chunk(clean, state)
                         if content and len(content) > state['streamed_length']:
+                            # Defensive filter: if the new content starts with the
+                            # previous response, trim that prefix so we don't
+                            # re-stream a stale answer on retry. Only do this
+                            # once at the very beginning of streaming.
+                            prev_resp = state.get('prev_response') or ''
+                            if prev_resp and state['streamed_length'] == 0 and content.startswith(prev_resp):
+                                log.info("[STREAM] Detected previous response at start of content; trimming to avoid stale replay")
+                                content = content[len(prev_resp):].lstrip('\n')
+
+                            # After trimming, it's possible there's nothing
+                            # left (e.g. Augment only re-rendered the old
+                            # answer). In that case, just wait for more output.
+                            if not content:
+                                continue
+
                             state['last_content_change'] = time.time()
                             state['end_pattern_seen'] = False
                             if not state['streaming_started']:
@@ -380,7 +426,7 @@ class StreamGenerator:
                             looks_complete = any(c in last_content for c in ['.', '!', ')', ']']) or len(last_content) > 200
                             if (end_prompt or end_box) and has_substantial_content and looks_complete:
                                 state['end_pattern_seen'] = True
-                                log.info(f"[STREAM] end_pattern_seen=True, streamed_length={state['streamed_length']}, time={time_since_start:.1f}s")
+                                # log.info(f"[STREAM] end_pattern_seen=True, streamed_length={state['streamed_length']}, time={time_since_start:.1f}s")
                 except OSError:
                     break
             else:
@@ -407,11 +453,27 @@ class StreamGenerator:
                     break
 
                 # Case 4: Very long wait without response marker - probably stuck (reduced from 120s to 30s)
-                if state['saw_message_echo'] and not state['saw_response_marker'] and time.time() - state['message_sent_time'] > 30:
-                    clean = TextCleaner.strip_ansi(state['all_output'])
-                    _log(f"Exiting: timeout waiting for response marker. Total output: {len(state['all_output'])} bytes")
-                    _log(f"[DEBUG] Last 500 chars of clean output: {repr(clean[-500:])}")
-                    break
+                wait_time = time.time() - state['message_sent_time']
+                if state['saw_message_echo'] and not state['saw_response_marker']:
+                    # Log progress every 5 seconds while waiting
+                    if int(wait_time) % 5 == 0 and not state.get(f'_logged_wait_{int(wait_time)}'):
+                        state[f'_logged_wait_{int(wait_time)}'] = True
+                        clean = TextCleaner.strip_ansi(state['all_output'])
+                        log.info(f"[STREAM] Waiting for response marker... {wait_time:.0f}s elapsed, output length: {len(clean)}")
+                        log.info(f"[STREAM] Last 300 chars: {repr(clean[-300:])}")
+
+                    if wait_time > 30:
+                        clean = TextCleaner.strip_ansi(state['all_output'])
+                        _log(f"Exiting: timeout waiting for response marker. Total output: {len(state['all_output'])} bytes")
+                        _log(f"[DEBUG] Last 500 chars of clean output: {repr(clean[-500:])}")
+                        break
+
+        # If aborted, don't send any content - just send done event
+        if state.get('aborted'):
+            _log("Stream was aborted, skipping content extraction and sending")
+            yield self._send({'type': 'aborted', 'message': 'Request aborted'})
+            yield self._send({'type': 'done'})
+            return
 
         # CRITICAL FIX: Only extract response from the NEW output section
         # This prevents extracting old responses from previous questions
@@ -423,11 +485,31 @@ class StreamGenerator:
         response_text = ResponseExtractor.extract_full(relevant_output, self.message)
         # Use the streamed content as primary, fall back to extracted response
         raw_content = state['last_streamed_content'] or response_text
+
+        # As an additional safety net at the RAW level, strip any leading
+        # content that exactly matches the previous response. This prevents us
+        # from treating a re-rendered old answer as part of the new raw
+        # content when possible.
+        prev_resp = state.get('prev_response') or ''
+        if prev_resp and raw_content and raw_content.startswith(prev_resp):
+            log.info("[STREAM] Trimming previous response from raw content to avoid stale replay")
+            raw_content = raw_content[len(prev_resp):].lstrip('\n')
+
         log.info(f"[DEBUG] last_streamed_content length: {len(state['last_streamed_content']) if state['last_streamed_content'] else 0}")
         log.info(f"[DEBUG] response_text length: {len(response_text) if response_text else 0}")
         log.info(f"[DEBUG] raw_content first 200 chars: {repr(raw_content[:200]) if raw_content else 'None'}")
+
         # Clean the content to remove terminal artifacts and embedded previous answers
         final_content = self._clean_assistant_content(raw_content)
+
+        # FINAL safety net at the CLEANED level: if the cleaned content still
+        # begins with the previous response, strip that prefix. This is what
+        # ultimately prevents the DB record from containing first+second
+        # responses merged together.
+        if prev_resp and final_content and final_content.startswith(prev_resp):
+            log.info("[STREAM] Trimming previous response from cleaned final content before saving")
+            final_content = final_content[len(prev_resp):].lstrip('\n')
+
         _log(f"Response complete - raw length: {len(raw_content) if raw_content else 0}, cleaned length: {len(final_content) if final_content else 0}")
         log.info(f"[DEBUG] final_content first 200 chars: {repr(final_content[:200]) if final_content else 'None'}")
 
@@ -460,20 +542,30 @@ class StreamGenerator:
 def chat_stream():
     # Clear any previous abort flag
     _abort_flag.clear()
+    url = request.url
     data = request.json
     msg = data.get('message', '')
     ws = data.get('workspace', settings.workspace)
     chat_id = data.get('chatId')  # Frontend sends chatId for DB persistence
-    log.info(f"[API] POST /api/chat/stream - message: {msg[:50]}{'...' if len(msg)>50 else ''}, workspace: {ws}, chatId: {chat_id}")
+
+    # Log request
+    log.info(f"[REQUEST] POST {url} | Body: {{'message': '{msg[:100]}{'...' if len(msg)>100 else ''}', 'workspace': '{ws}', 'chatId': '{chat_id}'}}")
+
     gen = StreamGenerator(msg, os.path.expanduser(ws), chat_id=chat_id)
     resp = Response(stream_with_context(gen.generate()), mimetype='text/event-stream')
     resp.headers.update({'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no', 'Connection': 'keep-alive'})
+
+    # Log response (streaming, so we just log the initiation)
+    log.info(f"[RESPONSE] POST {url} | Status: 200 | Body: SSE stream initiated")
     return resp
 
 
 @chat_bp.route('/api/chat/abort', methods=['POST'])
 def chat_abort():
     """Abort the current streaming request"""
-    log.info("[API] POST /api/chat/abort - Setting abort flag")
+    url = request.url
+    log.info(f"[REQUEST] POST {url} | Body: None")
     _abort_flag.set()
-    return jsonify({'status': 'ok', 'message': 'Abort signal sent'})
+    response_data = {'status': 'ok', 'message': 'Abort signal sent'}
+    log.info(f"[RESPONSE] POST {url} | Status: 200 | Body: {response_data}")
+    return jsonify(response_data)

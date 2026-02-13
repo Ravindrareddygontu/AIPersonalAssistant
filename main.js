@@ -2,8 +2,20 @@ const { app, BrowserWindow, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const http = require('http');
+const fs = require('fs');
 
 app.commandLine.appendSwitch('no-sandbox');
+
+// Log file for debugging when running from desktop icon
+const logFile = path.join(__dirname, 'electron.log');
+function log(message) {
+    const timestamp = new Date().toISOString();
+    const logMessage = `[${timestamp}] ${message}\n`;
+    console.log(message);
+    try {
+        fs.appendFileSync(logFile, logMessage);
+    } catch (e) { /* ignore */ }
+}
 
 let mainWindow;
 let splashWindow;
@@ -28,6 +40,22 @@ function startFlaskServer() {
     const venvPython = path.join(__dirname, 'venv', 'bin', 'python');
     const appPath = path.join(__dirname, 'backend', 'app.py');
 
+    log(`Starting Flask server...`);
+    log(`__dirname: ${__dirname}`);
+    log(`Python path: ${venvPython}`);
+    log(`App path: ${appPath}`);
+
+    // Check if files exist
+    if (!fs.existsSync(venvPython)) {
+        log(`ERROR: Python not found at ${venvPython}`);
+        return Promise.resolve();
+    }
+    if (!fs.existsSync(appPath)) {
+        log(`ERROR: app.py not found at ${appPath}`);
+        return Promise.resolve();
+    }
+    log(`Files verified, spawning Python process...`);
+
     flaskProcess = spawn(venvPython, [appPath], {
         cwd: __dirname,
         env: { ...process.env, FLASK_ENV: 'production' },
@@ -36,16 +64,16 @@ function startFlaskServer() {
 
     const handlePipeError = (stream, name) => {
         if (stream) {
-            stream.on('error', (err) => { if (err.code !== 'EPIPE') console.error(`Flask ${name} error:`, err); });
-            if (name !== 'stdin') stream.on('data', (data) => console.log(`Flask: ${data}`));
+            stream.on('error', (err) => { if (err.code !== 'EPIPE') log(`Flask ${name} error: ${err}`); });
+            if (name !== 'stdin') stream.on('data', (data) => log(`Flask: ${data}`));
         }
     };
     handlePipeError(flaskProcess.stdout, 'stdout');
     handlePipeError(flaskProcess.stderr, 'stderr');
     handlePipeError(flaskProcess.stdin, 'stdin');
 
-    flaskProcess.on('error', (err) => console.error('Failed to start Flask server:', err));
-    flaskProcess.on('close', (code) => { console.log(`Flask process exited with code ${code}`); flaskProcess = null; });
+    flaskProcess.on('error', (err) => log(`Failed to start Flask server: ${err}`));
+    flaskProcess.on('close', (code) => { log(`Flask process exited with code ${code}`); flaskProcess = null; });
 
     return new Promise((resolve) => setTimeout(resolve, 2500));
 }
@@ -118,6 +146,13 @@ app.whenReady().then(async () => {
 
     // Load the URL
     mainWindow.loadURL('http://localhost:5000');
+
+    // Forward all renderer console logs to terminal
+    mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+        const levelNames = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
+        const levelName = levelNames[level] || 'LOG';
+        console.log(`[RENDERER ${levelName}] ${message}`);
+    });
 
     // When page finishes loading, close splash and show main
     mainWindow.webContents.on('did-finish-load', () => {

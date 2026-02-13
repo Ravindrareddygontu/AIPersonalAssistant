@@ -4,21 +4,31 @@ let chatHistory = [];
 let currentChatId = null;
 let isProcessing = false;
 let currentWorkspace = '~';
+let currentModel = 'claude-opus-4.5';
+let availableModels = [];
 let browserCurrentPath = '';
 let sidebarOpen = true;
 let currentAbortController = null;
 
-// Generate a unique message ID based on chatId, index, and content hash
+// Network request/response logger
+function logRequest(method, url, body = null) {
+    const fullUrl = new URL(url, window.location.origin).href;
+    const bodyStr = body ? JSON.stringify(body).substring(0, 500) : 'None';
+    console.log(`[REQUEST] ${method} ${fullUrl} | Body: ${bodyStr}`);
+}
+
+function logResponse(method, url, status, body = null) {
+    const fullUrl = new URL(url, window.location.origin).href;
+    const bodyStr = body ? JSON.stringify(body).substring(0, 500) : 'None';
+    console.log(`[RESPONSE] ${method} ${fullUrl} | Status: ${status} | Body: ${bodyStr}`);
+}
+
+// Generate a unique message ID based on chatId, index, and random UUID
 function generateMessageId(chatId, index, content) {
-    // Create a simple hash of the content
-    let hash = 0;
-    const str = content.substring(0, 100); // Use first 100 chars for hash
-    for (let i = 0; i < str.length; i++) {
-        const char = str.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; // Convert to 32bit integer
-    }
-    return `${chatId}-${index}-${Math.abs(hash).toString(16)}`;
+    // Use crypto.randomUUID() or fallback to random hex
+    const uniqueSuffix = (crypto.randomUUID ? crypto.randomUUID().substring(0, 8) :
+        Math.random().toString(16).substring(2, 10));
+    return `${chatId}-${index}-${uniqueSuffix}`;
 }
 
 // Shared welcome message HTML
@@ -26,23 +36,23 @@ const WELCOME_HTML = `
     <div class="welcome-message">
         <h2>What can I help you with?</h2>
         <div class="quick-actions">
-            <button class="action-btn" onclick="sendSuggestion('Show me the structure of this project')">
+            <button class="action-btn" onclick="sendSuggestion('Show me the folder structure of this project')">
                 <i class="fas fa-sitemap"></i> Project structure
             </button>
             <button class="action-btn" onclick="sendSuggestion('List all files in the current directory')">
                 <i class="fas fa-folder-tree"></i> List files
             </button>
-            <button class="action-btn" onclick="sendSuggestion('Help me fix a bug in my code')">
-                <i class="fas fa-bug"></i> Fix bug
+            <button class="action-btn" onclick="sendSuggestion('Check if any application is running on port 5000 and show me the process details')">
+                <i class="fas fa-server"></i> Check port
             </button>
-            <button class="action-btn" onclick="sendSuggestion('Write a function that')">
+            <button class="action-btn" onclick="sendSuggestion('Write a Python function to check if a number is prime and test it with examples')">
                 <i class="fas fa-code"></i> Write code
             </button>
-            <button class="action-btn" onclick="sendSuggestion('Explain this code:')">
-                <i class="fas fa-book-open"></i> Explain code
+            <button class="action-btn" onclick="sendSuggestion('Find all TODO comments in this project and list them with their file locations')">
+                <i class="fas fa-search"></i> Find TODOs
             </button>
-            <button class="action-btn" onclick="sendSuggestion('Run the tests')">
-                <i class="fas fa-flask"></i> Run tests
+            <button class="action-btn" onclick="sendSuggestion('Show me the git status and recent commits in this repository')">
+                <i class="fas fa-code-branch"></i> Git status
             </button>
         </div>
     </div>
@@ -87,18 +97,50 @@ window.addEventListener('beforeunload', (event) => {
     }
 });
 
-// Load workspace from server
-async function loadWorkspaceFromServer() {
+// Load settings from server
+async function loadSettingsFromServer() {
+    const url = '/api/settings';
+    logRequest('GET', url);
     try {
-        const response = await fetch('/api/settings');
+        const response = await fetch(url);
         const data = await response.json();
+        logResponse('GET', url, response.status, data);
         if (data.workspace) {
             currentWorkspace = data.workspace;
             updateWorkspaceDisplay();
         }
+        if (data.model) {
+            currentModel = data.model;
+        }
+        if (data.available_models) {
+            availableModels = data.available_models;
+            populateModelSelect();
+        }
     } catch (error) {
-        console.error('Failed to load workspace:', error);
+        console.error('Failed to load settings:', error);
     }
+}
+
+// Populate model select dropdown
+function populateModelSelect() {
+    const select = document.getElementById('modelSelect');
+    if (!select) return;
+
+    select.innerHTML = '';
+    availableModels.forEach(model => {
+        const option = document.createElement('option');
+        option.value = model;
+        option.textContent = model;
+        if (model === currentModel) {
+            option.selected = true;
+        }
+        select.appendChild(option);
+    });
+}
+
+// Legacy alias for compatibility
+function loadWorkspaceFromServer() {
+    return loadSettingsFromServer();
 }
 
 // Update workspace display
@@ -123,9 +165,12 @@ function updateWorkspaceDisplay() {
 
 // Check Augment authentication status
 async function checkAuthStatus() {
+    const url = '/api/check-auth';
+    logRequest('GET', url);
     try {
-        const response = await fetch('/api/check-auth');
+        const response = await fetch(url);
         const data = await response.json();
+        logResponse('GET', url, response.status, data);
         const statusEl = document.getElementById('authStatus');
         if (statusEl) {
             if (data.authenticated) {
@@ -149,14 +194,20 @@ async function checkAuthStatus() {
     }
 }
 
+// Request ID to track active requests and ignore events from stale requests
+let currentRequestId = 0;
+
 // Send message with streaming
 async function sendMessage() {
     const input = document.getElementById('messageInput');
     const message = input.value.trim();
 
-    console.log('[API] sendMessage - message:', message.substring(0, 50) + (message.length > 50 ? '...' : ''));
-
     if (!message || isProcessing) return;
+
+    // Increment request ID - this invalidates any previous request
+    currentRequestId++;
+    const thisRequestId = currentRequestId;
+    console.log(`[API] Starting request #${thisRequestId}`);
 
     input.value = '';
     autoResize(input);
@@ -170,16 +221,19 @@ async function sendMessage() {
     // Create abort controller for this request
     currentAbortController = new AbortController();
 
+    const url = '/api/chat/stream';
+    const requestBody = { message, workspace: currentWorkspace, chatId: currentChatId };
+    logRequest('POST', url, requestBody);
+
     try {
-        console.log('[API] POST /api/chat/stream - workspace:', currentWorkspace, 'chatId:', currentChatId);
-        const response = await fetch('/api/chat/stream', {
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message, workspace: currentWorkspace, chatId: currentChatId }),
+            body: JSON.stringify(requestBody),
             signal: currentAbortController.signal
         });
 
-        console.log('[API] Response status:', response.status);
+        logResponse('POST', url, response.status, 'SSE stream initiated');
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -201,28 +255,36 @@ async function sendMessage() {
 
             for (const line of lines) {
                 if (!line.startsWith('data: ')) continue;
+
+                // CRITICAL: Check if this request is still current
+                // If a new request has started, ignore events from this stale request
+                if (thisRequestId !== currentRequestId) {
+                    console.log(`[API] IGNORING event from stale request #${thisRequestId} (current is #${currentRequestId})`);
+                    continue;
+                }
+
                 try {
                     const data = JSON.parse(line.slice(6));
                     eventCount++;
-                    if (data.type === 'status') console.log('[API] Status:', data.message);
+
                     switch (data.type) {
                         case 'status':
                             updateTypingStatus(data.message);
                             break;
                         case 'stream_start':
-                            console.log('[API] stream_start');
+                            console.log(`[API] Request #${thisRequestId} stream_start`);
                             hideTypingIndicator();
-                            startStreamingMessage();
+                            startStreamingMessage(thisRequestId);
                             break;
                         case 'stream':
-                            appendStreamingContent(data.content);
+                            appendStreamingContent(data.content, thisRequestId);
                             break;
                         case 'stream_end':
-                            console.log('[API] stream_end - content length:', data.content?.length, ', streamingContent length:', streamingContent?.length);
+                            console.log(`[API] Request #${thisRequestId} stream_end - content length:`, data.content?.length, ', streamingContent length:', streamingContent?.length);
                             // Use data.content if provided and non-empty, otherwise use accumulated streamingContent
                             const finalContent = (data.content && data.content.trim()) ? data.content : streamingContent;
                             console.log('[API] Using finalContent length:', finalContent?.length);
-                            finalizeStreamingMessage(finalContent);
+                            finalizeStreamingMessage(finalContent, thisRequestId);
                             hideTypingIndicator();
                             streamingCompleted = true;
                             break;
@@ -244,6 +306,18 @@ async function sendMessage() {
                             hideTypingIndicator();
                             addMessage('assistant', `❌ Error: ${data.message}`);
                             break;
+                        case 'aborted':
+                            // Request was aborted (e.g., due to edit/retry)
+                            console.log('[API] Request aborted by server');
+                            hideTypingIndicator();
+                            // Remove any partial streaming message
+                            if (streamingMessageDiv) {
+                                streamingMessageDiv.remove();
+                                streamingMessageDiv = null;
+                            }
+                            streamingContent = '';
+                            streamingFinalized = true;  // Prevent any further finalization
+                            break;
                         case 'done':
                             // Response complete - immediately re-enable input
                             console.log('[API] done event received');
@@ -252,7 +326,7 @@ async function sendMessage() {
                             // Ensure streaming message is finalized if still active
                             if (streamingMessageDiv && !streamingCompleted) {
                                 console.log('[API] Finalizing streaming message on done event, content length:', streamingContent?.length);
-                                finalizeStreamingMessage(streamingContent);
+                                finalizeStreamingMessage(streamingContent, thisRequestId);
                                 streamingCompleted = true;
                             }
 
@@ -280,11 +354,21 @@ async function sendMessage() {
         }
     } catch (error) {
         if (error.name === 'AbortError') {
-            console.log('[API] Request aborted by user');
-            hideTypingIndicator();
-            // Finalize any streaming message with current content
-            if (streamingMessageDiv) {
-                finalizeStreamingMessage(streamingContent + '\n\n*[Response stopped by user]*');
+            console.log(`[API] Request #${thisRequestId} aborted by user`);
+            // Only cleanup if this is still the current request
+            if (thisRequestId === currentRequestId) {
+                hideTypingIndicator();
+                // DON'T finalize - just remove any partial streaming message
+                // This prevents old content from appearing when aborting for edit/retry
+                if (streamingMessageDiv) {
+                    console.log('[API] Removing partial streaming message due to abort');
+                    streamingMessageDiv.remove();
+                    streamingMessageDiv = null;
+                    streamingContent = '';
+                    streamingFinalized = true;
+                }
+            } else {
+                console.log(`[API] Request #${thisRequestId} was stale, skipping cleanup`);
             }
         } else {
             console.error('Error:', error);
@@ -292,13 +376,19 @@ async function sendMessage() {
             addMessage('assistant', '❌ Connection error. Make sure the server is running.');
         }
     } finally {
-        // Always reset state, even if there's an error
-        console.log('[API] Resetting state in finally block');
+        console.log(`[API] Request #${thisRequestId} finally block, currentRequestId=${currentRequestId}, streamingFinalized=`, streamingFinalized);
 
-        // Ensure streaming message is finalized if still active
-        if (streamingMessageDiv) {
+        // CRITICAL: Only do cleanup if this is still the current request
+        // Stale requests should not touch any state
+        if (thisRequestId !== currentRequestId) {
+            console.log(`[API] Request #${thisRequestId} is stale, skipping finally cleanup`);
+            return;
+        }
+
+        // Only finalize if not already finalized (prevents double-finalization on abort)
+        if (streamingMessageDiv && !streamingFinalized) {
             console.log('[API] Finalizing streaming message in finally block');
-            finalizeStreamingMessage(streamingContent);
+            finalizeStreamingMessage(streamingContent, thisRequestId);
         }
 
         currentAbortController = null;
@@ -327,10 +417,14 @@ async function sendMessage() {
 // Stop the current streaming request
 function stopStreaming() {
     if (currentAbortController) {
-        console.log('[API] Stopping stream...');
+        const url = '/api/chat/abort';
+        logRequest('POST', url);
         currentAbortController.abort();
         // Also notify the backend to stop
-        fetch('/api/chat/abort', { method: 'POST' }).catch(() => {});
+        fetch(url, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => logResponse('POST', url, 200, data))
+            .catch(() => {});
     }
 }
 
@@ -405,9 +499,19 @@ let streamingContent = '';
 let streamingUpdatePending = false;
 let lastStreamingUpdate = 0;
 
+// Track which request owns the current streaming message
+let streamingRequestId = null;
+
 // Start a new streaming message
-function startStreamingMessage() {
-    console.log('[STREAM] startStreamingMessage called');
+function startStreamingMessage(requestId) {
+    console.log(`[STREAM] startStreamingMessage called for request #${requestId}, currentRequestId=${currentRequestId}`);
+
+    // Only start if this is still the current request
+    if (requestId !== currentRequestId) {
+        console.log(`[STREAM] IGNORING startStreamingMessage - stale request #${requestId}`);
+        return;
+    }
+
     const container = document.getElementById('chatMessages');
 
     // Create the message container
@@ -428,14 +532,21 @@ function startStreamingMessage() {
     streamingUpdatePending = false;
     lastStreamingUpdate = 0;
     streamingFinalized = false;  // Reset finalization flag for new stream
-    console.log('[STREAM] streamingMessageDiv created, streamingContent reset, streamingFinalized=false');
+    streamingRequestId = requestId;  // Track which request owns this stream
+    console.log(`[STREAM] streamingMessageDiv created for request #${requestId}, streamingContent reset, streamingFinalized=false`);
 
     // Scroll to bottom
     container.scrollTop = container.scrollHeight;
 }
 
 // Append content to streaming message with batched updates for performance
-function appendStreamingContent(newContent) {
+function appendStreamingContent(newContent, requestId) {
+    // Ignore if this is from a stale request
+    if (requestId !== currentRequestId || requestId !== streamingRequestId) {
+        console.log(`[STREAM] IGNORING appendStreamingContent - stale request #${requestId} (current=#${currentRequestId}, streaming=#${streamingRequestId})`);
+        return;
+    }
+
     if (!streamingMessageDiv) return;
 
     streamingContent += newContent;
@@ -486,10 +597,17 @@ function formatMessageLightweight(text) {
 // Track if we've already finalized to prevent double-save
 let streamingFinalized = false;
 
-function finalizeStreamingMessage(finalContent) {
-    console.log('[STREAM] finalizeStreamingMessage called');
+function finalizeStreamingMessage(finalContent, requestId) {
+    console.log(`[STREAM] finalizeStreamingMessage called for request #${requestId}`);
+    console.log(`[STREAM] currentRequestId=${currentRequestId}, streamingRequestId=${streamingRequestId}`);
     console.log('[STREAM] streamingMessageDiv exists:', !!streamingMessageDiv, ', streamingFinalized:', streamingFinalized);
     console.log('[STREAM] finalContent length:', finalContent?.length || 0, ', streamingContent length:', streamingContent?.length || 0);
+
+    // Ignore if this is from a stale request
+    if (requestId !== undefined && requestId !== currentRequestId) {
+        console.log(`[STREAM] IGNORING finalizeStreamingMessage - stale request #${requestId}`);
+        return;
+    }
 
     // Prevent double finalization
     if (streamingFinalized) {
@@ -592,45 +710,204 @@ function editMessage(btn, messageIndex, encodedContent, messageId = null) {
         }
     }
 
-    console.log(`[EDIT] Editing message at index ${messageIndex}, messageId: ${messageId}`);
+    console.log(`[EDIT] Starting inline edit at index ${messageIndex}, messageId: ${messageId}`);
 
-    // Remove this message and all messages after it (including the answer)
-    const messagesToRemove = [];
-    for (let i = messages.length - 1; i >= userMessageIdx; i--) {
-        messagesToRemove.push(messages[i]);
-    }
-    messagesToRemove.forEach(el => el.remove());
+    // Store original content for cancel
+    const originalContent = content;
+    const originalHTML = userMessageEl.innerHTML;
 
-    // Also remove any status logs that might be orphaned
-    const statusLogs = container.querySelectorAll('.status-log');
-    statusLogs.forEach(log => {
-        // Check if this status log is after the removed messages
-        const allElements = Array.from(container.children);
-        const logIdx = allElements.indexOf(log);
-        if (logIdx >= userMessageIdx) {
-            log.remove();
-        }
+    // Replace message content with editable textarea and buttons
+    const contentDiv = userMessageEl.querySelector('.message-content');
+    const editOutside = userMessageEl.querySelector('.message-edit-outside');
+    const textDiv = contentDiv.querySelector('.message-text');
+
+    // Capture the original dimensions BEFORE any changes
+    const originalContentWidth = contentDiv.offsetWidth;
+    const originalTextHeight = textDiv.offsetHeight;
+    const originalStyles = {
+        minWidth: contentDiv.style.minWidth,
+        width: contentDiv.style.width
+    };
+
+    // Lock the width to prevent shrinking
+    contentDiv.style.minWidth = originalContentWidth + 'px';
+    contentDiv.style.width = originalContentWidth + 'px';
+
+    // Hide the edit button
+    if (editOutside) editOutside.style.display = 'none';
+
+    // Save original text HTML before replacing
+    const originalTextHTML = textDiv.innerHTML;
+
+    // Replace message text with textarea
+    textDiv.innerHTML = `
+        <textarea class="edit-textarea" rows="3">${escapeHtml(content)}</textarea>
+        <div class="edit-buttons">
+            <button class="edit-submit-btn" title="Submit">
+                <i class="fas fa-check"></i> Submit
+            </button>
+            <button class="edit-cancel-btn" title="Cancel">
+                <i class="fas fa-times"></i> Cancel
+            </button>
+        </div>
+    `;
+
+    const textarea = textDiv.querySelector('.edit-textarea');
+    const submitBtn = textDiv.querySelector('.edit-submit-btn');
+    const cancelBtn = textDiv.querySelector('.edit-cancel-btn');
+
+    // Focus and select text
+    textarea.focus();
+    textarea.select();
+
+    // Set textarea height to match original text height (minimum 60px)
+    const targetHeight = Math.max(originalTextHeight, 60);
+    textarea.style.height = targetHeight + 'px';
+    textarea.addEventListener('input', () => {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.max(textarea.scrollHeight, 60) + 'px';
     });
 
-    // Update chat history - remove from the messageIndex onwards
-    // This removes the edited question and all subsequent Q&A pairs
-    chatHistory = chatHistory.slice(0, messageIndex);
-    console.log(`[EDIT] Chat history truncated to ${chatHistory.length} messages`);
-    saveCurrentChatToServer();
+    // Cancel button - restore original state
+    cancelBtn.onclick = () => {
+        console.log(`[EDIT] Cancelled edit at index ${messageIndex}`);
+        textDiv.innerHTML = originalTextHTML;
+        contentDiv.style.minWidth = originalStyles.minWidth;
+        contentDiv.style.width = originalStyles.width;
+        if (editOutside) editOutside.style.display = '';
+    };
 
-    // Put the content back in the input
-    const input = document.getElementById('messageInput');
-    input.value = content;
-    autoResize(input);
-    input.focus();
-
-    // Show welcome message if no messages left
-    if (chatHistory.length === 0) {
-        const welcomeEl = document.getElementById('welcomeMessage');
-        if (welcomeEl) {
-            welcomeEl.style.display = 'block';
+    // Submit button - update and resend
+    submitBtn.onclick = async () => {
+        const newContent = textarea.value.trim();
+        if (!newContent) {
+            showNotification('Message cannot be empty');
+            return;
         }
-    }
+
+        console.log(`[EDIT] ========== SUBMIT CLICKED ==========`);
+        console.log(`[EDIT] Submitting edit at messageIndex=${messageIndex}, messageId=${messageId}`);
+        console.log(`[EDIT] currentRequestId=${typeof currentRequestId !== 'undefined' ? currentRequestId : 'undefined'}`);
+
+        // === DOM STATE LOG: At submit click (BEFORE any changes) ===
+        const containerBefore = document.getElementById('chatMessages');
+        console.log(`[EDIT] DOM BEFORE: Container children count: ${containerBefore.children.length}`);
+        Array.from(containerBefore.children).forEach((child, i) => {
+            const preview = child.textContent?.substring(0, 50) || '';
+            console.log(`[EDIT]   BEFORE Child ${i}: tag=${child.tagName}, class="${child.className}", data-message-id="${child.dataset?.messageId || 'none'}", text="${preview}..."`);
+        });
+
+        // IMPORTANT: Abort any existing stream FIRST to prevent old content from reappearing
+        if (currentAbortController) {
+            console.log(`[EDIT] Aborting existing stream before edit`);
+            currentAbortController.abort();
+            currentAbortController = null;
+            // Also notify backend
+            fetch('/api/chat/abort', { method: 'POST' }).catch(() => {});
+            // Wait a moment for abort to process
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        // Reset processing state
+        isProcessing = false;
+
+        // Get fresh reference to container
+        const chatContainer = document.getElementById('chatMessages');
+
+        // Find the user message element by messageId (most reliable)
+        let targetMessageEl = null;
+        if (messageId) {
+            targetMessageEl = chatContainer.querySelector(`[data-message-id="${messageId}"]`);
+        }
+        if (!targetMessageEl) {
+            // Fallback to the element we captured at edit time
+            targetMessageEl = userMessageEl;
+        }
+
+        if (!targetMessageEl) {
+            console.error('[EDIT] Could not find target message element!');
+            return;
+        }
+
+        console.log(`[EDIT] Found target message:`, targetMessageEl.className, targetMessageEl.dataset.messageId);
+
+        // Get all children and find the index of our target message
+        const allChildren = Array.from(chatContainer.children);
+        const targetIndex = allChildren.indexOf(targetMessageEl);
+        console.log(`[EDIT] Target is at DOM index ${targetIndex} of ${allChildren.length} children`);
+
+        // If targetIndex is -1, the element might be nested or already removed
+        // In that case, clear everything after the last message before messageIndex
+        if (targetIndex === -1) {
+            console.log(`[EDIT] WARNING: Target not found in children, clearing all messages from index ${messageIndex}`);
+            // Clear ALL children to be safe
+            chatContainer.innerHTML = '';
+        } else {
+            // Remove ALL elements from targetIndex onwards (inclusive)
+            // This removes the edited message, its answer, and any status logs
+            for (let i = allChildren.length - 1; i >= targetIndex; i--) {
+                console.log(`[EDIT] Removing child ${i}: ${allChildren[i].className}`);
+                allChildren[i].remove();
+            }
+        }
+
+        // === DOM STATE LOG: After removal ===
+        console.log(`[EDIT] ========== DOM STATE AFTER REMOVAL ==========`);
+        console.log(`[EDIT] Container children count: ${chatContainer.children.length}`);
+        console.log(`[EDIT] Container innerHTML length: ${chatContainer.innerHTML.length}`);
+        Array.from(chatContainer.children).forEach((child, i) => {
+            const preview = child.textContent?.substring(0, 50) || '';
+            console.log(`[EDIT]   Child ${i}: tag=${child.tagName}, class="${child.className}", id="${child.id}", data-message-id="${child.dataset?.messageId || 'none'}", text="${preview}..."`);
+        });
+        const remainingMessages = chatContainer.querySelectorAll('.message');
+        console.log(`[EDIT] Total .message elements: ${remainingMessages.length}`);
+        console.log(`[EDIT] ================================================`);
+
+        // Truncate chat history to remove this message and all after it
+        chatHistory = chatHistory.slice(0, messageIndex);
+        console.log(`[EDIT] Chat history truncated to ${chatHistory.length} messages`);
+
+        // Save truncated history to DB and wait for completion
+        await saveCurrentChatToServer(true);
+        console.log(`[EDIT] DB updated with truncated history`);
+
+        // Show welcome if empty
+        if (chatHistory.length === 0 && chatContainer.children.length === 0) {
+            chatContainer.innerHTML = WELCOME_HTML;
+        }
+
+        // Reset streaming state to prevent old content from reappearing
+        streamingMessageDiv = null;
+        streamingContent = '';
+        streamingFinalized = false;
+        console.log(`[EDIT] Reset streaming state before sending new message`);
+
+        // === DOM STATE LOG: Right before sendMessage ===
+        console.log(`[EDIT] ========== DOM STATE BEFORE SEND ==========`);
+        const containerNow = document.getElementById('chatMessages');
+        console.log(`[EDIT] Container children count: ${containerNow.children.length}`);
+        Array.from(containerNow.children).forEach((child, i) => {
+            const preview = child.textContent?.substring(0, 50) || '';
+            console.log(`[EDIT]   Child ${i}: tag=${child.tagName}, class="${child.className}", text="${preview}..."`);
+        });
+        console.log(`[EDIT] ================================================`);
+
+        // Now send the new/edited message
+        const input = document.getElementById('messageInput');
+        input.value = newContent;
+        console.log(`[EDIT] Calling sendMessage() now...`);
+        sendMessage();
+    };
+
+    // Handle Escape key to cancel
+    textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            cancelBtn.click();
+        } else if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            submitBtn.click();
+        }
+    });
 }
 
 // Copy message content
@@ -724,11 +1001,33 @@ function isStackTraceLine(text) {
 function isExplanatoryText(text) {
     const trimmed = text.trim();
     if (!trimmed) return false;
-    // Explanatory text usually starts with capital letter and forms a sentence
-    // or starts with "This", "The", "Let me", "I'll", etc.
-    const explanatoryStarts = ['this ', 'the ', 'let me', "i'll", 'there', 'it ', 'now ', 'would you', 'you can'];
+
     const lower = trimmed.toLowerCase();
-    return explanatoryStarts.some(s => lower.startsWith(s));
+
+    // Explanatory text usually starts with these words/phrases
+    const explanatoryStarts = [
+        'this ', 'the ', 'let me', "i'll", 'there', 'it ', 'now ',
+        'would you', 'you can', 'no ', 'yes', 'i ', "i'm", 'that ',
+        'here ', 'based on', 'looks like', 'appears', 'seems',
+        'unfortunately', 'however', 'note:', 'note that', 'please',
+        'to ', 'for ', 'if ', 'when ', 'since ', 'because ', 'as ',
+        'currently', 'nothing', 'none', 'all ', 'any ', 'some '
+    ];
+
+    // Check if starts with explanatory phrase
+    if (explanatoryStarts.some(s => lower.startsWith(s))) {
+        return true;
+    }
+
+    // Check if it's a proper sentence (starts with capital, has spaces, no code patterns)
+    const isProperSentence = /^[A-Z][a-z]/.test(trimmed) &&
+                             trimmed.includes(' ') &&
+                             !trimmed.includes('Error:') &&
+                             !trimmed.includes('Exception:') &&
+                             !trimmed.includes('.py') &&
+                             !trimmed.startsWith('File ');
+
+    return isProperSentence;
 }
 
 // Cached regex for tool parsing - built once for performance
@@ -778,7 +1077,19 @@ function parseToolBlocks(text) {
                     // Track if we have an error/traceback starting
                     if (isErrorStartLine(resultContent)) {
                         hasError = true;
-                        inStackTrace = true;
+                        // Only set inStackTrace if this looks like it will have a stack trace
+                        // Simple "Command error" without traceback should end the block
+                        const lower = resultContent.toLowerCase();
+                        const hasTraceIndicator = lower.includes('traceback') ||
+                                                  lower.includes('file "') ||
+                                                  lower.includes('exception');
+                        inStackTrace = hasTraceIndicator;
+
+                        // If it's just "Command error" without trace indicators,
+                        // end the block here
+                        if (!hasTraceIndicator && lower === 'command error') {
+                            foundEndResult = true;
+                        }
                     }
 
                     // Only end on success keywords (not error)
@@ -1244,31 +1555,47 @@ function loadSettings() {
     }
 }
 
-// Save workspace
-async function saveWorkspace() {
-    const input = document.getElementById('workspaceInput');
-    const workspace = input.value.trim() || currentWorkspace;
+// Save settings (workspace and model)
+async function saveSettings() {
+    console.log('[saveSettings] Called');
+    const workspaceInput = document.getElementById('workspaceInput');
+    const modelSelect = document.getElementById('modelSelect');
+
+    const workspace = workspaceInput?.value.trim() || currentWorkspace;
+    const model = modelSelect?.value || currentModel;
+    console.log('[saveSettings] Saving workspace:', workspace, 'model:', model);
+
+    const url = '/api/settings';
+    const requestBody = { workspace, model };
+    logRequest('POST', url, requestBody);
 
     try {
-        const response = await fetch('/api/settings', {
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ workspace })
+            body: JSON.stringify(requestBody)
         });
 
         const data = await response.json();
+        logResponse('POST', url, response.status, data);
         if (data.status === 'success') {
             currentWorkspace = data.workspace || workspace;
+            currentModel = data.model || model;
             localStorage.setItem('workspace', currentWorkspace);
             updateWorkspaceDisplay();
-            showNotification('Workspace saved!');
+            showNotification('Settings saved!');
             toggleSettings();
         } else {
             showNotification('Error: ' + (data.error || 'Failed to save'));
         }
     } catch (error) {
-        showNotification('Error saving workspace');
+        showNotification('Error saving settings');
     }
+}
+
+// Legacy alias for compatibility
+function saveWorkspace() {
+    return saveSettings();
 }
 
 // Browse workspace directories
@@ -1280,9 +1607,12 @@ async function browseWorkspace() {
 
 // Load directory contents
 async function loadBrowserDirectory(path) {
+    const url = `/api/browse?path=${encodeURIComponent(path)}`;
+    logRequest('GET', url);
     try {
-        const response = await fetch(`/api/browse?path=${encodeURIComponent(path)}`);
+        const response = await fetch(url);
         const data = await response.json();
+        logResponse('GET', url, response.status, data);
 
         if (data.error) {
             showNotification('Error: ' + data.error);
@@ -1346,9 +1676,12 @@ function toggleSidebar() {
 
 // Load chats from server
 async function loadChatsFromServer() {
+    const url = '/api/chats';
+    logRequest('GET', url);
     try {
-        const response = await fetch('/api/chats');
+        const response = await fetch(url);
         const chats = await response.json();
+        logResponse('GET', url, response.status, { chats_count: chats.length });
         renderChatHistory(chats);
     } catch (error) {
         console.error('Failed to load chats:', error);
@@ -1407,14 +1740,22 @@ function escapeHtml(text) {
 async function createNewChat() {
     try {
         // Reset the auggie session to start fresh context
-        await fetch('/api/session/reset', {
+        const resetUrl = '/api/session/reset';
+        const resetBody = { workspace: currentWorkspace };
+        logRequest('POST', resetUrl, resetBody);
+        const resetResponse = await fetch(resetUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ workspace: currentWorkspace })
+            body: JSON.stringify(resetBody)
         });
+        const resetData = await resetResponse.json();
+        logResponse('POST', resetUrl, resetResponse.status, resetData);
 
-        const response = await fetch('/api/chats', { method: 'POST' });
+        const createUrl = '/api/chats';
+        logRequest('POST', createUrl);
+        const response = await fetch(createUrl, { method: 'POST' });
         const chat = await response.json();
+        logResponse('POST', createUrl, response.status, chat);
 
         currentChatId = chat.id;
         chatHistory = [];
@@ -1428,18 +1769,23 @@ async function createNewChat() {
 }
 
 // Save current chat to server
-async function saveCurrentChatToServer() {
-    console.log('[SAVE] saveCurrentChatToServer called, chatId:', currentChatId, ', history length:', chatHistory.length);
-    if (!currentChatId || chatHistory.length === 0) return;
+async function saveCurrentChatToServer(allowEmpty = false) {
+    if (!currentChatId) return;
+    // Allow saving empty history when explicitly requested (e.g., during edit/retry)
+    if (chatHistory.length === 0 && !allowEmpty) return;
+
+    const url = `/api/chats/${currentChatId}`;
+    const requestBody = { messages: chatHistory };
+    logRequest('PUT', url, { messages_count: chatHistory.length });
 
     try {
-        console.log('[SAVE] Saving', chatHistory.length, 'messages to server');
-        await fetch(`/api/chats/${currentChatId}`, {
+        const response = await fetch(url, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages: chatHistory })
+            body: JSON.stringify(requestBody)
         });
-        console.log('[SAVE] Save successful');
+        const data = await response.json();
+        logResponse('PUT', url, response.status, { messages_count: data.messages?.length });
 
         loadChatsFromServer();
     } catch (error) {
@@ -1449,9 +1795,13 @@ async function saveCurrentChatToServer() {
 
 // Load chat from server
 async function loadChatFromServer(chatId) {
+    // Add cache-busting timestamp to prevent browser caching
+    const url = `/api/chats/${chatId}?_t=${Date.now()}`;
+    logRequest('GET', url);
     try {
-        const response = await fetch(`/api/chats/${chatId}`);
+        const response = await fetch(url, { cache: 'no-store' });
         const chat = await response.json();
+        logResponse('GET', url, response.status, { messages_count: chat.messages?.length, error: chat.error });
         if (chat.error) {
             // Chat not found - create a new one
             console.log('[LOAD] Chat not found, creating new chat');
@@ -1463,6 +1813,12 @@ async function loadChatFromServer(chatId) {
         currentChatId = chatId;
         chatHistory = chat.messages || [];
         localStorage.setItem('currentChatId', currentChatId);
+
+        // Debug: log what we received from server
+        console.log('[LOAD] Received from server:', chatHistory.length, 'messages');
+        chatHistory.forEach((msg, i) => {
+            console.log(`[LOAD]   [${i}] role=${msg.role}, content_length=${msg.content?.length || 0}, content_preview="${(msg.content || '').substring(0, 50)}..."`);
+        });
 
         const container = document.getElementById('chatMessages');
         container.innerHTML = '';
@@ -1499,8 +1855,13 @@ async function deleteChat(chatId, event) {
 
     if (!confirm('Delete this chat?')) return;
 
+    const url = `/api/chats/${chatId}`;
+    logRequest('DELETE', url);
+
     try {
-        await fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
+        const response = await fetch(url, { method: 'DELETE' });
+        const data = await response.json();
+        logResponse('DELETE', url, response.status, data);
 
         // If we deleted the current chat, create a new one
         if (chatId === currentChatId) {
@@ -1520,8 +1881,13 @@ async function deleteChat(chatId, event) {
 async function clearAllChats() {
     if (!confirm('Delete all chat history? This cannot be undone.')) return;
 
+    const url = '/api/chats/clear';
+    logRequest('DELETE', url);
+
     try {
-        await fetch('/api/chats/clear', { method: 'DELETE' });
+        const response = await fetch(url, { method: 'DELETE' });
+        const data = await response.json();
+        logResponse('DELETE', url, response.status, data);
         createNewChat();
         showNotification('All chats cleared');
     } catch (error) {

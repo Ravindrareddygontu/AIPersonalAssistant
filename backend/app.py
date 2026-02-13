@@ -39,5 +39,7 @@ if __name__ == '__main__':
     print("Starting server at http://localhost:5000")
     print("=" * 60 + "\n")
     app = create_app()
-    app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
+    # Disable debug mode when running from Electron (FLASK_ENV=production)
+    is_production = os.environ.get('FLASK_ENV') == 'production'
+    app.run(host='0.0.0.0', port=5000, debug=not is_production, threaded=True)
 
