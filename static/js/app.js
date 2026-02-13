@@ -8,6 +8,19 @@ let browserCurrentPath = '';
 let sidebarOpen = true;
 let currentAbortController = null;
 
+// Generate a unique message ID based on chatId, index, and content hash
+function generateMessageId(chatId, index, content) {
+    // Create a simple hash of the content
+    let hash = 0;
+    const str = content.substring(0, 100); // Use first 100 chars for hash
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+    }
+    return `${chatId}-${index}-${Math.abs(hash).toString(16)}`;
+}
+
 // Shared welcome message HTML
 const WELCOME_HTML = `
     <div class="welcome-message">
@@ -342,11 +355,15 @@ function hideStopButton() {
 function addMessage(role, content, skipSave = false) {
     const container = document.getElementById('chatMessages');
     const messageDiv = document.createElement('div');
+    const index = chatHistory.length;
+    const messageId = generateMessageId(currentChatId, index, content);
+
     messageDiv.className = `message ${role}`;
-    messageDiv.innerHTML = createMessageHTML(role, content, chatHistory.length);
+    messageDiv.dataset.messageId = messageId;
+    messageDiv.innerHTML = createMessageHTML(role, content, index, messageId);
     container.appendChild(messageDiv);
     addCodeCopyButtons(messageDiv);
-    chatHistory.push({ role, content });
+    chatHistory.push({ role, content, messageId });
     if (!skipSave) {
         saveCurrentChatToServer();
     }
@@ -354,12 +371,32 @@ function addMessage(role, content, skipSave = false) {
 }
 
 // Create message element HTML
-function createMessageHTML(role, content, index) {
+function createMessageHTML(role, content, index, messageId = null) {
     const icon = role === 'user' ? 'fa-user' : 'fa-robot';
-    const actionBtn = role === 'assistant'
-        ? `<div class="message-actions"><button class="copy-btn" onclick="copyMessage(this, '${encodeURIComponent(content)}')"><i class="fas fa-copy"></i> Copy</button></div>`
-        : `<div class="message-actions user-actions"><button class="edit-btn" onclick="editMessage(this, ${index}, '${encodeURIComponent(content)}')"><i class="fas fa-edit"></i> Edit</button></div>`;
-    return `<div class="message-avatar"><i class="fas ${icon}"></i></div><div class="message-content">${actionBtn}<div class="message-text">${formatMessage(content)}</div></div>`;
+    const msgId = messageId || generateMessageId(currentChatId, index, content);
+    if (role === 'assistant') {
+        // Copy button in upper right (inside message-content)
+        return `<div class="message-avatar"><i class="fas ${icon}"></i></div>
+            <div class="message-content">
+                <div class="message-actions">
+                    <button class="copy-btn" onclick="copyMessage(this, '${encodeURIComponent(content)}')">
+                        <i class="fas fa-copy"></i> Copy
+                    </button>
+                </div>
+                <div class="message-text">${formatMessage(content)}</div>
+            </div>`;
+    } else {
+        // Edit button outside the question box (after message-content)
+        return `<div class="message-avatar"><i class="fas ${icon}"></i></div>
+            <div class="message-content">
+                <div class="message-text">${formatMessage(content)}</div>
+            </div>
+            <div class="message-edit-outside">
+                <button class="edit-btn-outside" onclick="editMessage(this, ${index}, '${encodeURIComponent(content)}', '${msgId}')">
+                    <i class="fas fa-edit"></i>
+                </button>
+            </div>`;
+    }
 }
 
 // Streaming message state
@@ -403,12 +440,12 @@ function appendStreamingContent(newContent) {
 
     streamingContent += newContent;
 
-    // Batch updates: only update DOM every 30ms or when we have significant content
+    // Batch updates: only update DOM every 50ms for better performance
     const now = Date.now();
     const timeSinceLastUpdate = now - lastStreamingUpdate;
 
     // Update immediately if it's been a while, or batch small updates
-    if (timeSinceLastUpdate > 30 || newContent.includes('\n') || streamingContent.length < 50) {
+    if (timeSinceLastUpdate > 50 || newContent.includes('\n') || streamingContent.length < 50) {
         updateStreamingDisplay();
         lastStreamingUpdate = now;
     } else if (!streamingUpdatePending) {
@@ -422,19 +459,27 @@ function appendStreamingContent(newContent) {
     }
 }
 
-// Actually update the streaming display
+// Actually update the streaming display - lightweight formatting for performance
 function updateStreamingDisplay() {
     if (!streamingMessageDiv) return;
 
     const textDiv = streamingMessageDiv.querySelector('.streaming-text');
     if (textDiv) {
-        // Format and display the content
-        textDiv.innerHTML = formatMessage(streamingContent);
+        // Use lightweight formatting during streaming for performance
+        // Full formatMessage() is called on finalization
+        textDiv.innerHTML = formatMessageLightweight(streamingContent);
     }
 
     // Scroll to bottom
     const container = document.getElementById('chatMessages');
     container.scrollTop = container.scrollHeight;
+}
+
+// Lightweight formatting for streaming - minimal processing for speed
+function formatMessageLightweight(text) {
+    if (!text) return '';
+    // Just escape HTML and preserve line breaks - skip expensive parsing
+    return escapeHtml(text).replace(/\n/g, '<br>');
 }
 
 // Finalize streaming message with complete formatted content
@@ -499,7 +544,10 @@ function finalizeStreamingMessage(finalContent) {
     // Add to local history (for UI display)
     // Note: Backend saves the assistant response to MongoDB
     console.log('[STREAM] Adding assistant message to local chatHistory');
-    chatHistory.push({ role: 'assistant', content: contentToUse });
+    const index = chatHistory.length;
+    const messageId = generateMessageId(currentChatId, index, contentToUse);
+    streamingMessageDiv.dataset.messageId = messageId;
+    chatHistory.push({ role: 'assistant', content: contentToUse, messageId });
     console.log('[STREAM] chatHistory now has', chatHistory.length, 'messages');
 
     // Refresh sidebar to show updated chat
@@ -515,7 +563,8 @@ function finalizeStreamingMessage(finalContent) {
 }
 
 // Edit and resubmit a user message
-function editMessage(btn, messageIndex, encodedContent) {
+// messageId is used to identify the exact message being edited
+function editMessage(btn, messageIndex, encodedContent, messageId = null) {
     if (isProcessing) {
         return; // Don't allow editing while processing
     }
@@ -524,9 +573,26 @@ function editMessage(btn, messageIndex, encodedContent) {
     const container = document.getElementById('chatMessages');
     const messages = container.querySelectorAll('.message');
 
-    // Find the message element
-    const userMessageEl = btn.closest('.message');
-    const userMessageIdx = Array.from(messages).indexOf(userMessageEl);
+    // Find the message element - use messageId if available for precise matching
+    let userMessageEl = btn.closest('.message');
+    let userMessageIdx = Array.from(messages).indexOf(userMessageEl);
+
+    // If messageId is provided, find the exact message by ID
+    if (messageId) {
+        const matchingEl = container.querySelector(`[data-message-id="${messageId}"]`);
+        if (matchingEl) {
+            userMessageEl = matchingEl;
+            userMessageIdx = Array.from(messages).indexOf(matchingEl);
+        }
+
+        // Also find the index in chatHistory by messageId
+        const historyIdx = chatHistory.findIndex(msg => msg.messageId === messageId);
+        if (historyIdx !== -1) {
+            messageIndex = historyIdx;
+        }
+    }
+
+    console.log(`[EDIT] Editing message at index ${messageIndex}, messageId: ${messageId}`);
 
     // Remove this message and all messages after it (including the answer)
     const messagesToRemove = [];
@@ -547,7 +613,9 @@ function editMessage(btn, messageIndex, encodedContent) {
     });
 
     // Update chat history - remove from the messageIndex onwards
+    // This removes the edited question and all subsequent Q&A pairs
     chatHistory = chatHistory.slice(0, messageIndex);
+    console.log(`[EDIT] Chat history truncated to ${chatHistory.length} messages`);
     saveCurrentChatToServer();
 
     // Put the content back in the input
@@ -602,93 +670,280 @@ function addCodeCopyButtons(container) {
     });
 }
 
+// ============================================================================
+// TOOL FORMATTING CONFIG - Edit this section when changing AI providers
+// ============================================================================
+const TOOL_CONFIG = {
+    // Tools: name, icon, type (for styling)
+    tools: [
+        { name: 'Terminal', icon: 'fa-terminal', type: 'terminal' },
+        { name: 'Read Directory', icon: 'fa-folder-open', type: 'read' },
+        { name: 'Read File', icon: 'fa-file-code', type: 'read' },
+        { name: 'Read Process', icon: 'fa-stream', type: 'read' },
+        { name: 'Write File', icon: 'fa-file-pen', type: 'action' },
+        { name: 'Edit File', icon: 'fa-edit', type: 'action' },
+        { name: 'Search', icon: 'fa-search', type: 'action' },
+        { name: 'Codebase Search', icon: 'fa-code', type: 'action' },
+        { name: 'Web Search', icon: 'fa-globe', type: 'action' },
+    ],
+    // Result line prefix
+    resultPrefix: '↳',
+    // Result status keywords that END a tool block (case insensitive)
+    resultEndKeywords: [
+        'command completed', 'command error', 'listed', 'read',
+        'process completed', 'wrote', 'edited', 'found', 'no results'
+    ],
+};
+
+// Check if a result line indicates successful end of tool output
+function isSuccessEndLine(text) {
+    const lower = text.toLowerCase();
+    const successKeywords = ['command completed', 'listed', 'read', 'process completed', 'wrote', 'edited', 'found'];
+    return successKeywords.some(kw => lower.includes(kw));
+}
+
+// Check if a result line indicates error start (we should collect more lines after this)
+function isErrorStartLine(text) {
+    const lower = text.toLowerCase();
+    return lower.includes('command error') || lower.includes('traceback');
+}
+
+// Check if a line looks like part of a stack trace or error output
+function isStackTraceLine(text) {
+    const trimmed = text.trim();
+    // Stack trace patterns: File "...", line numbers, exception names, indented code
+    return /^(File\s+"|Traceback|[A-Z][a-zA-Z]*Error:|[A-Z][a-zA-Z]*Exception:|OSError:|KeyError:|ValueError:|TypeError:|AttributeError:|ImportError:|ModuleNotFoundError:|RuntimeError:|IndexError:|NameError:|SyntaxError:|\s{2,}|\d+\s*\||at\s+|in\s+<)/.test(trimmed) ||
+           trimmed.startsWith('app.run') ||
+           trimmed.startsWith('run_simple') ||
+           trimmed.includes('site-packages') ||
+           trimmed.includes('.py", line') ||
+           trimmed.includes('.py", line');
+}
+
+// Check if line looks like explanatory text (not stack trace)
+function isExplanatoryText(text) {
+    const trimmed = text.trim();
+    if (!trimmed) return false;
+    // Explanatory text usually starts with capital letter and forms a sentence
+    // or starts with "This", "The", "Let me", "I'll", etc.
+    const explanatoryStarts = ['this ', 'the ', 'let me', "i'll", 'there', 'it ', 'now ', 'would you', 'you can'];
+    const lower = trimmed.toLowerCase();
+    return explanatoryStarts.some(s => lower.startsWith(s));
+}
+
+// Cached regex for tool parsing - built once for performance
+let _cachedToolStartRegex = null;
+function getToolStartRegex() {
+    if (!_cachedToolStartRegex) {
+        const toolNames = TOOL_CONFIG.tools.map(t => t.name).join('|');
+        _cachedToolStartRegex = new RegExp(`^(${toolNames})\\s+-\\s+(.+)$`);
+    }
+    return _cachedToolStartRegex;
+}
+
+// Parse tool blocks from text - accurate boundary detection
+function parseToolBlocks(text) {
+    const lines = text.split('\n');
+    const result = [];
+    let i = 0;
+
+    // Use cached regex for performance
+    const toolStartRegex = getToolStartRegex();
+
+    while (i < lines.length) {
+        const line = lines[i];
+        const toolMatch = line.match(toolStartRegex);
+
+        if (toolMatch) {
+            const [, toolName, firstLine] = toolMatch;
+            const toolConfig = TOOL_CONFIG.tools.find(t => t.name === toolName);
+
+            // Collect command lines until we hit a result line
+            let commandLines = [firstLine];
+            let resultLines = [];
+            let hasError = false;
+            let inStackTrace = false;
+            let foundEndResult = false;
+            i++;
+
+            while (i < lines.length && !foundEndResult) {
+                const nextLine = lines[i];
+                const trimmed = nextLine.trim();
+
+                // Check if this is a result line (starts with ↳)
+                if (trimmed.startsWith(TOOL_CONFIG.resultPrefix)) {
+                    const resultContent = trimmed.substring(1).trim();
+                    resultLines.push(resultContent);
+
+                    // Track if we have an error/traceback starting
+                    if (isErrorStartLine(resultContent)) {
+                        hasError = true;
+                        inStackTrace = true;
+                    }
+
+                    // Only end on success keywords (not error)
+                    if (isSuccessEndLine(resultContent) && !hasError) {
+                        foundEndResult = true;
+                    }
+                    i++;
+                }
+                // Check if new tool is starting
+                else if (toolStartRegex.test(nextLine)) {
+                    break; // New tool starting, end current block
+                }
+                // Empty line
+                else if (trimmed === '') {
+                    if (resultLines.length > 0 && !inStackTrace) {
+                        break;
+                    }
+                    i++;
+                }
+                // If we're in a stack trace, collect continuation lines
+                else if (inStackTrace) {
+                    // Check if this looks like explanatory text (end of stack trace)
+                    if (isExplanatoryText(trimmed)) {
+                        inStackTrace = false;
+                        break;
+                    }
+                    // Otherwise it's part of the stack trace
+                    resultLines.push(trimmed);
+                    i++;
+                }
+                // Otherwise it's continuation of command (before any results)
+                else if (resultLines.length === 0) {
+                    commandLines.push(nextLine);
+                    i++;
+                }
+                // Text after results = end of block
+                else {
+                    break;
+                }
+            }
+
+            result.push({
+                type: 'tool',
+                toolType: toolConfig.type,
+                name: toolConfig.name,
+                icon: toolConfig.icon,
+                command: commandLines.join('\n').trim(),
+                results: resultLines,
+                hasError: hasError
+            });
+            continue;
+        }
+
+        // Standalone result line (orphaned ↳)
+        if (line.trim().startsWith(TOOL_CONFIG.resultPrefix)) {
+            result.push({
+                type: 'result',
+                content: line.trim().substring(1).trim()
+            });
+            i++;
+            continue;
+        }
+
+        // Regular text
+        result.push({ type: 'text', content: line });
+        i++;
+    }
+
+    return result;
+}
+
+// Render a tool block to HTML
+function renderToolBlock(tool) {
+    const typeClass = `tool-${tool.toolType}`;
+    const errorClass = tool.hasError ? ' has-error' : '';
+    let html = `<div class="tool-block ${typeClass}${errorClass}">`;
+    html += `<div class="tool-header"><i class="fas ${tool.icon}"></i> ${tool.name}</div>`;
+    html += `<div class="tool-command"><code>${escapeHtml(tool.command)}</code></div>`;
+
+    if (tool.results.length > 0) {
+        // Check if this is an error with stack trace
+        const hasStackTrace = tool.results.some(r =>
+            r.toLowerCase().includes('traceback') ||
+            r.toLowerCase().includes('file "') ||
+            r.match(/^\s*(File|Line|\w+Error:)/i)
+        );
+
+        if (tool.hasError && hasStackTrace) {
+            // Render as a formatted error block
+            html += `<div class="tool-result error-block">`;
+            html += `<div class="error-header"><i class="fas fa-exclamation-triangle"></i> Error Output</div>`;
+            html += `<pre class="stack-trace">`;
+            tool.results.forEach(r => {
+                html += escapeHtml(r) + '\n';
+            });
+            html += `</pre></div>`;
+        } else {
+            // Normal result rendering
+            html += `<div class="tool-result">`;
+            tool.results.forEach(r => {
+                let resultHtml = escapeHtml(r);
+                if (r.toLowerCase().includes('error')) {
+                    resultHtml = `<span class="result-error">${resultHtml}</span>`;
+                } else if (r.toLowerCase().includes('completed')) {
+                    resultHtml = `<span class="result-success">${resultHtml}</span>`;
+                }
+                html += `<div class="result-line"><span class="result-arrow">↳</span> ${resultHtml}</div>`;
+            });
+            html += `</div>`;
+        }
+    }
+    html += `</div>`;
+    return html;
+}
+
+// Helper to escape HTML
+function escapeHtml(text) {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 // Format message with code blocks and markdown
 function formatMessage(text) {
-    // Normalize line endings (handle \r\n and \r)
+    if (!text) return '';
+
+    // Normalize line endings
     text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-    // Escape HTML first (but we'll handle special cases)
-    text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-    // Code blocks - extract and protect them first
+    // Extract and protect code blocks BEFORE escaping (they have their own escaping)
     const codeBlocks = [];
     text = text.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
         const index = codeBlocks.length;
-        codeBlocks.push(`<pre><code class="language-${lang || 'plaintext'}">${code}</code></pre>`);
+        codeBlocks.push(`<pre><code class="language-${lang || 'plaintext'}">${escapeHtml(code)}</code></pre>`);
         return `__CODE_BLOCK_${index}__`;
     });
 
-    // Inline code - protect these too
+    // Extract and protect inline code
     const inlineCodes = [];
     text = text.replace(/`([^`]+)`/g, (match, code) => {
         const index = inlineCodes.length;
-        inlineCodes.push(`<code>${code}</code>`);
+        inlineCodes.push(`<code>${escapeHtml(code)}</code>`);
         return `__INLINE_CODE_${index}__`;
     });
 
-    // Tool action blocks - extract and protect them
+    // Parse tool blocks BEFORE escaping (renderToolBlock handles escaping)
+    const parsed = parseToolBlocks(text);
+
+    // Rebuild text with formatted tool blocks
     const toolBlocks = [];
+    const rebuiltLines = [];
 
-    // Terminal commands with results (multi-line)
-    text = text.replace(/^(Terminal)\s*-\s*(.+?)(?:\n(↳[^\n]+))?$/gm, (match, action, cmd, result) => {
-        const index = toolBlocks.length;
-        let html = `<div class="tool-block tool-terminal">
-            <div class="tool-header"><i class="fas fa-terminal"></i> Terminal</div>
-            <div class="tool-command"><code>${cmd.trim()}</code></div>`;
-        if (result) {
-            const resultText = result.replace(/^↳\s*/, '');
-            html += `<div class="tool-result"><span class="result-arrow">↳</span> ${resultText}</div>`;
+    for (const item of parsed) {
+        if (item.type === 'tool') {
+            const index = toolBlocks.length;
+            toolBlocks.push(renderToolBlock(item));
+            rebuiltLines.push(`__TOOL_BLOCK_${index}__`);
+        } else if (item.type === 'result') {
+            const index = toolBlocks.length;
+            toolBlocks.push(`<div class="tool-result standalone"><span class="result-arrow">↳</span> ${escapeHtml(item.content)}</div>`);
+            rebuiltLines.push(`__TOOL_BLOCK_${index}__`);
+        } else {
+            // Escape regular text lines
+            rebuiltLines.push(escapeHtml(item.content));
         }
-        html += `</div>`;
-        toolBlocks.push(html);
-        return `__TOOL_BLOCK_${index}__`;
-    });
-
-    // Read Directory/File operations
-    text = text.replace(/^(Read Directory|Read File|Read Process)\s*-\s*(.+?)(?:\n(↳[^\n]+))?$/gm, (match, action, path, result) => {
-        const index = toolBlocks.length;
-        const icon = action === 'Read Directory' ? 'fa-folder-open' : action === 'Read File' ? 'fa-file-code' : 'fa-stream';
-        let html = `<div class="tool-block tool-read">
-            <div class="tool-header"><i class="fas ${icon}"></i> ${action}</div>
-            <div class="tool-path"><code>${path.trim()}</code></div>`;
-        if (result) {
-            const resultText = result.replace(/^↳\s*/, '');
-            html += `<div class="tool-result"><span class="result-arrow">↳</span> ${resultText}</div>`;
-        }
-        html += `</div>`;
-        toolBlocks.push(html);
-        return `__TOOL_BLOCK_${index}__`;
-    });
-
-    // Generic tool actions (Write File, Search, etc.)
-    text = text.replace(/^(Write File|Search|Codebase Search|Web Search|Edit File)\s*-\s*(.+?)(?:\n(↳[^\n]+))?$/gm, (match, action, detail, result) => {
-        const index = toolBlocks.length;
-        const iconMap = {
-            'Write File': 'fa-file-pen',
-            'Search': 'fa-search',
-            'Codebase Search': 'fa-code',
-            'Web Search': 'fa-globe',
-            'Edit File': 'fa-edit'
-        };
-        const icon = iconMap[action] || 'fa-cog';
-        let html = `<div class="tool-block tool-action">
-            <div class="tool-header"><i class="fas ${icon}"></i> ${action}</div>
-            <div class="tool-detail">${detail.trim()}</div>`;
-        if (result) {
-            const resultText = result.replace(/^↳\s*/, '');
-            html += `<div class="tool-result"><span class="result-arrow">↳</span> ${resultText}</div>`;
-        }
-        html += `</div>`;
-        toolBlocks.push(html);
-        return `__TOOL_BLOCK_${index}__`;
-    });
-
-    // Standalone result lines (↳) that weren't captured above
-    text = text.replace(/^(↳)\s+(.+)$/gm, (match, arrow, content) => {
-        const index = toolBlocks.length;
-        toolBlocks.push(`<div class="tool-result standalone"><span class="result-arrow">↳</span> ${content}</div>`);
-        return `__TOOL_BLOCK_${index}__`;
-    });
+    }
+    text = rebuiltLines.join('\n');
 
     // Tables - detect and convert markdown tables
     text = text.replace(/^(\|.+\|)\n(\|[-:\s|]+\|)\n((?:\|.+\|\n?)+)/gm, (match, header, separator, body) => {
@@ -705,23 +960,19 @@ function formatMessage(text) {
     text = text.replace(/^## (.+)$/gm, '<h3>$1</h3>');
     text = text.replace(/^# (.+)$/gm, '<h2>$1</h2>');
 
-    // Bold
+    // Bold and Italic
     text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-
-    // Italic (but not if it's part of a bullet point indicator)
     text = text.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
 
-    // Bullet points - convert to proper list
+    // Lists
     const lines = text.split('\n');
     let inList = false;
     let listType = null;
     const processedLines = [];
 
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+    for (const line of lines) {
         const bulletMatch = line.match(/^[\s]*[•\-\*]\s+(.+)$/);
         const numberedMatch = line.match(/^[\s]*(\d+)\.\s+(.+)$/);
-        const subItemMatch = line.match(/^[\s]*(↳|⎿)\s+(.+)$/);
 
         if (bulletMatch) {
             if (!inList || listType !== 'ul') {
@@ -739,13 +990,6 @@ function formatMessage(text) {
                 listType = 'ol';
             }
             processedLines.push(`<li>${numberedMatch[2]}</li>`);
-        } else if (subItemMatch) {
-            // Sub-items (↳ or ⎿) - only if not already processed as tool block
-            if (!line.includes('__TOOL_BLOCK_')) {
-                processedLines.push(`<div class="sub-item"><span class="sub-arrow">↳</span> ${subItemMatch[2]}</div>`);
-            } else {
-                processedLines.push(line);
-            }
         } else {
             if (inList) {
                 processedLines.push(listType === 'ul' ? '</ul>' : '</ol>');
@@ -755,41 +999,25 @@ function formatMessage(text) {
             processedLines.push(line);
         }
     }
-    if (inList) {
-        processedLines.push(listType === 'ul' ? '</ul>' : '</ol>');
-    }
+    if (inList) processedLines.push(listType === 'ul' ? '</ul>' : '</ol>');
     text = processedLines.join('\n');
 
-    // Line breaks - but not inside HTML tags
-    // Double newlines become paragraph breaks
+    // Paragraph and line breaks
     text = text.replace(/\n\n+/g, '</p><p>');
-    // Single newlines become <br> (but not after block elements)
     text = text.replace(/(?<!<\/(?:h[1-6]|p|ul|ol|li|table|thead|tbody|tr|th|td|pre|div)>)\n(?!<)/g, '<br>');
-
-    // Wrap in paragraph
     text = '<p>' + text + '</p>';
 
-    // Clean up empty paragraphs
+    // Clean up
     text = text.replace(/<p>\s*<\/p>/g, '');
     text = text.replace(/<p>\s*<(ul|ol|table|h[1-6]|pre)/g, '<$1');
     text = text.replace(/<\/(ul|ol|table|h[1-6]|pre)>\s*<\/p>/g, '</$1>');
 
-    // Restore tool blocks first (they may contain code)
-    toolBlocks.forEach((block, index) => {
-        text = text.replace(`__TOOL_BLOCK_${index}__`, block);
-    });
+    // Restore protected blocks
+    toolBlocks.forEach((block, i) => { text = text.replace(`__TOOL_BLOCK_${i}__`, block); });
+    codeBlocks.forEach((block, i) => { text = text.replace(`__CODE_BLOCK_${i}__`, block); });
+    inlineCodes.forEach((code, i) => { text = text.replace(`__INLINE_CODE_${i}__`, code); });
 
-    // Restore code blocks
-    codeBlocks.forEach((block, index) => {
-        text = text.replace(`__CODE_BLOCK_${index}__`, block);
-    });
-
-    // Restore inline code
-    inlineCodes.forEach((code, index) => {
-        text = text.replace(`__INLINE_CODE_${index}__`, code);
-    });
-
-    // Clean up tool blocks wrapped in paragraphs
+    // Clean up tool blocks in paragraphs
     text = text.replace(/<p>(<div class="tool-block)/g, '$1');
     text = text.replace(/(<\/div>)<\/p>/g, '$1');
     text = text.replace(/<br>(<div class="tool-)/g, '$1');
@@ -1186,9 +1414,14 @@ async function loadChatFromServer(chatId) {
             container.innerHTML = WELCOME_HTML;
         } else {
             chatHistory.forEach((msg, idx) => {
+                // Generate messageId if not present (for backward compatibility)
+                if (!msg.messageId) {
+                    msg.messageId = generateMessageId(currentChatId, idx, msg.content);
+                }
                 const messageDiv = document.createElement('div');
                 messageDiv.className = `message ${msg.role}`;
-                messageDiv.innerHTML = createMessageHTML(msg.role, msg.content, idx);
+                messageDiv.dataset.messageId = msg.messageId;
+                messageDiv.innerHTML = createMessageHTML(msg.role, msg.content, idx, msg.messageId);
                 container.appendChild(messageDiv);
                 addCodeCopyButtons(messageDiv);
             });

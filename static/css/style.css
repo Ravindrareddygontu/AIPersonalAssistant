@@ -207,7 +207,7 @@ body {
 }
 
 .chat-main-content {
-    max-width: 1080px;
+    max-width: 970px;
     margin: 0 auto;
     width: 100%;
 }
@@ -358,7 +358,7 @@ body {
 .message {
     display: flex;
     gap: 12px;
-    width: 1080px;
+    width: 970px;
     margin: 0 auto;
     animation: fadeIn 0.2s ease;
     align-items: flex-start;
@@ -392,39 +392,41 @@ body {
 .message-content {
     flex: 1;
     min-width: 0;
+    font-size: 0.9rem;
+    line-height: 1.65;
+    color: var(--text-secondary);
 }
 
 .message-content p {
-    line-height: 1.7;
-    font-size: 0.95rem;
     margin: 0;
 }
 
 .message-content p + p {
-    margin-top: 12px;
+    margin-top: 10px;
 }
 
 .message-content br {
     display: block;
     content: "";
-    margin-top: 4px;
+    margin-top: 3px;
 }
 
 .message.user {
     margin-bottom: 12px;
     flex-direction: row-reverse;
     justify-content: flex-start;
+    align-items: center;
 }
 
 .message.user .message-content {
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(124, 58, 237, 0.05));
     padding: 14px 20px;
-    border-radius: 20px 20px 20px 6px;
+    border-radius: 20px 20px 6px 20px;
     color: var(--text);
     border: 1px solid rgba(99, 102, 241, 0.2);
     box-shadow: 0 2px 8px rgba(99, 102, 241, 0.08);
     transition: all 0.2s ease;
-    text-align: right;
+    text-align: left;
     flex: none;
     max-width: 70%;
 }
@@ -441,19 +443,19 @@ body {
 }
 
 .message.assistant .message-content {
-    background: linear-gradient(135deg, var(--bg-secondary), rgba(124, 58, 237, 0.03));
+    background: var(--bg-secondary);
     padding: 16px 22px;
     border-radius: 20px 20px 20px 6px;
     border: 1px solid var(--border);
     position: relative;
-    box-shadow: 0 3px 15px rgba(0, 0, 0, 0.05);
+    box-shadow: none;
     transition: all 0.2s ease;
     flex: 1;
 }
 
 .message.assistant .message-content:hover {
-    border-color: rgba(124, 58, 237, 0.4);
-    box-shadow: 0 5px 20px rgba(124, 58, 237, 0.1);
+    border-color: var(--border);
+    box-shadow: none;
 }
 
 /* Copy button for messages */
@@ -530,6 +532,39 @@ body {
     opacity: 1;
 }
 
+/* Edit button outside the question box */
+.message-edit-outside {
+    display: flex;
+    align-items: flex-start;
+    padding-top: 8px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.message.user:hover .message-edit-outside {
+    opacity: 1;
+}
+
+.edit-btn-outside {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    padding: 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.edit-btn-outside:hover {
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--primary);
+    transform: scale(1.1);
+}
+
 /* Code blocks */
 .message-content pre {
     background: var(--bg);
@@ -590,16 +625,16 @@ body {
 .message-content .md-table {
     width: 100%;
     border-collapse: collapse;
-    margin: 16px 0;
-    font-size: 0.9rem;
-    border-radius: 8px;
+    margin: 14px 0;
+    font-size: 0.85rem;
+    border-radius: 6px;
     overflow: hidden;
     border: 1px solid var(--border);
 }
 
 .message-content .md-table th {
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(124, 58, 237, 0.08));
-    padding: 12px 16px;
+    padding: 10px 14px;
     text-align: left;
     font-weight: 600;
     color: var(--text);
@@ -607,9 +642,10 @@ body {
 }
 
 .message-content .md-table td {
-    padding: 10px 16px;
+    padding: 8px 14px;
     border-bottom: 1px solid var(--border);
     color: var(--text-secondary);
+    line-height: 1.5;
 }
 
 .message-content .md-table tr:last-child td {
@@ -622,13 +658,13 @@ body {
 
 /* Markdown Lists */
 .message-content .md-list {
-    margin: 12px 0;
-    padding-left: 24px;
+    margin: 10px 0;
+    padding-left: 22px;
 }
 
 .message-content .md-list li {
-    margin: 8px 0;
-    line-height: 1.6;
+    margin: 6px 0;
+    line-height: 1.65;
     color: var(--text-secondary);
 }
 
@@ -646,154 +682,250 @@ body {
 
 /* Sub-items (↳) */
 .message-content .sub-item {
-    margin: 6px 0 6px 20px;
-    padding: 6px 12px;
+    margin: 5px 0 5px 18px;
+    padding: 5px 10px;
     background: rgba(99, 102, 241, 0.05);
-    border-left: 3px solid var(--primary);
-    border-radius: 0 6px 6px 0;
-    font-size: 0.9rem;
+    border-left: 2px solid var(--primary);
+    border-radius: 0 5px 5px 0;
     color: var(--text-muted);
 }
 
 .message-content .sub-item .sub-arrow {
     color: var(--primary);
-    margin-right: 6px;
+    margin-right: 5px;
 }
 
-/* Tool Action Blocks (Terminal, Read File, etc.) */
+/* ============================================================================
+   TOOL BLOCKS - Terminal, Read File, etc.
+   ============================================================================ */
 .tool-block {
-    margin: 12px 0;
+    margin: 14px 0;
     border-radius: 8px;
     overflow: hidden;
     font-size: 0.9rem;
+    line-height: 1.65;
     border: 1px solid var(--border);
     background: var(--bg);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    width: 100%;
 }
 
 .tool-block .tool-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px;
+    padding: 8px 14px;
     font-weight: 600;
-    font-size: 0.8rem;
+    font-size: 0.7rem;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.6px;
 }
 
 .tool-block .tool-header i {
-    font-size: 0.85rem;
+    font-size: 0.8rem;
 }
 
-/* Terminal blocks */
-.tool-block.tool-terminal {
-    background: linear-gradient(135deg, #1a1a2e, #16213e);
-    border-color: #0f3460;
-}
-
-.tool-block.tool-terminal .tool-header {
-    background: rgba(0, 255, 136, 0.1);
-    color: #00ff88;
-    border-bottom: 1px solid rgba(0, 255, 136, 0.2);
-}
-
-.tool-block.tool-terminal .tool-command {
-    padding: 12px 16px;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    color: #e0e0e0;
-    background: rgba(0, 0, 0, 0.3);
+.tool-block .tool-command {
+    padding: 12px 14px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
     overflow-x: auto;
+    line-height: 1.55;
 }
 
-.tool-block.tool-terminal .tool-command code {
-    color: #00ff88;
+.tool-block .tool-command code {
+    display: block;
+    white-space: pre-wrap;
+    word-break: break-word;
     background: none;
     padding: 0;
     border: none;
-    font-size: 0.85rem;
-    white-space: pre-wrap;
-    word-break: break-all;
+    font-size: 0.82rem;
+}
+
+.tool-block .tool-result {
+    padding: 8px 14px;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    background: rgba(0, 0, 0, 0.12);
+}
+
+.tool-block .tool-result .result-line {
+    padding: 3px 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+.tool-block .tool-result .result-arrow {
+    color: var(--primary);
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+/* Terminal blocks - Dark theme with green accent */
+.tool-block.tool-terminal {
+    background: #0d1117;
+    border: 1px solid rgba(0, 255, 136, 0.4);
+}
+
+.tool-block.tool-terminal .tool-header {
+    background: rgba(0, 255, 136, 0.08);
+    color: #8fbfaa;
+    border-bottom: 1px solid rgba(0, 255, 136, 0.15);
+}
+
+.tool-block.tool-terminal .tool-command {
+    background: #161b22;
+    color: #c9d1d9;
+}
+
+.tool-block.tool-terminal .tool-command code {
+    color: #b8d4c8;
+    white-space: normal;
+    word-break: break-word;
 }
 
 .tool-block.tool-terminal .tool-result {
-    padding: 10px 16px;
-    color: #a0a0a0;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    font-size: 0.85rem;
+    background: #0d1117;
+    color: #8b949e;
+    border-top: 1px solid #30363d;
 }
 
-/* Read Directory/File blocks */
+.tool-block.tool-terminal .tool-result .result-arrow {
+    color: #58a6ff;
+}
+
+/* Read Directory/File blocks - Purple theme */
 .tool-block.tool-read {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(124, 58, 237, 0.05));
-    border-color: rgba(99, 102, 241, 0.3);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), rgba(124, 58, 237, 0.04));
+    border-color: rgba(99, 102, 241, 0.35);
 }
 
 .tool-block.tool-read .tool-header {
-    background: rgba(99, 102, 241, 0.1);
+    background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), transparent);
     color: var(--primary);
-    border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+    border-bottom: 1px solid rgba(99, 102, 241, 0.25);
 }
 
-.tool-block.tool-read .tool-path {
-    padding: 10px 16px;
-    font-family: 'JetBrains Mono', monospace;
-}
-
-.tool-block.tool-read .tool-path code {
+.tool-block.tool-read .tool-command {
+    background: rgba(99, 102, 241, 0.05);
     color: var(--text);
+}
+
+.tool-block.tool-read .tool-command code {
+    color: var(--primary-light);
     background: rgba(99, 102, 241, 0.1);
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 0.85rem;
+    padding: 6px 10px;
+    border-radius: 6px;
+    display: block;
+    width: 100%;
 }
 
 .tool-block.tool-read .tool-result {
-    padding: 8px 16px;
+    background: rgba(99, 102, 241, 0.03);
     color: var(--text-muted);
     border-top: 1px solid rgba(99, 102, 241, 0.15);
-    font-size: 0.85rem;
 }
 
-/* Generic action blocks */
+/* Action blocks (Write, Edit, Search) - Amber theme */
 .tool-block.tool-action {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(234, 88, 12, 0.05));
-    border-color: rgba(245, 158, 11, 0.3);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.06), rgba(234, 88, 12, 0.04));
+    border-color: rgba(245, 158, 11, 0.35);
 }
 
 .tool-block.tool-action .tool-header {
-    background: rgba(245, 158, 11, 0.1);
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.15), transparent);
     color: #f59e0b;
-    border-bottom: 1px solid rgba(245, 158, 11, 0.2);
+    border-bottom: 1px solid rgba(245, 158, 11, 0.25);
 }
 
-.tool-block.tool-action .tool-detail {
-    padding: 10px 16px;
-    color: var(--text-secondary);
+.tool-block.tool-action .tool-command {
+    background: rgba(245, 158, 11, 0.05);
+    color: var(--text);
+}
+
+.tool-block.tool-action .tool-command code {
+    color: #fbbf24;
 }
 
 .tool-block.tool-action .tool-result {
-    padding: 8px 16px;
+    background: rgba(245, 158, 11, 0.03);
     color: var(--text-muted);
     border-top: 1px solid rgba(245, 158, 11, 0.15);
-    font-size: 0.85rem;
 }
 
-/* Result arrow styling */
-.tool-result .result-arrow {
-    color: var(--primary);
-    margin-right: 6px;
-    font-weight: 600;
-}
-
-/* Standalone result */
+/* Standalone result (not inside a tool block) */
 .tool-result.standalone {
-    margin: 6px 0 6px 16px;
-    padding: 8px 12px;
-    background: rgba(99, 102, 241, 0.05);
+    margin: 8px 0 8px 20px;
+    padding: 10px 14px;
+    background: rgba(99, 102, 241, 0.06);
     border-left: 3px solid var(--primary);
-    border-radius: 0 6px 6px 0;
+    border-radius: 0 8px 8px 0;
     font-size: 0.9rem;
     color: var(--text-muted);
+}
+
+.tool-result.standalone .result-arrow {
+    color: var(--primary);
+    margin-right: 8px;
+    font-weight: 700;
+}
+
+/* Result status highlighting */
+.tool-result .result-success {
+    color: #22c55e;
+}
+
+.tool-result .result-error {
+    color: #ef4444;
+}
+
+/* Error block with stack trace - light red theme */
+.tool-block.has-error {
+    border-color: rgba(252, 165, 165, 0.3);
+}
+
+.tool-block.has-error .tool-header {
+    background: linear-gradient(135deg, rgba(252, 165, 165, 0.12), rgba(252, 165, 165, 0.06));
+    color: #fca5a5;
+}
+
+.tool-result.error-block {
+    background: rgba(252, 165, 165, 0.05);
+    padding: 0;
+}
+
+.tool-result.error-block .error-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #fca5a5;
+    background: rgba(252, 165, 165, 0.08);
+    border-bottom: 1px solid rgba(252, 165, 165, 0.15);
+}
+
+.tool-result.error-block .error-header i {
+    font-size: 0.8rem;
+}
+
+.tool-result.error-block .stack-trace {
+    margin: 0;
+    padding: 12px 14px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: #fecaca;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 /* Headers in messages */
@@ -856,12 +988,22 @@ body {
     font-family: inherit;
     resize: none;
     max-height: 150px;
-    padding: 6px 0;
+    padding: 8px 0 12px 0;
     outline: none;
+    line-height: 1.4;
+    overflow-y: auto;
+    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none;  /* IE/Edge */
+}
+
+.chat-input-wrapper textarea::-webkit-scrollbar {
+    display: none;  /* Chrome/Safari */
 }
 
 .chat-input-wrapper textarea::placeholder {
     color: var(--text-muted);
+    font-size: 1.1rem;
+    line-height: 1.65;
 }
 
 .send-btn {
@@ -926,7 +1068,7 @@ body {
 
 /* Status Log */
 .status-log {
-    width: 1080px;
+    width: 970px;
     margin: 8px auto;
     padding: 12px 16px;
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(124, 58, 237, 0.03));

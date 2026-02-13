@@ -5,6 +5,7 @@ from flask import Blueprint, request, jsonify
 from backend.config import settings
 from backend.session import SessionManager
 from backend.database import get_chats_collection
+from backend.services import message_service as msg_svc
 
 settings_bp = Blueprint('settings', __name__)
 
@@ -39,12 +40,13 @@ def list_chats():
     chats_collection = get_chats_collection()
     chats = []
     for doc in chats_collection.find().sort('updated_at', -1):
+        db_messages = doc.get('messages', [])
         chats.append({
             'id': doc.get('id'),
             'title': doc.get('title', 'Untitled'),
             'created_at': doc.get('created_at'),
             'updated_at': doc.get('updated_at'),
-            'message_count': len(doc.get('messages', []))
+            'message_count': msg_svc.get_message_count(db_messages)
         })
     return jsonify(chats)
 
@@ -75,6 +77,11 @@ def get_chat(chat_id):
     if not chat_data:
         return jsonify({'error': 'Chat not found'}), 404
     chat_data.pop('_id', None)
+
+    # Transform DB format to API format for frontend
+    db_messages = chat_data.get('messages', [])
+    chat_data['messages'] = msg_svc.db_to_api_format(chat_id, db_messages)
+
     return jsonify(chat_data)
 
 
@@ -88,26 +95,36 @@ def update_chat(chat_id):
     data = request.json
 
     # Log incoming data for debugging
-    msg_count = len(data.get('messages', []))
-    roles = [m.get('role') for m in data.get('messages', [])]
-    print(f"[SAVE] PUT /api/chats/{chat_id} - {msg_count} messages, roles: {roles}", flush=True)
+    api_messages = data.get('messages', [])
+    msg_count = len(api_messages)
+    roles = [m.get('role') for m in api_messages]
+    print(f"[SAVE] PUT /api/chats/{chat_id} - {msg_count} API messages, roles: {roles}", flush=True)
 
     if 'title' in data:
         chat_data['title'] = data['title']
+
     if 'messages' in data:
-        chat_data['messages'] = data['messages']
-    if chat_data['title'] == 'New Chat' and chat_data['messages']:
-        for msg in chat_data['messages']:
-            if msg.get('role') == 'user':
-                content = msg.get('content', '')
-                chat_data['title'] = content[:50] + ('...' if len(content) > 50 else '')
-                break
+        # Convert API format to DB format for storage
+        db_messages = msg_svc.api_to_db_format(chat_id, api_messages)
+        chat_data['messages'] = db_messages
+        print(f"[SAVE] Converted to {len(db_messages)} Q&A pairs", flush=True)
+
+    # Auto-generate title from first question if still "New Chat"
+    if chat_data['title'] == 'New Chat' and chat_data.get('messages'):
+        first_pair = chat_data['messages'][0]
+        if first_pair.get('question'):
+            content = first_pair['question']
+            chat_data['title'] = content[:50] + ('...' if len(content) > 50 else '')
+
     chat_data['updated_at'] = datetime.now().isoformat()
 
     chats_collection.update_one({'id': chat_id}, {'$set': chat_data})
 
-    print(f"[SAVE] Saved chat {chat_id} with {len(chat_data.get('messages', []))} messages", flush=True)
+    print(f"[SAVE] Saved chat {chat_id} with {len(chat_data.get('messages', []))} Q&A pairs", flush=True)
+
+    # Return API format for frontend
     chat_data.pop('_id', None)
+    chat_data['messages'] = msg_svc.db_to_api_format(chat_id, chat_data['messages'])
     return jsonify(chat_data)
 
 

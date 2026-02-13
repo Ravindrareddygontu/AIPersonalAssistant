@@ -13,6 +13,7 @@ from backend.session import SessionManager
 from backend.utils.text import TextCleaner
 from backend.utils.response import ResponseExtractor
 from backend.database import get_chats_collection
+from backend.services import message_service as msg_svc
 
 log = logging.getLogger('chat')
 chat_bp = Blueprint('chat', __name__)
@@ -30,10 +31,11 @@ _abort_lock = threading.Lock()
 
 
 class StreamGenerator:
-    def __init__(self, message, workspace, chat_id=None):
+    def __init__(self, message, workspace, chat_id=None, message_id=None):
         self.message = message
         self.workspace = workspace if os.path.isdir(workspace) else os.path.expanduser('~')
         self.chat_id = chat_id
+        self.message_id = message_id  # Unique ID for this Q&A pair
 
     def _clean_assistant_content(self, content):
         """Remove terminal artifacts from assistant response before saving."""
@@ -55,28 +57,25 @@ class StreamGenerator:
 
         return '\n'.join(cleaned_lines).rstrip()
 
-    def _save_message_to_db(self, role, content):
-        """Save a message to MongoDB for the current chat."""
+    def _save_question_to_db(self, question_content):
+        """Save a new question to MongoDB and return the message ID."""
         if not self.chat_id:
-            return
+            return None
         try:
-            # Clean assistant content to remove terminal artifacts
-            if role == 'assistant':
-                content = self._clean_assistant_content(content)
-
             chats_collection = get_chats_collection()
             chat = chats_collection.find_one({'id': self.chat_id})
             if not chat:
-                log.warning(f"[DB] Chat {self.chat_id} not found, cannot save {role} message")
-                return
+                log.warning(f"[DB] Chat {self.chat_id} not found, cannot save question")
+                return None
 
             messages = chat.get('messages', [])
-            messages.append({'role': role, 'content': content})
+            messages, msg_id = msg_svc.add_question(self.chat_id, messages, question_content)
+            self.message_id = msg_id  # Store for later when saving answer
 
-            # Update title if it's still "New Chat" and this is a user message
+            # Update title if it's still "New Chat"
             title = chat.get('title', 'New Chat')
-            if title == 'New Chat' and role == 'user':
-                title = content[:50] + ('...' if len(content) > 50 else '')
+            if title == 'New Chat':
+                title = question_content[:50] + ('...' if len(question_content) > 50 else '')
 
             chats_collection.update_one(
                 {'id': self.chat_id},
@@ -86,9 +85,39 @@ class StreamGenerator:
                     'updated_at': datetime.utcnow().isoformat()
                 }}
             )
-            log.info(f"[DB] Saved {role} message to chat {self.chat_id}, total messages: {len(messages)}")
+            log.info(f"[DB] Saved question to chat {self.chat_id}, message_id: {msg_id}, total Q&A pairs: {len(messages)}")
+            return msg_id
         except Exception as e:
-            log.error(f"[DB] Failed to save {role} message: {e}")
+            log.error(f"[DB] Failed to save question: {e}")
+            return None
+
+    def _save_answer_to_db(self, answer_content):
+        """Save the answer to an existing question in MongoDB."""
+        if not self.chat_id or not self.message_id:
+            return
+        try:
+            # Clean assistant content to remove terminal artifacts
+            cleaned_content = self._clean_assistant_content(answer_content)
+
+            chats_collection = get_chats_collection()
+            chat = chats_collection.find_one({'id': self.chat_id})
+            if not chat:
+                log.warning(f"[DB] Chat {self.chat_id} not found, cannot save answer")
+                return
+
+            messages = chat.get('messages', [])
+            messages = msg_svc.add_answer(messages, self.message_id, cleaned_content, raw_answer=answer_content)
+
+            chats_collection.update_one(
+                {'id': self.chat_id},
+                {'$set': {
+                    'messages': messages,
+                    'updated_at': datetime.utcnow().isoformat()
+                }}
+            )
+            log.info(f"[DB] Saved answer to chat {self.chat_id}, message_id: {self.message_id}")
+        except Exception as e:
+            log.error(f"[DB] Failed to save answer: {e}")
 
     def _send(self, data):
         return f"data: {json.dumps(data)}\n\n"
@@ -208,8 +237,8 @@ class StreamGenerator:
                     yield self._send({'type': 'done'})
                     return
 
-                # Save user message to database
-                self._save_message_to_db('user', self.message)
+                # Save user question to database (creates new Q&A pair)
+                self._save_question_to_db(self.message)
 
                 # Clear any cached response from previous messages
                 session.last_response = ""
@@ -271,12 +300,10 @@ class StreamGenerator:
                                 log.info(f"[STREAM] streaming_started=True, initial content length={len(content)}")
                                 yield self._send({'type': 'stream_start'})
 
-                            # Only send the new characters (delta)
-                            # Use streamed_length to track exactly how much we've sent
+                            # Only send the new content (delta) - send as chunk, not char-by-char
                             delta = content[state['streamed_length']:]
                             if delta:
-                                for c in delta:
-                                    yield self._send({'type': 'stream', 'content': c})
+                                yield self._send({'type': 'stream', 'content': delta})
                                 state['streamed_length'] = len(content)
                             state['last_streamed_content'] = content
 
@@ -337,9 +364,9 @@ class StreamGenerator:
         session.last_response = final_content or ""
         SessionManager.cleanup_old()
 
-        # Save assistant response to database
+        # Save assistant answer to the existing Q&A pair in database
         if final_content:
-            self._save_message_to_db('assistant', final_content)
+            self._save_answer_to_db(final_content)
 
         _log("Sending 'done' event to frontend")
         yield self._send({'type': 'response', 'message': final_content or "Couldn't extract response. Please try again.", 'workspace': self.workspace})

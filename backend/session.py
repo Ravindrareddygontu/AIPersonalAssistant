@@ -28,11 +28,23 @@ class AuggieSession:
         master_fd, slave_fd = pty.openpty()
         env = os.environ.copy()
         env.update({'TERM': 'xterm-256color', 'AUGMENT_WORKSPACE': self.workspace, 'COLUMNS': '200', 'LINES': '100'})
-        self.process = subprocess.Popen(['auggie'], stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
+
+        # Find auggie - try common locations
+        auggie_cmd = 'auggie'
+        for path in ['/home/dell/.nvm/versions/node/v20.20.0/bin/auggie',
+                     os.path.expanduser('~/.nvm/versions/node/v20.20.0/bin/auggie'),
+                     '/usr/local/bin/auggie', '/usr/bin/auggie']:
+            if os.path.exists(path):
+                auggie_cmd = path
+                break
+
+        log.info(f"[SESSION] Starting auggie from: {auggie_cmd}, workspace: {self.workspace}")
+        self.process = subprocess.Popen([auggie_cmd], stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
                                         cwd=self.workspace, env=env, preexec_fn=os.setsid)
         os.close(slave_fd)
         self.master_fd = master_fd
         self.last_used = time.time()
+        log.info(f"[SESSION] Process started with PID: {self.process.pid}")
         return self.master_fd
 
     def is_alive(self):
@@ -56,19 +68,25 @@ class AuggieSession:
         self.process = self.master_fd = None
         self.initialized = False
 
-    def wait_for_prompt(self, timeout=15):
+    def wait_for_prompt(self, timeout=30):
         start, output = time.time(), ""
+        log.info(f"[SESSION] Waiting for prompt (timeout={timeout}s)...")
         while time.time() - start < timeout:
             if select.select([self.master_fd], [], [], 0.3)[0]:
                 try:
                     chunk = os.read(self.master_fd, 8192).decode('utf-8', errors='ignore')
                     output += chunk
-                    if '›' in chunk:
+                    log.debug(f"[SESSION] Received chunk: {repr(chunk[:100])}")
+                    # Check for various prompt indicators
+                    if '›' in chunk or '>' in chunk or 'auggie' in chunk.lower():
+                        log.info(f"[SESSION] Prompt detected after {time.time()-start:.1f}s")
                         time.sleep(0.5)
                         self.drain_output()
                         return True, output
-                except OSError:
+                except OSError as e:
+                    log.error(f"[SESSION] OSError reading: {e}")
                     break
+        log.warning(f"[SESSION] Timeout waiting for prompt. Output so far: {repr(output[:200])}")
         return False, output
 
     def drain_output(self, timeout=1.0):
