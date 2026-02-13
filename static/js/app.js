@@ -729,25 +729,22 @@ function editMessage(btn, messageIndex, encodedContent, messageId = null) {
         width: contentDiv.style.width
     };
 
-    // Lock the width to prevent shrinking
-    contentDiv.style.minWidth = originalContentWidth + 'px';
-    contentDiv.style.width = originalContentWidth + 'px';
-
-    // Hide the edit button
+    // Hide the edit button and add editing class
     if (editOutside) editOutside.style.display = 'none';
+    userMessageEl.classList.add('editing');
 
     // Save original text HTML before replacing
     const originalTextHTML = textDiv.innerHTML;
 
     // Replace message text with textarea
     textDiv.innerHTML = `
-        <textarea class="edit-textarea" rows="3">${escapeHtml(content)}</textarea>
+        <textarea class="edit-textarea">${escapeHtml(content)}</textarea>
         <div class="edit-buttons">
-            <button class="edit-submit-btn" title="Submit">
-                <i class="fas fa-check"></i> Submit
+            <button class="edit-cancel-btn" title="Cancel (Esc)">
+                Cancel
             </button>
-            <button class="edit-cancel-btn" title="Cancel">
-                <i class="fas fa-times"></i> Cancel
+            <button class="edit-submit-btn" title="Submit (Enter)">
+                Submit
             </button>
         </div>
     `;
@@ -756,24 +753,26 @@ function editMessage(btn, messageIndex, encodedContent, messageId = null) {
     const submitBtn = textDiv.querySelector('.edit-submit-btn');
     const cancelBtn = textDiv.querySelector('.edit-cancel-btn');
 
-    // Focus and select text
-    textarea.focus();
-    textarea.select();
-
-    // Set textarea height to match original text height (minimum 60px)
-    const targetHeight = Math.max(originalTextHeight, 60);
-    textarea.style.height = targetHeight + 'px';
-    textarea.addEventListener('input', () => {
+    // Auto-resize textarea to fit content
+    const autoResizeTextarea = () => {
         textarea.style.height = 'auto';
-        textarea.style.height = Math.max(textarea.scrollHeight, 60) + 'px';
-    });
+        textarea.style.height = Math.min(Math.max(textarea.scrollHeight, 40), 200) + 'px';
+    };
+
+    // Focus and set initial height
+    textarea.focus();
+    autoResizeTextarea();
+
+    // Move cursor to end
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+    textarea.addEventListener('input', autoResizeTextarea);
 
     // Cancel button - restore original state
     cancelBtn.onclick = () => {
         console.log(`[EDIT] Cancelled edit at index ${messageIndex}`);
         textDiv.innerHTML = originalTextHTML;
-        contentDiv.style.minWidth = originalStyles.minWidth;
-        contentDiv.style.width = originalStyles.width;
+        userMessageEl.classList.remove('editing');
         if (editOutside) editOutside.style.display = '';
     };
 
