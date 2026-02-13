@@ -533,6 +533,7 @@ function startStreamingMessage(requestId) {
     lastStreamingUpdate = 0;
     streamingFinalized = false;  // Reset finalization flag for new stream
     streamingRequestId = requestId;  // Track which request owns this stream
+    resetIncrementalFormatCache();  // Reset formatting cache for new stream
     console.log(`[STREAM] streamingMessageDiv created for request #${requestId}, streamingContent reset, streamingFinalized=false`);
 
     // Scroll to bottom
@@ -570,15 +571,14 @@ function appendStreamingContent(newContent, requestId) {
     }
 }
 
-// Actually update the streaming display - lightweight formatting for performance
+// Actually update the streaming display - incremental formatting for live preview
 function updateStreamingDisplay() {
     if (!streamingMessageDiv) return;
 
     const textDiv = streamingMessageDiv.querySelector('.streaming-text');
     if (textDiv) {
-        // Use lightweight formatting during streaming for performance
-        // Full formatMessage() is called on finalization
-        textDiv.innerHTML = formatMessageLightweight(streamingContent);
+        // Use incremental formatting for live preview of tables, code, etc.
+        textDiv.innerHTML = formatMessageIncremental(streamingContent);
     }
 
     // Scroll to bottom
@@ -586,11 +586,122 @@ function updateStreamingDisplay() {
     container.scrollTop = container.scrollHeight;
 }
 
-// Lightweight formatting for streaming - minimal processing for speed
-function formatMessageLightweight(text) {
+// Incremental formatting for streaming - formats complete structures on-the-fly
+// Cache for incremental formatting to avoid re-processing
+let incrementalFormatCache = {
+    lastInput: '',
+    lastOutput: '',
+    completedBlocks: 0
+};
+
+function formatMessageIncremental(text) {
     if (!text) return '';
-    // Just escape HTML and preserve line breaks - skip expensive parsing
-    return escapeHtml(text).replace(/\n/g, '<br>');
+
+    // If text is shorter than cached (user edited/reset), clear cache
+    if (text.length < incrementalFormatCache.lastInput.length) {
+        incrementalFormatCache = { lastInput: '', lastOutput: '', completedBlocks: 0 };
+    }
+
+    // Quick check: if nothing changed, return cached
+    if (text === incrementalFormatCache.lastInput) {
+        return incrementalFormatCache.lastOutput;
+    }
+
+    // Split into complete lines and incomplete trailing line
+    const lines = text.split('\n');
+    const hasIncompleteLastLine = !text.endsWith('\n');
+    const incompleteLine = hasIncompleteLastLine ? lines.pop() : '';
+    const completeText = lines.join('\n');
+
+    // Format complete structures
+    let formatted = formatCompleteStructures(completeText);
+
+    // Append incomplete line as plain escaped text
+    if (incompleteLine) {
+        formatted += (formatted ? '<br>' : '') + escapeHtml(incompleteLine);
+    }
+
+    // Cache result
+    incrementalFormatCache.lastInput = text;
+    incrementalFormatCache.lastOutput = formatted;
+
+    return formatted;
+}
+
+// Format only complete markdown structures (tables, code blocks, lists, etc.)
+function formatCompleteStructures(text) {
+    if (!text) return '';
+
+    let result = text;
+
+    // Handle complete code blocks (``` ... ```)
+    const codeBlocks = [];
+    result = result.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+        const idx = codeBlocks.length;
+        codeBlocks.push(`<pre><code class="language-${lang || 'plaintext'}">${escapeHtml(code)}</code></pre>`);
+        return `__CODEBLOCK_${idx}__`;
+    });
+
+    // Handle incomplete code blocks - show as plain text with indicator
+    result = result.replace(/```(\w+)?\n([\s\S]*)$/g, (match, lang, code) => {
+        const idx = codeBlocks.length;
+        const langLabel = lang ? `<span class="code-lang">${lang}</span>` : '';
+        codeBlocks.push(`<pre class="streaming-code">${langLabel}<code>${escapeHtml(code)}</code><span class="code-cursor">▋</span></pre>`);
+        return `__CODEBLOCK_${idx}__`;
+    });
+
+    // Handle inline code
+    result = result.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+    // Escape HTML for remaining text (but preserve our placeholders)
+    const parts = result.split(/(__CODEBLOCK_\d+__)/);
+    result = parts.map(part => {
+        if (part.match(/__CODEBLOCK_\d+__/)) return part;
+        return escapeHtml(part);
+    }).join('');
+
+    // Handle complete tables (header + separator + at least one row)
+    result = result.replace(/^(\|.+\|)\n(\|[-:\s|]+\|)\n((?:\|.+\|\n?)+)/gm, (match, header, separator, body) => {
+        try {
+            const headerCells = header.split('|').filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join('');
+            const bodyRows = body.trim().split('\n').map(row => {
+                if (!row.includes('|')) return null;
+                const cells = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
+                return cells ? `<tr>${cells}</tr>` : null;
+            }).filter(Boolean).join('');
+            return `<table class="md-table"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>`;
+        } catch (e) {
+            return match;
+        }
+    });
+
+    // Headers
+    result = result.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+    result = result.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+    result = result.replace(/^# (.+)$/gm, '<h2>$1</h2>');
+
+    // Bold and Italic
+    result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
+
+    // Simple list handling
+    result = result.replace(/^[\s]*[-•]\s+(.+)$/gm, '<li class="stream-li">$1</li>');
+    result = result.replace(/^[\s]*(\d+)\.\s+(.+)$/gm, '<li class="stream-li-num">$1. $2</li>');
+
+    // Line breaks
+    result = result.replace(/\n/g, '<br>');
+
+    // Restore code blocks
+    codeBlocks.forEach((block, idx) => {
+        result = result.replace(`__CODEBLOCK_${idx}__`, block);
+    });
+
+    return result;
+}
+
+// Reset incremental format cache (call when starting new stream)
+function resetIncrementalFormatCache() {
+    incrementalFormatCache = { lastInput: '', lastOutput: '', completedBlocks: 0 };
 }
 
 // Finalize streaming message with complete formatted content
@@ -974,8 +1085,16 @@ const TOOL_CONFIG = {
 // Check if a result line indicates successful end of tool output
 function isSuccessEndLine(text) {
     const lower = text.toLowerCase();
-    const successKeywords = ['command completed', 'listed', 'read', 'process completed', 'wrote', 'edited', 'found'];
+    const successKeywords = ['command completed', 'listed', 'read', 'process completed', 'wrote', 'found'];
+    // Note: 'edited' removed - we want to continue capturing code diff lines after "Edited ... with X additions"
     return successKeywords.some(kw => lower.includes(kw));
+}
+
+// Check if a line looks like a code diff line (e.g., "589 + // comment" or "590 - old code")
+function isCodeDiffLine(text) {
+    const trimmed = text.trim();
+    // Match: number followed by + or - and then content
+    return /^\d+\s*[+-]\s+/.test(trimmed);
 }
 
 // Check if a result line indicates error start (we should collect more lines after this)
@@ -1064,6 +1183,10 @@ function parseToolBlocks(text) {
             let foundEndResult = false;
             i++;
 
+            // Track if this is an Edit File block with code diffs
+            let inCodeDiff = false;
+            let codeDiffLines = [];
+
             while (i < lines.length && !foundEndResult) {
                 const nextLine = lines[i];
                 const trimmed = nextLine.trim();
@@ -1091,8 +1214,14 @@ function parseToolBlocks(text) {
                         }
                     }
 
-                    // Only end on success keywords (not error)
-                    if (isSuccessEndLine(resultContent) && !hasError) {
+                    // Check if this is an "Edited" result - expect code diff lines to follow
+                    if (resultContent.toLowerCase().includes('edited') &&
+                        resultContent.toLowerCase().includes('additions')) {
+                        inCodeDiff = true;
+                    }
+
+                    // Only end on success keywords (not error) and not in code diff mode
+                    if (isSuccessEndLine(resultContent) && !hasError && !inCodeDiff) {
                         foundEndResult = true;
                     }
                     i++;
@@ -1103,9 +1232,19 @@ function parseToolBlocks(text) {
                 }
                 // Empty line
                 else if (trimmed === '') {
-                    if (resultLines.length > 0 && !inStackTrace) {
+                    // In code diff mode, empty line ends the diff section
+                    if (inCodeDiff && codeDiffLines.length > 0) {
+                        inCodeDiff = false;
                         break;
                     }
+                    if (resultLines.length > 0 && !inStackTrace && !inCodeDiff) {
+                        break;
+                    }
+                    i++;
+                }
+                // Code diff lines (e.g., "589 + // comment" or "590 - old code")
+                else if (inCodeDiff && isCodeDiffLine(trimmed)) {
+                    codeDiffLines.push(trimmed);
                     i++;
                 }
                 // If we're in a stack trace, collect continuation lines
@@ -1124,6 +1263,16 @@ function parseToolBlocks(text) {
                     commandLines.push(nextLine);
                     i++;
                 }
+                // In code diff mode but not a diff line - might be explanatory text, end block
+                else if (inCodeDiff) {
+                    // Check if it looks like explanatory text
+                    if (isExplanatoryText(trimmed)) {
+                        break;
+                    }
+                    // Otherwise treat as continuation of diff (wrapped lines)
+                    codeDiffLines.push(trimmed);
+                    i++;
+                }
                 // Text after results = end of block
                 else {
                     break;
@@ -1137,6 +1286,7 @@ function parseToolBlocks(text) {
                 icon: toolConfig.icon,
                 command: commandLines.join('\n').trim(),
                 results: resultLines,
+                codeDiff: codeDiffLines,
                 hasError: hasError
             });
             continue;
@@ -1165,7 +1315,14 @@ function renderToolBlock(tool) {
     const typeClass = `tool-${tool.toolType}`;
     const errorClass = tool.hasError ? ' has-error' : '';
     let html = `<div class="tool-block ${typeClass}${errorClass}">`;
-    html += `<div class="tool-header"><i class="fas ${tool.icon}"></i> ${tool.name}</div>`;
+    html += `<div class="tool-header"><i class="fas ${tool.icon}"></i> ${tool.name}`;
+    // Add copy button for Terminal blocks
+    if (tool.toolType === 'terminal') {
+        // Base64 encode the command to handle special characters
+        const encodedCommand = btoa(unescape(encodeURIComponent(tool.command)));
+        html += `<button class="tool-copy-btn" data-command="${encodedCommand}" title="Copy command"><i class="fas fa-copy"></i></button>`;
+    }
+    html += `</div>`;
     html += `<div class="tool-command"><code>${escapeHtml(tool.command)}</code></div>`;
 
     if (tool.results.length > 0) {
@@ -1200,6 +1357,29 @@ function renderToolBlock(tool) {
             html += `</div>`;
         }
     }
+
+    // Render code diff lines outside tool-block (after the yellow border ends)
+    if (tool.codeDiff && tool.codeDiff.length > 0) {
+        html += `</div>`; // Close tool-block first
+        html += `<div class="tool-code-diff-wrapper">`;
+        html += `<span class="diff-arrow">↳</span>`;
+        html += `<div class="tool-code-diff">`;
+        tool.codeDiff.forEach(line => {
+            const escaped = escapeHtml(line);
+            // Highlight additions (green) and removals (red)
+            if (/^\d+\s*\+/.test(line)) {
+                html += `<div class="diff-line diff-add">${escaped}</div>`;
+            } else if (/^\d+\s*-/.test(line)) {
+                html += `<div class="diff-line diff-remove">${escaped}</div>`;
+            } else {
+                html += `<div class="diff-line">${escaped}</div>`;
+            }
+        });
+        html += `</div>`;
+        html += `</div>`;
+        return html; // Already closed tool-block
+    }
+
     html += `</div>`;
     return html;
 }
@@ -1208,6 +1388,38 @@ function renderToolBlock(tool) {
 function escapeHtml(text) {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
+
+// Copy tool command to clipboard
+function copyToolCommand(btn) {
+    const encodedCommand = btn.getAttribute('data-command');
+    if (!encodedCommand) return;
+
+    // Decode from base64
+    const command = decodeURIComponent(escape(atob(encodedCommand)));
+
+    navigator.clipboard.writeText(command).then(() => {
+        // Show success feedback
+        const icon = btn.querySelector('i');
+        icon.className = 'fas fa-check';
+        btn.classList.add('copied');
+        setTimeout(() => {
+            icon.className = 'fas fa-copy';
+            btn.classList.remove('copied');
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+    });
+}
+
+// Add event delegation for copy buttons
+document.addEventListener('click', function(e) {
+    const copyBtn = e.target.closest('.tool-copy-btn');
+    if (copyBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        copyToolCommand(copyBtn);
+    }
+});
 
 // Clean garbage characters from terminal output
 function cleanGarbageCharacters(text) {
