@@ -167,8 +167,26 @@ class AuggieSession:
         return drained
 
 
+def _is_app_spawned_process(pid):
+    """Check if a process was spawned by this app by looking for AUGMENT_WORKSPACE env var."""
+    try:
+        env_path = f'/proc/{pid}/environ'
+        if os.path.exists(env_path):
+            with open(env_path, 'rb') as f:
+                env_data = f.read().decode('utf-8', errors='ignore')
+                # Environment variables are null-separated
+                return 'AUGMENT_WORKSPACE=' in env_data
+    except (PermissionError, FileNotFoundError, OSError):
+        pass
+    return False
+
+
 def _get_auggie_processes():
-    """Get list of running auggie processes with their PIDs and start times."""
+    """Get list of running auggie processes with their PIDs and start times.
+
+    Only returns processes that were spawned by this app (have AUGMENT_WORKSPACE env var).
+    This prevents killing user-started auggie processes in their terminal.
+    """
     try:
         # Use ps to get auggie processes with start time
         result = subprocess.run(
@@ -184,6 +202,13 @@ def _get_auggie_processes():
                         pid = int(parts[0])
                         elapsed_seconds = int(parts[1])  # Time since process started
                         cmd = parts[2]
+
+                        # Only consider processes spawned by this app
+                        # Skip user-started auggie processes in their terminal
+                        if not _is_app_spawned_process(pid):
+                            log.debug(f"[CLEANUP] Skipping PID {pid}: not app-spawned (user terminal)")
+                            continue
+
                         processes.append({
                             'pid': pid,
                             'elapsed_seconds': elapsed_seconds,

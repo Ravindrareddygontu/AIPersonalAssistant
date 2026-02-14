@@ -18,6 +18,11 @@ def _log_request(method, url, body=None):
     log.info(f"[REQUEST] {method} {url} | Body: {body_str}")
 
 
+def _log_response(method, url, status, body=None):
+    body_str = json.dumps(body)[:500] if body else 'None'
+    log.info(f"[RESPONSE] {method} {url} | Status: {status} | Body: {body_str}")
+
+
 @notifications_bp.route('/api/reminders', methods=['GET'])
 def list_reminders():
     """Get all reminders."""

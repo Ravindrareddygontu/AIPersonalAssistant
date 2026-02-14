@@ -379,8 +379,14 @@ class StreamGenerator:
 
         # Response started but no end pattern yet - wait for signal
         if state.saw_response_marker:
-            # Long fallback timeout - should rarely trigger if end detection works
-            fallback_timeout = 45.0  # 45 seconds - generous fallback
+            # If content looks complete AND no new data for a while, end it
+            # This handles cases where end pattern detection fails
+            if state.content_looks_complete() and state.elapsed_since_data > 3.0:
+                _log(f"Exit: content complete + {state.elapsed_since_data:.1f}s data silence")
+                return True
+
+            # Shorter fallback timeout when no data is coming
+            fallback_timeout = 10.0  # 10 seconds - reasonable fallback
             if state.elapsed_since_data > fallback_timeout:
                 _log(f"Exit: fallback timeout, {state.elapsed_since_data:.1f}s data silence (no end signal)")
                 return True

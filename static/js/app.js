@@ -720,14 +720,21 @@ function formatCompleteStructures(text) {
     result = result.replace(/^[\s]*[-•]\s+(.+)$/gm, '<li class="stream-li">$1</li>');
     result = result.replace(/^[\s]*(\d+)\.\s+(.+)$/gm, '<li class="stream-li-num">$1. $2</li>');
 
-    // Terminal-style bullet points: convert plain text lines to bullet points
-    // Skip lines that are already formatted (headers, list items, code, tables, etc.)
+    // Terminal-style bullet points: add ~ only to the FIRST line of each paragraph
+    // Skip lines that are already formatted or are continuations of previous lines
     const lines = result.split('\n');
+    let prevWasEmpty = true;  // Track if previous line was empty (for paragraph detection)
     const formattedLines = lines.map((line, idx) => {
         const trimmed = line.trim();
-        // Skip empty lines, headers, existing list items, code blocks, tables
-        if (!trimmed ||
-            trimmed.startsWith('<h') ||
+
+        // Skip empty lines (mark for next iteration)
+        if (!trimmed) {
+            prevWasEmpty = true;
+            return line;
+        }
+
+        // Skip already formatted elements
+        if (trimmed.startsWith('<h') ||
             trimmed.startsWith('<li') ||
             trimmed.startsWith('<table') ||
             trimmed.startsWith('<tr') ||
@@ -736,10 +743,18 @@ function formatCompleteStructures(text) {
             trimmed.startsWith('__CODEBLOCK_') ||
             trimmed.startsWith('|') ||
             trimmed.match(/^[-=]{3,}$/)) {
+            prevWasEmpty = false;
             return line;
         }
-        // Convert plain text to terminal-style bullet point
-        return `<span class="stream-bullet">~</span> ${line}`;
+
+        // Only add bullet to FIRST line of a paragraph (after empty line or at start)
+        const shouldAddBullet = prevWasEmpty;
+        prevWasEmpty = false;
+
+        if (shouldAddBullet) {
+            return `<span class="stream-bullet">~</span> ${line}`;
+        }
+        return line;
     });
     result = formattedLines.join('\n');
 
@@ -1628,7 +1643,6 @@ function formatMessage(text) {
     text = rebuiltLines.join('\n');
 
     // Tables - detect and convert markdown tables (improved to handle more formats)
-    // First, normalize tables that might have broken lines
     text = text.replace(/^(\|.+\|)\n(\|[-:\s|]+\|)\n((?:\|.+\|\n?)+)/gm, (match, header, separator, body) => {
         try {
             const headerCells = header.split('|').filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join('');
