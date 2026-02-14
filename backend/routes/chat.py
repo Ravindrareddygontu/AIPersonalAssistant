@@ -165,33 +165,39 @@ class StreamGenerator:
         log.info(f"Session: is_new={is_new}, initialized={session.initialized}")
 
         with session.lock:
-            # Initialize or reconnect session if needed
-            init_result = yield from self._ensure_session_ready(session, is_new)
-            if not init_result:
-                yield self.sse.send({'type': 'done'})
-                return
+            # Mark session as in use (terminal open) to prevent cleanup during streaming
+            session.in_use = True
+            try:
+                # Initialize or reconnect session if needed
+                init_result = yield from self._ensure_session_ready(session, is_new)
+                if not init_result:
+                    yield self.sse.send({'type': 'done'})
+                    return
 
-            if not session.master_fd:
-                log.error("No master_fd available")
-                yield self.sse.send({'type': 'error', 'message': 'No connection available'})
-                yield self.sse.send({'type': 'done'})
-                return
+                if not session.master_fd:
+                    log.error("No master_fd available")
+                    yield self.sse.send({'type': 'error', 'message': 'No connection available'})
+                    yield self.sse.send({'type': 'done'})
+                    return
 
-            # Send message
-            yield self.sse.send({'type': 'status', 'message': 'Sending your message...'})
-            if not self.session_handler.send_message(session, self.message):
-                yield self.sse.send({'type': 'error', 'message': 'Connection lost. Please try again.'})
-                yield self.sse.send({'type': 'done'})
-                return
+                # Send message
+                yield self.sse.send({'type': 'status', 'message': 'Sending your message...'})
+                if not self.session_handler.send_message(session, self.message):
+                    yield self.sse.send({'type': 'error', 'message': 'Connection lost. Please try again.'})
+                    yield self.sse.send({'type': 'done'})
+                    return
 
-            # Save question to database
-            if self.repository:
-                self.message_id = self.repository.save_question(self.message)
+                # Save question to database
+                if self.repository:
+                    self.message_id = self.repository.save_question(self.message)
 
-            # Stream response
-            state = self._create_initial_state(session)
-            yield self.sse.send({'type': 'status', 'message': 'Waiting for AI response...'})
-            yield from self._stream_response(session, state)
+                # Stream response
+                state = self._create_initial_state(session)
+                yield self.sse.send({'type': 'status', 'message': 'Waiting for AI response...'})
+                yield from self._stream_response(session, state)
+            finally:
+                # Clear in_use flag when streaming is complete (or on error)
+                session.in_use = False
 
     def _ensure_session_ready(self, session, is_new: bool):
         """Ensure session is ready for use."""
@@ -294,13 +300,25 @@ class StreamGenerator:
         """Check if we've seen the message echo in output."""
         # Use sanitized message (same sanitization as send_message) since that's what's sent to terminal
         sanitized = _sanitize_message(self.message)
-        msg_prefix = sanitized[:50] if len(sanitized) > 50 else sanitized
-        if msg_prefix in clean:
-            msg_pos = clean.rfind(msg_prefix)
-            state.mark_message_echo_found(msg_pos)
-            log.info(f"Message echo found at position {msg_pos}")
-        elif not state._logged_no_echo and len(clean) > 500:
-            log.info(f"Waiting for message echo: {repr(msg_prefix[:30])}")
+
+        # Try progressively shorter prefixes for more robust matching
+        for prefix_len in [50, 30, 20, 15]:
+            msg_prefix = sanitized[:prefix_len] if len(sanitized) > prefix_len else sanitized
+            if msg_prefix in clean:
+                msg_pos = clean.rfind(msg_prefix)
+                state.mark_message_echo_found(msg_pos)
+                log.info(f"Message echo found at position {msg_pos} (prefix_len={prefix_len})")
+                return
+
+        # Fallback: if we have significant output and time has passed, assume echo was missed
+        # This prevents getting stuck waiting for echo that might be garbled by terminal
+        if len(clean) > 1000 and state.elapsed_since_message > 5.0:
+            log.warning(f"Message echo not found after 5s with {len(clean)} chars, proceeding anyway")
+            state.mark_message_echo_found(0)  # Start from beginning
+            return
+
+        if not state._logged_no_echo and len(clean) > 500:
+            log.info(f"Waiting for message echo: {repr(sanitized[:30])}")
             state._logged_no_echo = True
 
     def _process_content(self, clean: str, state: StreamState):
@@ -316,51 +334,58 @@ class StreamGenerator:
             state.update_content_time()
             state.end_pattern_seen = False
 
+            # Store the FULL content before streaming (important for content_looks_complete)
+            # This includes partial last line that hasn't been streamed yet
+            state.current_full_content = content
+
             if not state.streaming_started:
                 state.mark_streaming_started()
                 log.info(f"Streaming started, content length={len(content)}")
                 yield self.sse.send({'type': 'stream_start'})
 
-            # Send delta
+            # Send delta (only complete lines are streamed, partial line is buffered)
             delta = state.update_streamed_content(content)
             if delta:
                 yield self.sse.send({'type': 'stream', 'content': delta})
 
-        # Check for end pattern
+        # Check for end pattern (uses state.current_full_content for content_looks_complete)
         if self.processor.check_end_pattern(clean, state):
             state.end_pattern_seen = True
 
 
     def _should_exit(self, state: StreamState) -> bool:
-        """Check if we should exit the stream loop."""
-        # End pattern detected with content silence (fast path)
-        if state.end_pattern_seen and state.elapsed_since_content > self.END_PATTERN_SILENCE:
-            _log(f"Exit: end_pattern_seen, {state.elapsed_since_content:.1f}s silence")
+        """
+        Check if we should exit the stream loop.
+
+        Priority:
+        1. End pattern detected (empty input prompt) = DEFINITIVE signal, exit immediately
+        2. Fallback timeouts for edge cases where signal detection might fail
+        """
+        # PRIMARY EXIT: End pattern detected (empty prompt = auggie ready for next input)
+        # This is THE definitive signal that the response is complete
+        if state.end_pattern_seen:
+            _log(f"Exit: end_pattern_seen (auggie ready for input)")
             return True
 
-        # Streaming started with content silence - adaptive timeout
-        if state.streaming_started and state.elapsed_since_content > self.CONTENT_SILENCE_TIMEOUT:
-            # Check if content looks complete for fast exit
-            if state.content_looks_complete():
-                _log(f"Exit: streaming_started, {state.elapsed_since_content:.1f}s silence, content complete")
+        # FALLBACK EXITS: Only used when end pattern detection might have failed
+        # These should be generous to avoid cutting off responses
+
+        # Tools executing - use very long timeout
+        if state.is_tool_executing():
+            if state.elapsed_since_content > self.CONTENT_SILENCE_EXTENDED:
+                _log(f"Exit: tool execution, {state.elapsed_since_content:.1f}s extended silence")
                 return True
-            # Check if tools are executing - use extended timeout
-            elif state.is_tool_executing():
-                if state.elapsed_since_content > self.CONTENT_SILENCE_EXTENDED:
-                    _log(f"Exit: streaming_started, {state.elapsed_since_content:.1f}s extended silence (tools)")
-                    return True
-            else:
-                # Content incomplete - wait longer to avoid cutting off mid-sentence
-                if state.elapsed_since_content > self.CONTENT_SILENCE_INCOMPLETE:
-                    _log(f"Exit: streaming_started, {state.elapsed_since_content:.1f}s silence (incomplete)")
-                    return True
+            return False  # Keep waiting for tools
 
-        # Response marker seen but no data - reduced timeout
-        if state.saw_response_marker and state.elapsed_since_data > self.RESPONSE_MARKER_TIMEOUT:
-            _log(f"Exit: saw_response_marker, {state.elapsed_since_data:.1f}s data silence")
-            return True
+        # Response started but no end pattern yet - wait for signal
+        if state.saw_response_marker:
+            # Long fallback timeout - should rarely trigger if end detection works
+            fallback_timeout = 45.0  # 45 seconds - generous fallback
+            if state.elapsed_since_data > fallback_timeout:
+                _log(f"Exit: fallback timeout, {state.elapsed_since_data:.1f}s data silence (no end signal)")
+                return True
 
-        # Timeout waiting for response marker
+        # Timeout waiting for response marker (auggie hasn't started responding)
         if state.saw_message_echo and not state.saw_response_marker:
             wait_time = int(state.elapsed_since_message)
             if state.should_log_wait(wait_time) and wait_time % 10 == 0:
@@ -398,7 +423,9 @@ class StreamGenerator:
         relevant_output = clean_all[state.output_start_pos:] if state.output_start_pos > 0 else clean_all
         response_text = ResponseExtractor.extract_full(relevant_output, self.message)
 
-        raw_content = state.last_streamed_content or response_text
+        # Use current_full_content (includes partial last line) over last_streamed_content
+        # This ensures we don't lose content that was being buffered
+        raw_content = state.current_full_content or state.last_streamed_content or response_text
         raw_content = ContentCleaner.strip_previous_response(raw_content, state.prev_response)
 
         # Clean the content
@@ -496,7 +523,12 @@ def chat_reset():
 
     log.info(f"[REQUEST] POST /api/chat/reset | workspace: '{workspace}'")
 
-    SessionManager.reset(workspace)
+    reset_success = SessionManager.reset(workspace)
+
+    if not reset_success:
+        response_data = {'status': 'error', 'message': 'Cannot reset: terminal is currently in use'}
+        log.info(f"[RESPONSE] POST /api/chat/reset | Status: 409 | {response_data}")
+        return jsonify(response_data), 409
 
     response_data = {'status': 'ok', 'message': 'Session reset successfully'}
     log.info(f"[RESPONSE] POST /api/chat/reset | Status: 200 | {response_data}")

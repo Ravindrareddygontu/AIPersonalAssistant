@@ -19,6 +19,20 @@ class StreamProcessor:
     END_PATTERN_PROMPT = re.compile(r'│ ›\s*│')
     END_PATTERN_BOX = re.compile(r'╰─+╯')
 
+    # Activity indicators - if present, auggie is still working (don't end yet)
+    # These appear in the terminal when auggie is processing/generating
+    ACTIVITY_INDICATORS = [
+        'Sending request',
+        'esc to interrupt',
+        'Processing response',
+        'Executing tools',
+        'Summarizing',
+        'summarizing',
+        'Thinking',
+        'thinking...',
+        '▇▇▇',  # Progress bar
+    ]
+
     def __init__(self, user_message: str):
         self.user_message = user_message
         # Use shorter prefix for matching (terminal may wrap long messages)
@@ -134,36 +148,89 @@ class StreamProcessor:
             return True
         return False
 
+    def _has_activity_indicator(self, text: str) -> bool:
+        """Check if terminal output shows auggie is still working."""
+        # Look at the end of the text where activity indicators would appear
+        check_section = text[-500:] if len(text) > 500 else text
+        for indicator in self.ACTIVITY_INDICATORS:
+            if indicator in check_section:
+                return True
+        return False
+
     def check_end_pattern(self, clean_output: str, state: StreamState) -> bool:
         """
         Check if we've reached the end of the response.
-        
+
+        The definitive signal that auggie finished is when it shows an EMPTY input prompt:
+        │ ›                                                                          │
+        ╰────────────────────────────────────────────────────────────────────────────╯
+
+        This means auggie is waiting for the next input, i.e., response is complete.
+
+        IMPORTANT: We also check:
+        1. If activity indicators are present (Sending request..., etc.) - NOT complete
+        2. If the content looks complete (has proper ending punctuation)
+
+        This prevents cutting off responses that are still being generated.
+
         Args:
             clean_output: ANSI-stripped terminal output
             state: Current stream state
-            
+
         Returns:
-            True if end pattern detected with substantial content
+            True if end pattern detected (empty prompt ready for input)
         """
         if not state.streaming_started or not state.saw_response_marker:
             return False
 
-        # Only look in NEW output section
+        # Only look in NEW output section, focus on the end
         search_output = clean_output[state.output_start_pos:]
-        after_response = (
-            search_output[search_output.rfind('●'):] 
-            if '●' in search_output 
-            else search_output[-500:]
-        )
 
-        end_prompt = self.END_PATTERN_PROMPT.search(after_response)
-        end_box = self.END_PATTERN_BOX.search(
-            after_response[-300:] if len(after_response) > 300 else after_response
-        )
+        # Look at the last portion where end pattern would appear
+        last_section = search_output[-800:] if len(search_output) > 800 else search_output
 
-        # Require substantial content and complete-looking response
-        if (end_prompt or end_box) and state.has_substantial_content() and state.content_looks_complete():
-            return True
+        # FIRST CHECK: If activity indicators present, auggie is still working - don't end
+        if self._has_activity_indicator(last_section):
+            log.debug("[END_DETECT] Activity indicator found - auggie still working")
+            return False
+
+        # The DEFINITIVE end signal: empty input prompt box
+        # Pattern: │ ›  followed by mostly spaces and ending with │
+        # This indicates auggie is ready for next input = response complete
+        empty_prompt_pattern = re.compile(r'│ ›\s{20,}│')
+
+        if empty_prompt_pattern.search(last_section):
+            # Found empty prompt pattern, but verify the content is actually complete
+            # This prevents cutting off responses when the prompt briefly appears mid-generation
+            if state.content_looks_complete():
+                log.info("[END_DETECT] Found empty input prompt with complete content - response complete")
+                return True
+            else:
+                # Content doesn't look complete yet - might be mid-sentence
+                # Log but don't trigger end yet - wait for content to look complete
+                log.debug("[END_DETECT] Found empty prompt but content looks incomplete, waiting...")
+
+        # Secondary check: Look for the COMPLETE end sequence:
+        # 1. Empty prompt line: │ ›  (spaces) │
+        # 2. Followed by box bottom: ╰───...───╯
+        # This is more strict to avoid false positives from box characters mid-response
+        if state.has_substantial_content(min_length=100, min_time=3.0):
+            # Look for the complete end sequence in the very last part
+            end_section = last_section[-400:] if len(last_section) > 400 else last_section
+
+            # Pattern: prompt line followed by box bottom (the actual end of auggie UI)
+            # Must have BOTH the prompt pattern AND box bottom in correct sequence
+            prompt_match = self.END_PATTERN_PROMPT.search(end_section)
+            box_match = self.END_PATTERN_BOX.search(end_section)
+
+            if prompt_match and box_match:
+                # Ensure box bottom comes AFTER or near the prompt (within 100 chars)
+                # This prevents false positives from box characters appearing earlier
+                if box_match.start() >= prompt_match.start() - 50:
+                    # Additional check: content should look complete (has ending punctuation)
+                    if state.content_looks_complete():
+                        log.info("[END_DETECT] Found prompt + box bottom sequence with complete content")
+                        return True
 
         return False
 

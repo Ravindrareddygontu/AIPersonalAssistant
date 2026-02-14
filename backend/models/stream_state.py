@@ -31,6 +31,7 @@ class StreamState:
     
     # Content tracking
     last_streamed_content: str = ''
+    current_full_content: str = ''  # Full content from process_chunk (may include partial last line)
     streamed_length: int = 0
     output_start_pos: int = 0
     
@@ -183,8 +184,16 @@ class StreamState:
         return False
 
     def content_looks_complete(self) -> bool:
-        """Check if content looks like a complete response."""
-        content = self.last_streamed_content
+        """Check if content looks like a complete response.
+
+        IMPORTANT: Uses current_full_content (the actual full content being processed)
+        rather than last_streamed_content (which only contains complete lines that have
+        been streamed). This prevents false positives where the last complete line ends
+        with punctuation but there's more partial content that hasn't been streamed yet.
+        """
+        # Use current_full_content (most recent full content) if available,
+        # otherwise fall back to last_streamed_content
+        content = self.current_full_content or self.last_streamed_content
         if not content:
             return False
 

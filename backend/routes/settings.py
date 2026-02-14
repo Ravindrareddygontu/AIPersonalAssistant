@@ -78,7 +78,11 @@ def reset_session():
     data = request.json or {}
     _log_request('POST', url, data)
     workspace = os.path.expanduser(data.get('workspace', settings.workspace))
-    SessionManager.reset(workspace)
+    reset_success = SessionManager.reset(workspace)
+    if not reset_success:
+        response_data = {'status': 'error', 'message': 'Cannot reset: terminal is in use'}
+        _log_response('POST', url, 409, response_data)
+        return jsonify(response_data), 409
     response_data = {'status': 'success', 'message': 'Session reset'}
     _log_response('POST', url, 200, response_data)
     return jsonify(response_data)

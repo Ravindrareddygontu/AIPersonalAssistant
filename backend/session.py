@@ -34,6 +34,7 @@ class AuggieSession:
         self.initialized = False
         self.last_response = ""
         self.last_message = ""
+        self.in_use = False  # Track if terminal is actively being used (streaming)
 
     def start(self):
         master_fd, slave_fd = pty.openpty()
@@ -216,19 +217,26 @@ def cleanup_stale_auggie_processes(force_aggressive=False):
     if not processes:
         return 0
 
+    # Log tracked vs all processes for debugging
+    all_pids = [p['pid'] for p in processes]
+    log.info(f"[CLEANUP] All auggie PIDs: {all_pids}, Tracked PIDs: {tracked_pids}")
+
     killed_count = 0
     current_time = time.time()
 
     # Sort by elapsed time (oldest first)
     processes.sort(key=lambda p: p['elapsed_seconds'], reverse=True)
 
-    for proc in processes:
+    # Get only untracked processes for cleanup consideration
+    untracked_processes = [p for p in processes if p['pid'] not in tracked_pids]
+
+    if not untracked_processes:
+        log.debug("[CLEANUP] No untracked processes to clean up")
+        return 0
+
+    for proc in untracked_processes:
         pid = proc['pid']
         elapsed_minutes = proc['elapsed_minutes']
-
-        # Skip if this is a tracked session
-        if pid in tracked_pids:
-            continue
 
         should_kill = False
         reason = ""
@@ -238,13 +246,13 @@ def cleanup_stale_auggie_processes(force_aggressive=False):
             should_kill = True
             reason = f"older than {STALE_PROCESS_AGE_MINUTES} minutes ({elapsed_minutes:.1f}m)"
 
-        # Kill if we have too many auggie processes (keep newest ones)
-        elif len(processes) > MAX_AUGGIE_PROCESSES:
-            # This process is among the oldest and we have too many
-            oldest_untracked = [p for p in processes if p['pid'] not in tracked_pids]
-            if oldest_untracked and pid in [p['pid'] for p in oldest_untracked[:-MAX_AUGGIE_PROCESSES]]:
+        # Kill if we have too many UNTRACKED auggie processes (keep newest ones)
+        # Only count untracked processes toward the limit - tracked ones are actively managed
+        elif len(untracked_processes) > MAX_AUGGIE_PROCESSES:
+            # Sort untracked by age (oldest first) and kill the oldest ones
+            if pid in [p['pid'] for p in untracked_processes[:-MAX_AUGGIE_PROCESSES]]:
                 should_kill = True
-                reason = f"too many auggie processes ({len(processes)} running)"
+                reason = f"too many untracked auggie processes ({len(untracked_processes)} untracked, {len(processes)} total)"
 
         # Aggressive mode: kill anything not tracked that's older than 10 minutes
         elif force_aggressive and elapsed_minutes > 10:
@@ -339,6 +347,16 @@ class SessionManager:
         with _lock:
             now = time.time()
             for ws in [w for w, s in _sessions.items() if now - s.last_used > 600]:
+                # Don't delete sessions that have an active terminal open (in_use)
+                if _sessions[ws].in_use:
+                    log.info(f"[CLEANUP] Skipping session {ws}: terminal is in use")
+                    continue
+                # Don't delete sessions where the process is still alive - user may return
+                # Only delete sessions where the process has died
+                if _sessions[ws].is_alive():
+                    log.info(f"[CLEANUP] Skipping session {ws}: process still alive (PID: {_sessions[ws].process.pid})")
+                    continue
+                log.info(f"[CLEANUP] Cleaning up dead session {ws}")
                 _sessions[ws].cleanup()
                 del _sessions[ws]
 
@@ -347,14 +365,23 @@ class SessionManager:
 
     @staticmethod
     def reset(workspace):
-        """Reset session for a workspace and clean up stale processes."""
+        """Reset session for a workspace and clean up stale processes.
+
+        Returns:
+            bool: True if reset was performed, False if skipped due to active terminal
+        """
         with _lock:
             if workspace in _sessions:
+                # Don't reset if terminal is actively in use
+                if _sessions[workspace].in_use:
+                    log.warning(f"[RESET] Cannot reset session {workspace}: terminal is in use")
+                    return False
                 _sessions[workspace].cleanup()
                 del _sessions[workspace]
 
         # Aggressively clean up stale processes on reset
         cleanup_stale_auggie_processes(force_aggressive=True)
+        return True
 
     @staticmethod
     def get_process_info():
