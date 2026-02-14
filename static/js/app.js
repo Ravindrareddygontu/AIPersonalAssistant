@@ -9,6 +9,7 @@ let availableModels = [];
 let browserCurrentPath = '';
 let sidebarOpen = true;
 let currentAbortController = null;
+let historyEnabled = true;  // Global toggle for chat history storage
 
 // Network request/response logger
 function logRequest(method, url, body = null) {
@@ -116,8 +117,35 @@ async function loadSettingsFromServer() {
             availableModels = data.available_models;
             populateModelSelect();
         }
+        // Handle history_enabled setting
+        if (typeof data.history_enabled !== 'undefined') {
+            historyEnabled = data.history_enabled;
+            updateHistoryToggle();
+            updateSidebarVisibility();
+        }
     } catch (error) {
         console.error('Failed to load settings:', error);
+    }
+}
+
+// Update history toggle checkbox state
+function updateHistoryToggle() {
+    const toggle = document.getElementById('historyToggle');
+    if (toggle) {
+        toggle.checked = historyEnabled;
+    }
+}
+
+// Show/hide sidebar based on history setting
+function updateSidebarVisibility() {
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar) {
+        if (historyEnabled) {
+            sidebar.style.display = '';
+            sidebar.classList.remove('history-disabled');
+        } else {
+            sidebar.classList.add('history-disabled');
+        }
     }
 }
 
@@ -1863,13 +1891,15 @@ async function saveSettings() {
     console.log('[saveSettings] Called');
     const workspaceInput = document.getElementById('workspaceInput');
     const modelSelect = document.getElementById('modelSelect');
+    const historyToggle = document.getElementById('historyToggle');
 
     const workspace = workspaceInput?.value.trim() || currentWorkspace;
     const model = modelSelect?.value || currentModel;
-    console.log('[saveSettings] Saving workspace:', workspace, 'model:', model);
+    const history_enabled = historyToggle?.checked ?? historyEnabled;
+    console.log('[saveSettings] Saving workspace:', workspace, 'model:', model, 'history_enabled:', history_enabled);
 
     const url = '/api/settings';
-    const requestBody = { workspace, model };
+    const requestBody = { workspace, model, history_enabled };
     logRequest('POST', url, requestBody);
 
     try {
@@ -1884,8 +1914,10 @@ async function saveSettings() {
         if (data.status === 'success') {
             currentWorkspace = data.workspace || workspace;
             currentModel = data.model || model;
+            historyEnabled = data.history_enabled ?? history_enabled;
             localStorage.setItem('workspace', currentWorkspace);
             updateWorkspaceDisplay();
+            updateSidebarVisibility();
             showNotification('Settings saved!');
             toggleSettings();
         } else {
@@ -2299,3 +2331,260 @@ document.addEventListener('click', function(e) {
     }
 });
 
+// ==================== REMINDERS ====================
+
+let reminders = [];
+let reminderTimers = {}; // Store setTimeout handles by reminder ID
+
+// Day name to JS day number (0=Sunday, 1=Monday, etc.)
+const DAY_TO_NUM = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+const NUM_TO_DAY = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+// Load reminders from server
+async function loadReminders() {
+    const url = '/api/reminders';
+    logRequest('GET', url);
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        logResponse('GET', url, response.status, data);
+        reminders = data;
+        renderReminders();
+        scheduleAllReminders();
+    } catch (error) {
+        console.error('Failed to load reminders:', error);
+    }
+}
+
+// Calculate ms until next trigger for a reminder
+function getMsUntilNextTrigger(reminder) {
+    if (!reminder.enabled) return null;
+
+    const [hour, minute] = reminder.time.split(':').map(Number);
+    const now = new Date();
+    const currentDay = now.getDay();
+
+    // Check each day starting from today
+    for (let i = 0; i < 7; i++) {
+        const checkDay = (currentDay + i) % 7;
+        const dayName = NUM_TO_DAY[checkDay];
+
+        if (reminder.days.includes(dayName)) {
+            const triggerDate = new Date(now);
+            triggerDate.setDate(now.getDate() + i);
+            triggerDate.setHours(hour, minute, 0, 0);
+
+            const msUntil = triggerDate.getTime() - now.getTime();
+            if (msUntil > 0) {
+                return msUntil;
+            }
+        }
+    }
+    return null;
+}
+
+// Schedule a single reminder
+function scheduleReminder(reminder) {
+    // Clear existing timer
+    if (reminderTimers[reminder.id]) {
+        clearTimeout(reminderTimers[reminder.id]);
+        delete reminderTimers[reminder.id];
+    }
+
+    if (!reminder.enabled) return;
+
+    const msUntil = getMsUntilNextTrigger(reminder);
+    if (msUntil === null) return;
+
+    console.log(`[Reminder] Scheduled "${reminder.title}" in ${Math.round(msUntil / 60000)} minutes`);
+
+    reminderTimers[reminder.id] = setTimeout(() => {
+        showDesktopNotification(reminder.title, reminder.message || 'Reminder!');
+        // Reschedule for next occurrence
+        scheduleReminder(reminder);
+    }, msUntil);
+}
+
+// Schedule all reminders
+function scheduleAllReminders() {
+    // Clear all existing timers
+    Object.keys(reminderTimers).forEach(id => {
+        clearTimeout(reminderTimers[id]);
+    });
+    reminderTimers = {};
+
+    // Schedule enabled reminders
+    reminders.filter(r => r.enabled).forEach(scheduleReminder);
+}
+
+// Render reminders list
+function renderReminders() {
+    const list = document.getElementById('remindersList');
+    if (!list) return;
+
+    if (reminders.length === 0) {
+        list.innerHTML = '<div class="no-reminders">No reminders yet</div>';
+        return;
+    }
+
+    list.innerHTML = reminders.map(r => `
+        <div class="reminder-item ${r.enabled ? '' : 'disabled'}" data-id="${r.id}">
+            <div class="reminder-info">
+                <div class="reminder-title">${escapeHtml(r.title)}</div>
+                <div class="reminder-details">${r.time} • ${r.days.join(', ')}</div>
+            </div>
+            <div class="reminder-actions">
+                <button onclick="toggleReminder('${r.id}')" title="${r.enabled ? 'Disable' : 'Enable'}">
+                    <i class="fas fa-${r.enabled ? 'pause' : 'play'}"></i>
+                </button>
+                <button class="delete" onclick="deleteReminder('${r.id}')" title="Delete">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Add a new reminder
+async function addReminder() {
+    const titleInput = document.getElementById('reminderTitle');
+    const messageInput = document.getElementById('reminderMessage');
+    const timeInput = document.getElementById('reminderTime');
+    const dayCheckboxes = document.querySelectorAll('.day-checkbox input:checked');
+
+    const title = titleInput?.value.trim();
+    if (!title) {
+        showNotification('Please enter a reminder title');
+        return;
+    }
+
+    const days = Array.from(dayCheckboxes).map(cb => cb.value);
+    if (days.length === 0) {
+        showNotification('Please select at least one day');
+        return;
+    }
+
+    const url = '/api/reminders';
+    const requestBody = {
+        title: title,
+        message: messageInput?.value.trim() || '',
+        time: timeInput?.value || '09:00',
+        days: days
+    };
+    logRequest('POST', url, requestBody);
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+        const data = await response.json();
+        logResponse('POST', url, response.status, data);
+
+        if (response.ok) {
+            // Clear form
+            titleInput.value = '';
+            messageInput.value = '';
+            timeInput.value = '09:00';
+
+            await loadReminders();
+            showNotification('Reminder added!');
+        } else {
+            showNotification('Error adding reminder');
+        }
+    } catch (error) {
+        console.error('Failed to add reminder:', error);
+        showNotification('Error adding reminder');
+    }
+}
+
+// Toggle reminder enabled state
+async function toggleReminder(id) {
+    const url = `/api/reminders/${id}/toggle`;
+    logRequest('POST', url);
+
+    try {
+        const response = await fetch(url, { method: 'POST' });
+        const data = await response.json();
+        logResponse('POST', url, response.status, data);
+
+        if (response.ok) {
+            await loadReminders();
+        }
+    } catch (error) {
+        console.error('Failed to toggle reminder:', error);
+    }
+}
+
+// Delete a reminder
+async function deleteReminder(id) {
+    const url = `/api/reminders/${id}`;
+    logRequest('DELETE', url);
+
+    try {
+        const response = await fetch(url, { method: 'DELETE' });
+        const data = await response.json();
+        logResponse('DELETE', url, response.status, data);
+
+        if (response.ok) {
+            await loadReminders();
+            showNotification('Reminder deleted');
+        }
+    } catch (error) {
+        console.error('Failed to delete reminder:', error);
+    }
+}
+
+// Show desktop notification
+function showDesktopNotification(title, message) {
+    // Try to use Electron notification if available
+    if (window.electronAPI?.showNotification) {
+        window.electronAPI.showNotification(title, message);
+        return;
+    }
+
+    // Fall back to browser Notification API
+    if ('Notification' in window) {
+        if (Notification.permission === 'granted') {
+            new Notification(title, { body: message, icon: '/static/icon.png' });
+        } else if (Notification.permission !== 'denied') {
+            Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                    new Notification(title, { body: message, icon: '/static/icon.png' });
+                }
+            });
+        }
+    }
+
+    // Also show in-app notification
+    showNotification(`🔔 ${title}: ${message}`);
+}
+
+// Load reminders when settings modal opens
+const originalToggleSettings = window.toggleSettings;
+window.toggleSettings = function() {
+    const modal = document.getElementById('settingsModal');
+    const wasActive = modal?.classList.contains('active');
+
+    if (typeof originalToggleSettings === 'function') {
+        originalToggleSettings();
+    } else {
+        modal?.classList.toggle('active');
+    }
+
+    // Load reminders when opening
+    if (!wasActive) {
+        loadReminders();
+    }
+};
+
+// Initialize reminders on page load
+document.addEventListener('DOMContentLoaded', () => {
+    loadReminders();
+
+    // Request notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+});

@@ -6,6 +6,7 @@ import select
 import subprocess
 import threading
 import logging
+import re
 
 from backend.config import get_auggie_model_id
 
@@ -13,6 +14,13 @@ log = logging.getLogger('session')
 
 _sessions = {}
 _lock = threading.Lock()
+_cleanup_thread = None
+_cleanup_stop_event = threading.Event()
+
+# Configuration for stale process cleanup
+STALE_PROCESS_AGE_MINUTES = 30  # Kill auggie processes older than this
+CLEANUP_INTERVAL_SECONDS = 300  # Run cleanup every 5 minutes
+MAX_AUGGIE_PROCESSES = 3  # Maximum number of auggie processes allowed
 
 
 class AuggieSession:
@@ -158,9 +166,158 @@ class AuggieSession:
         return drained
 
 
+def _get_auggie_processes():
+    """Get list of running auggie processes with their PIDs and start times."""
+    try:
+        # Use ps to get auggie processes with start time
+        result = subprocess.run(
+            ['ps', '-eo', 'pid,etimes,cmd', '--no-headers'],
+            capture_output=True, text=True, timeout=5
+        )
+        processes = []
+        for line in result.stdout.strip().split('\n'):
+            if 'auggie' in line and 'grep' not in line:
+                parts = line.split(None, 2)
+                if len(parts) >= 3:
+                    try:
+                        pid = int(parts[0])
+                        elapsed_seconds = int(parts[1])  # Time since process started
+                        cmd = parts[2]
+                        processes.append({
+                            'pid': pid,
+                            'elapsed_seconds': elapsed_seconds,
+                            'elapsed_minutes': elapsed_seconds / 60,
+                            'cmd': cmd
+                        })
+                    except (ValueError, IndexError):
+                        continue
+        return processes
+    except Exception as e:
+        log.warning(f"[CLEANUP] Failed to get auggie processes: {e}")
+        return []
+
+
+def _get_tracked_pids():
+    """Get PIDs of auggie processes tracked by our session manager."""
+    with _lock:
+        return {s.process.pid for s in _sessions.values() if s.process and s.is_alive()}
+
+
+def cleanup_stale_auggie_processes(force_aggressive=False):
+    """
+    Find and kill stale auggie processes not managed by the session manager.
+
+    Args:
+        force_aggressive: If True, be more aggressive about killing processes
+    """
+    tracked_pids = _get_tracked_pids()
+    processes = _get_auggie_processes()
+
+    if not processes:
+        return 0
+
+    killed_count = 0
+    current_time = time.time()
+
+    # Sort by elapsed time (oldest first)
+    processes.sort(key=lambda p: p['elapsed_seconds'], reverse=True)
+
+    for proc in processes:
+        pid = proc['pid']
+        elapsed_minutes = proc['elapsed_minutes']
+
+        # Skip if this is a tracked session
+        if pid in tracked_pids:
+            continue
+
+        should_kill = False
+        reason = ""
+
+        # Kill if process is older than threshold
+        if elapsed_minutes > STALE_PROCESS_AGE_MINUTES:
+            should_kill = True
+            reason = f"older than {STALE_PROCESS_AGE_MINUTES} minutes ({elapsed_minutes:.1f}m)"
+
+        # Kill if we have too many auggie processes (keep newest ones)
+        elif len(processes) > MAX_AUGGIE_PROCESSES:
+            # This process is among the oldest and we have too many
+            oldest_untracked = [p for p in processes if p['pid'] not in tracked_pids]
+            if oldest_untracked and pid in [p['pid'] for p in oldest_untracked[:-MAX_AUGGIE_PROCESSES]]:
+                should_kill = True
+                reason = f"too many auggie processes ({len(processes)} running)"
+
+        # Aggressive mode: kill anything not tracked that's older than 10 minutes
+        elif force_aggressive and elapsed_minutes > 10:
+            should_kill = True
+            reason = f"aggressive cleanup ({elapsed_minutes:.1f}m old)"
+
+        if should_kill:
+            try:
+                log.info(f"[CLEANUP] Killing stale auggie process PID {pid}: {reason}")
+                os.kill(pid, signal.SIGTERM)
+                time.sleep(0.1)
+                # Check if still running, force kill if necessary
+                try:
+                    os.kill(pid, 0)  # Check if process exists
+                    os.kill(pid, signal.SIGKILL)
+                    log.info(f"[CLEANUP] Force killed PID {pid}")
+                except ProcessLookupError:
+                    pass  # Already dead
+                killed_count += 1
+            except ProcessLookupError:
+                pass  # Process already gone
+            except PermissionError:
+                log.warning(f"[CLEANUP] Permission denied killing PID {pid}")
+            except Exception as e:
+                log.warning(f"[CLEANUP] Error killing PID {pid}: {e}")
+
+    if killed_count > 0:
+        log.info(f"[CLEANUP] Cleaned up {killed_count} stale auggie processes")
+
+    return killed_count
+
+
+def _cleanup_thread_func():
+    """Background thread that periodically cleans up stale processes."""
+    log.info("[CLEANUP] Background cleanup thread started")
+    while not _cleanup_stop_event.is_set():
+        try:
+            cleanup_stale_auggie_processes()
+        except Exception as e:
+            log.error(f"[CLEANUP] Error in cleanup thread: {e}")
+
+        # Wait for interval or stop event
+        _cleanup_stop_event.wait(CLEANUP_INTERVAL_SECONDS)
+
+    log.info("[CLEANUP] Background cleanup thread stopped")
+
+
+def start_cleanup_thread():
+    """Start the background cleanup thread."""
+    global _cleanup_thread
+    if _cleanup_thread is None or not _cleanup_thread.is_alive():
+        _cleanup_stop_event.clear()
+        _cleanup_thread = threading.Thread(target=_cleanup_thread_func, daemon=True)
+        _cleanup_thread.start()
+        log.info("[CLEANUP] Started background cleanup thread")
+
+
+def stop_cleanup_thread():
+    """Stop the background cleanup thread."""
+    global _cleanup_thread
+    if _cleanup_thread and _cleanup_thread.is_alive():
+        _cleanup_stop_event.set()
+        _cleanup_thread.join(timeout=2)
+        _cleanup_thread = None
+        log.info("[CLEANUP] Stopped background cleanup thread")
+
+
 class SessionManager:
     @staticmethod
     def get_or_create(workspace, model=None):
+        # Ensure cleanup thread is running
+        start_cleanup_thread()
+
         with _lock:
             if workspace in _sessions and _sessions[workspace].is_alive():
                 # If model changed, restart the session
@@ -178,16 +335,37 @@ class SessionManager:
 
     @staticmethod
     def cleanup_old():
+        """Clean up old sessions and stale OS processes."""
         with _lock:
             now = time.time()
             for ws in [w for w, s in _sessions.items() if now - s.last_used > 600]:
                 _sessions[ws].cleanup()
                 del _sessions[ws]
 
+        # Also clean up any orphaned OS processes
+        cleanup_stale_auggie_processes()
+
     @staticmethod
     def reset(workspace):
+        """Reset session for a workspace and clean up stale processes."""
         with _lock:
             if workspace in _sessions:
                 _sessions[workspace].cleanup()
                 del _sessions[workspace]
+
+        # Aggressively clean up stale processes on reset
+        cleanup_stale_auggie_processes(force_aggressive=True)
+
+    @staticmethod
+    def get_process_info():
+        """Get information about auggie processes for debugging."""
+        tracked_pids = _get_tracked_pids()
+        all_processes = _get_auggie_processes()
+
+        return {
+            'tracked_pids': list(tracked_pids),
+            'all_processes': all_processes,
+            'stale_count': len([p for p in all_processes if p['pid'] not in tracked_pids]),
+            'total_count': len(all_processes)
+        }
 

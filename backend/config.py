@@ -51,6 +51,7 @@ class Settings:
     def __init__(self):
         self._workspace = os.path.expanduser("~/Projects/POC'S/ai-chat-app")
         self._model = DEFAULT_MODEL
+        self._history_enabled = True  # Global toggle for chat history storage
 
     @property
     def workspace(self):
@@ -69,11 +70,20 @@ class Settings:
         if value in AVAILABLE_MODELS:
             self._model = value
 
+    @property
+    def history_enabled(self):
+        return self._history_enabled
+
+    @history_enabled.setter
+    def history_enabled(self, value):
+        self._history_enabled = bool(value)
+
     def to_dict(self):
         return {
             'workspace': self._workspace,
             'model': self._model,
-            'available_models': AVAILABLE_MODELS
+            'available_models': AVAILABLE_MODELS,
+            'history_enabled': self._history_enabled
         }
 
 

@@ -192,10 +192,21 @@ class StreamState:
         if self.is_tool_executing():
             return False
 
-        # Has proper ending punctuation at the end (not just anywhere)
-        last_chars = content.rstrip()[-20:] if len(content) > 20 else content.rstrip()
-        has_ending = any(last_chars.endswith(c) for c in ['.', '!', '?', ')', ']', '`', '"', "'", '4'])
+        # Get last part of content for analysis
+        last_chars = content.rstrip()[-30:] if len(content) > 30 else content.rstrip()
+        last_word = last_chars.split()[-1] if last_chars.split() else ''
 
-        # Either has good ending or is substantial with length > 500
-        return has_ending or len(content) > 500
+        # Check for common incomplete sentence indicators (articles, prepositions, etc.)
+        incomplete_words = {'the', 'a', 'an', 'to', 'of', 'for', 'in', 'on', 'at', 'by', 'with',
+                           'and', 'or', 'but', 'if', 'is', 'are', 'was', 'were', 'be', 'been',
+                           'this', 'that', 'these', 'those', 'e.g.', 'i.e.', 'etc'}
+        if last_word.lower().rstrip('.,?!') in incomplete_words:
+            return False
+
+        # Has proper ending punctuation at the end (not just anywhere)
+        has_ending = any(last_chars.endswith(c) for c in ['.', '!', '?', ')', ']', '`', '"', "'", ':'])
+
+        # Require proper ending punctuation - length alone is not enough
+        # This prevents cutting off responses that are mid-sentence
+        return has_ending
 

@@ -67,6 +67,11 @@ body {
     visibility: hidden;
 }
 
+/* Hide sidebar when history is disabled */
+.sidebar.history-disabled {
+    display: none;
+}
+
 /* Floating toggle button when sidebar is hidden */
 .sidebar-float-toggle {
     display: none;
@@ -1883,6 +1888,239 @@ body:has(.sidebar.collapsed) .modal {
     background: var(--bg-secondary);
     color: var(--text);
     padding: 8px;
+}
+
+/* Toggle Switch for Settings */
+.setting-toggle {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.setting-toggle > label:first-child {
+    margin-bottom: 0;
+}
+
+.toggle-switch {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    margin-bottom: 0 !important;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    transition: all 0.2s ease;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 2px;
+    bottom: 2px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background: var(--primary);
+    border-color: var(--primary);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(20px);
+    background: white;
+}
+
+.toggle-switch:hover .toggle-slider {
+    border-color: var(--text-muted);
+}
+
+/* Reminders Section */
+.reminders-section {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+}
+
+.reminders-section h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.reminders-section h3 i {
+    color: var(--primary);
+}
+
+.reminders-list {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: 16px;
+}
+
+.reminder-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
+.reminder-item.disabled {
+    opacity: 0.5;
+}
+
+.reminder-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.reminder-title {
+    font-weight: 500;
+    font-size: 0.85rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.reminder-details {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.reminder-actions {
+    display: flex;
+    gap: 6px;
+    margin-left: 10px;
+}
+
+.reminder-actions button {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+}
+
+.reminder-actions button:hover {
+    background: var(--bg-secondary);
+    color: var(--primary);
+}
+
+.reminder-actions button.delete:hover {
+    color: #e74c3c;
+}
+
+.add-reminder-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.reminder-input {
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.85rem;
+}
+
+.reminder-input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.day-selector {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.day-checkbox {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.day-checkbox input {
+    display: none;
+}
+
+.day-checkbox span {
+    padding: 6px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    transition: all 0.15s ease;
+}
+
+.day-checkbox input:checked + span {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+}
+
+.day-checkbox:hover span {
+    border-color: var(--text-muted);
+}
+
+.add-reminder-btn {
+    padding: 10px 14px;
+    background: var(--primary);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.add-reminder-btn:hover {
+    background: var(--primary-hover);
+}
+
+.no-reminders {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    padding: 16px;
 }
 
 /* Developer tools buttons */

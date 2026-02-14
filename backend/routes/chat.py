@@ -128,11 +128,12 @@ class StreamGenerator:
 
     STREAM_TIMEOUT = 300  # 5 minutes max
     # Performance-tuned timeouts - balance speed vs tool execution
-    CONTENT_SILENCE_TIMEOUT = 5.0  # Reduced from 15.0 - faster completion detection
+    CONTENT_SILENCE_TIMEOUT = 5.0  # Base silence timeout for complete content
     CONTENT_SILENCE_EXTENDED = 30.0  # Extended timeout when tools are executing
-    END_PATTERN_SILENCE = 0.5  # Reduced from 1.0 - faster end detection
-    RESPONSE_MARKER_TIMEOUT = 5.0  # Reduced from 10.0
-    WAIT_FOR_MARKER_TIMEOUT = 45.0  # Reduced from 60.0
+    CONTENT_SILENCE_INCOMPLETE = 15.0  # Timeout when content doesn't look complete
+    END_PATTERN_SILENCE = 0.5  # End pattern detected, wait a bit more
+    RESPONSE_MARKER_TIMEOUT = 5.0  # Data silence after response started
+    WAIT_FOR_MARKER_TIMEOUT = 45.0  # Max wait for first response marker
 
     def __init__(self, message: str, workspace: str, chat_id: str = None):
         self.message = message
@@ -140,8 +141,8 @@ class StreamGenerator:
         self.chat_id = chat_id
         self.message_id = None
 
-        # Initialize components
-        self.repository = ChatRepository(chat_id) if chat_id else None
+        # Initialize components - only create repository if history is enabled
+        self.repository = ChatRepository(chat_id) if (chat_id and settings.history_enabled) else None
         self.session_handler = SessionHandler(workspace, settings.model)
         self.processor = StreamProcessor(message)
         self.sse = SSEFormatter()
@@ -349,9 +350,9 @@ class StreamGenerator:
                     _log(f"Exit: streaming_started, {state.elapsed_since_content:.1f}s extended silence (tools)")
                     return True
             else:
-                # No tools, content incomplete but give it a bit more time
-                if state.elapsed_since_content > self.CONTENT_SILENCE_TIMEOUT * 2:
-                    _log(f"Exit: streaming_started, {state.elapsed_since_content:.1f}s silence")
+                # Content incomplete - wait longer to avoid cutting off mid-sentence
+                if state.elapsed_since_content > self.CONTENT_SILENCE_INCOMPLETE:
+                    _log(f"Exit: streaming_started, {state.elapsed_since_content:.1f}s silence (incomplete)")
                     return True
 
         # Response marker seen but no data - reduced timeout

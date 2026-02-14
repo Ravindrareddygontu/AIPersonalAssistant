@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Digistant</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=126">
+    <link rel="stylesheet" href="/static/css/style.css?v=128">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -143,7 +143,37 @@
                         <!-- Options populated by JS -->
                     </select>
                 </div>
+                <div class="setting-item setting-toggle">
+                    <label><i class="fas fa-history"></i> Save Chat History</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="historyToggle" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
                 <button class="save-settings-btn" onclick="saveSettings()">Save Settings</button>
+
+                <!-- Reminders Section -->
+                <div class="reminders-section">
+                    <h3><i class="fas fa-bell"></i> Reminders</h3>
+                    <div class="reminders-list" id="remindersList">
+                        <!-- Reminders populated by JS -->
+                    </div>
+                    <div class="add-reminder-form">
+                        <input type="text" id="reminderTitle" placeholder="Reminder title" class="reminder-input">
+                        <input type="text" id="reminderMessage" placeholder="Message (optional)" class="reminder-input">
+                        <input type="time" id="reminderTime" value="09:00" class="reminder-input">
+                        <div class="day-selector">
+                            <label class="day-checkbox"><input type="checkbox" value="mon" checked><span>Mon</span></label>
+                            <label class="day-checkbox"><input type="checkbox" value="tue" checked><span>Tue</span></label>
+                            <label class="day-checkbox"><input type="checkbox" value="wed" checked><span>Wed</span></label>
+                            <label class="day-checkbox"><input type="checkbox" value="thu" checked><span>Thu</span></label>
+                            <label class="day-checkbox"><input type="checkbox" value="fri" checked><span>Fri</span></label>
+                            <label class="day-checkbox"><input type="checkbox" value="sat"><span>Sat</span></label>
+                            <label class="day-checkbox"><input type="checkbox" value="sun"><span>Sun</span></label>
+                        </div>
+                        <button class="add-reminder-btn" onclick="addReminder()"><i class="fas fa-plus"></i> Add Reminder</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -187,6 +217,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=47"></script>
+    <script src="/static/js/app.js?v=50"></script>
 </body>
 </html>

@@ -56,10 +56,17 @@ def save_settings():
         settings.model = data['model']
         log.info(f"[SETTINGS] Model change requested: {data['model']} (was: {old_model}, now: {settings.model})")
 
+    # Handle history_enabled
+    if 'history_enabled' in data:
+        old_history = settings.history_enabled
+        settings.history_enabled = data['history_enabled']
+        log.info(f"[SETTINGS] History enabled changed: {old_history} -> {settings.history_enabled}")
+
     response_data = {
         'status': 'success',
         'workspace': settings.workspace,
-        'model': settings.model
+        'model': settings.model,
+        'history_enabled': settings.history_enabled
     }
     _log_response('POST', url, 200, response_data)
     return jsonify(response_data)
