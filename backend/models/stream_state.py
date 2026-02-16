@@ -16,6 +16,7 @@ class StreamState:
     
     # Raw output accumulator
     all_output: str = ''
+    clean_output: str = ''
     
     # Timing
     last_data_time: float = field(default_factory=time.time)
@@ -46,6 +47,10 @@ class StreamState:
     # Cache for expensive operations
     _cached_clean: str = ''
     _cached_clean_len: int = 0
+
+    # Incremental ANSI stripping helpers
+    _raw_tail: str = ''
+    _clean_tail: str = ''
 
     def update_data_time(self) -> None:
         """Update the last data received timestamp."""
@@ -223,4 +228,3 @@ class StreamState:
         # Require proper ending punctuation - length alone is not enough
         # This prevents cutting off responses that are mid-sentence
         return has_ending
-

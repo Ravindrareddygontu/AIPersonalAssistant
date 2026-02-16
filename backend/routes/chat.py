@@ -175,6 +175,7 @@ class StreamGenerator:
     """Generates SSE stream for chat responses."""
 
     STREAM_TIMEOUT = 300  # 5 minutes max
+    RAW_BUFFER_MAX = 300_000
     # Performance-tuned timeouts - balance speed vs tool execution
     CONTENT_SILENCE_TIMEOUT = 5.0  # Base silence timeout for complete content
     CONTENT_SILENCE_EXTENDED = 60.0  # Extended timeout when tools are executing (increased from 30)
@@ -342,6 +343,19 @@ class StreamGenerator:
                         if state.end_pattern_seen:
                             state.end_pattern_seen = False
                         state.all_output += chunk
+                        if len(state.all_output) > self.RAW_BUFFER_MAX:
+                            state.all_output = state.all_output[-self.RAW_BUFFER_MAX:]
+                        # Incremental ANSI stripping to avoid reprocessing full buffer
+                        combined = state._raw_tail + chunk
+                        clean_combined = TextCleaner.strip_ansi(combined)
+                        if state._clean_tail and clean_combined.startswith(state._clean_tail):
+                            append_clean = clean_combined[len(state._clean_tail):]
+                        else:
+                            append_clean = clean_combined
+                        if append_clean:
+                            state.clean_output += append_clean
+                        state._raw_tail = combined[-64:] if len(combined) > 64 else combined
+                        state._clean_tail = TextCleaner.strip_ansi(state._raw_tail)
                         state.update_data_time()
                     except BlockingIOError:
                         break
@@ -356,9 +370,10 @@ class StreamGenerator:
 
             # Send periodic status updates (moved outside else to update during data flow too)
             now = time.time()
-            if now - last_status_time >= 0.5:  # Update every 0.5 seconds for more responsive UI
+            if now - last_status_time >= 1.0:  # Update every 1s to reduce SSE churn
                 status_msg = self._get_current_status(state)
                 if status_msg and status_msg != last_status_msg:
+                    log.info(f"[STATUS] {status_msg}")
                     yield self.sse.send({'type': 'status', 'message': status_msg})
                     last_status_msg = status_msg
                 last_status_time = now
@@ -379,7 +394,7 @@ class StreamGenerator:
     def _get_current_status(self, state: StreamState) -> str:
         """Get current status message based on stream state."""
         # Check for specific activity indicators in terminal output
-        output_tail = state.all_output[-500:] if len(state.all_output) > 500 else state.all_output
+        output_tail = state.clean_output[-500:] if len(state.clean_output) > 500 else state.clean_output
 
         # Detect specific activities from terminal output
         activity_msg = self._detect_activity(output_tail)
@@ -414,19 +429,17 @@ class StreamGenerator:
 
     def _process_accumulated_data(self, state: StreamState):
         """Process accumulated data from terminal buffer."""
-        output_len = len(state.all_output)
-
-        # Only strip ANSI when we have new data (expensive operation)
-        if hasattr(state, '_cached_clean_len') and state._cached_clean_len == output_len:
-            clean = state._cached_clean
-        else:
-            clean = TextCleaner.strip_ansi(state.all_output)
-            state._cached_clean = clean
-            state._cached_clean_len = output_len
+        clean = state.clean_output
 
         # Check for message echo (only if not found yet)
         if not state.saw_message_echo:
             self._check_message_echo(clean, state)
+
+        # If we found the echo and have a lot of leading buffer, drop it for performance
+        if state.saw_message_echo and state.output_start_pos > 0 and len(clean) > 200000:
+            clean = clean[state.output_start_pos:]
+            state.clean_output = clean
+            state.output_start_pos = 0
 
         # Process content if we've seen the message echo
         if state.saw_message_echo:
@@ -573,8 +586,7 @@ class StreamGenerator:
             return
 
         # Extract final content
-        clean_all = TextCleaner.strip_ansi(state.all_output)
-        relevant_output = clean_all[state.output_start_pos:] if state.output_start_pos > 0 else clean_all
+        relevant_output = state.clean_output[state.output_start_pos:] if state.output_start_pos > 0 else state.clean_output
 
         # DEBUG: Log the relevant output to see what we're extracting from
         log.info(f"[DEBUG_FINAL] relevant_output length: {len(relevant_output)}")
