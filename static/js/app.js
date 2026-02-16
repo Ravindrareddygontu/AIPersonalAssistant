@@ -39,8 +39,8 @@ const WELCOME_HTML = `
     <div class="welcome-message">
         <img src="/static/images/assistant.jpg" alt="Digistant" class="welcome-logo">
         <h2>Hello! I'm Digistant</h2>
-        <p class="welcome-subtitle">Your AI coding assistant. Ask me anything about your project.</p>
-        <p class="quick-actions-label">Quick actions</p>
+        <p class="welcome-subtitle">Your AI-powered coding companion. I can help you explore code, write scripts, and answer questions.</p>
+        <p class="quick-actions-label">Try asking</p>
         <div class="quick-actions">
             <button class="action-btn" onclick="sendSuggestion('Show me the folder structure of this project with main files and their purposes')">
                 <i class="fas fa-sitemap"></i>
@@ -54,12 +54,12 @@ const WELCOME_HTML = `
                 <i class="fas fa-server"></i>
                 <span>Check port</span>
             </button>
-            <button class="action-btn" onclick="sendSuggestion('Write a Python function to check if a number is prime and test it with examples')">
-                <i class="fas fa-code"></i>
-                <span>Write code</span>
+            <button class="action-btn" onclick="sendSuggestion('What are the latest AI news and developments today?')">
+                <i class="fas fa-newspaper"></i>
+                <span>AI news today</span>
             </button>
             <button class="action-btn" onclick="sendSuggestion('Find all TODO comments in this project and list them with their file locations')">
-                <i class="fas fa-search"></i>
+                <i class="fas fa-clipboard-list"></i>
                 <span>Find TODOs</span>
             </button>
             <button class="action-btn" onclick="sendSuggestion('Show me the git status and recent commits in this repository')">
@@ -67,6 +67,7 @@ const WELCOME_HTML = `
                 <span>Git status</span>
             </button>
         </div>
+        <p class="welcome-hint">Press <kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for new line</p>
     </div>
 `;
 
@@ -430,7 +431,8 @@ async function sendMessage() {
                             break;
                         case 'stream_start':
                             console.log(`[API] Request #${thisRequestId} stream_start`);
-                            hideTypingIndicator();
+                            // Don't hide immediately - transition the status first
+                            updateTypingStatus('Receiving response...');
                             startStreamingMessage(thisRequestId);
                             break;
                         case 'stream':
@@ -712,6 +714,9 @@ function appendStreamingContent(newContent, requestId) {
     }
 
     if (!streamingMessageDiv) return;
+
+    // Update status to show we're receiving content (status bar stays visible)
+    updateTypingStatus('Streaming response...');
 
     streamingContent += newContent;
 
@@ -2119,77 +2124,110 @@ function formatMessage(text) {
 const genericStatuses = [
     'Connecting...', 'Starting Augment...', 'Waiting for Augment to initialize...',
     'Sending your message...', 'Waiting for AI response...', 'Processing your request...',
-    'AI is thinking...', 'Receiving response...', 'Finalizing response...'
+    'AI is thinking...', 'Receiving response...', 'Finalizing response...',
+    'Summarizing...', 'Processing...', 'Analyzing...', 'Generating response...',
+    // Backend status messages
+    'Initializing Augment...', 'Ready!', 'Indexing codebase...', 'Indexing complete!',
+    'Sending request...', 'Executing tools...', 'Processing tools...',
+    // Patterns that include elapsed time like "AI is thinking... (5s)"
+    'Reconnecting to Augment...'
 ];
+
+// Check if a message matches generic status patterns (including time suffixes)
+function isGenericStatus(message) {
+    // Exact or partial match
+    if (genericStatuses.some(g => message.includes(g) || g.includes(message))) {
+        return true;
+    }
+    // Pattern match for messages with time like "AI is thinking... (5s)"
+    const patterns = [
+        /^AI is thinking/i,
+        /^Sending request/i,
+        /^Executing tools/i,
+        /^Processing tools/i,
+        /^Receiving response/i,
+        /^Indexing codebase/i,
+        /^Initializing/i,
+        /^Connecting/i,
+        /^Starting/i,
+        /^Waiting/i
+    ];
+    return patterns.some(p => p.test(message));
+}
+
+// Get appropriate icon for status message
+function getStatusIcon(message) {
+    const lowerMsg = message.toLowerCase();
+    if (lowerMsg.includes('connecting') || lowerMsg.includes('starting') || lowerMsg.includes('initializing')) {
+        return 'fa-plug';
+    } else if (lowerMsg.includes('indexing')) {
+        return 'fa-database';
+    } else if (lowerMsg.includes('sending')) {
+        return 'fa-paper-plane';
+    } else if (lowerMsg.includes('waiting') || lowerMsg.includes('thinking')) {
+        return 'fa-brain';
+    } else if (lowerMsg.includes('receiving') || lowerMsg.includes('streaming')) {
+        return 'fa-download';
+    } else if (lowerMsg.includes('executing') || lowerMsg.includes('tool')) {
+        return 'fa-wrench';
+    } else if (lowerMsg.includes('processing') || lowerMsg.includes('analyzing')) {
+        return 'fa-cog';
+    } else if (lowerMsg.includes('summarizing')) {
+        return 'fa-compress-alt';
+    } else if (lowerMsg.includes('generating')) {
+        return 'fa-magic';
+    } else if (lowerMsg.includes('ready') || lowerMsg.includes('complete')) {
+        return 'fa-check-circle';
+    }
+    return 'fa-circle-notch';
+}
 
 // Show/hide typing indicator with status message
 function showTypingIndicator(statusMessage = 'Thinking...') {
-    const container = document.getElementById('chatMessages');
+    const statusBar = document.getElementById('inputStatusBar');
+    if (!statusBar) return;
 
-    // Remove existing status log and typing indicator
-    document.getElementById('statusLog')?.remove();
-    document.getElementById('typingIndicator')?.remove();
-
-    // Create status log
-    const statusLogDiv = document.createElement('div');
-    statusLogDiv.className = 'status-log';
-    statusLogDiv.id = 'statusLog';
-    statusLogDiv.innerHTML = `
-        <div class="status-generic" id="statusGeneric">
-            <i class="fas fa-circle-notch fa-spin"></i> <span id="genericStatusText">${statusMessage}</span>
-        </div>
-        <div class="status-details" id="statusDetails"></div>
-    `;
-    container.appendChild(statusLogDiv);
-
-    // Create typing indicator
-    const typingDiv = document.createElement('div');
-    typingDiv.className = 'message assistant';
-    typingDiv.id = 'typingIndicator';
-    typingDiv.innerHTML = `
-        <div class="message-avatar"><i class="fas fa-robot"></i></div>
-        <div class="message-content">
-            <div class="typing-indicator"><div class="typing-dots"><span></span><span></span><span></span></div></div>
-        </div>
-    `;
-    container.appendChild(typingDiv);
-    setTimeout(() => container.scrollTop = container.scrollHeight, 50);
-}
-
-// Get current status log
-function getCurrentStatusLog() {
-    const logs = document.querySelectorAll('.status-log:not(.complete)');
-    return logs.length > 0 ? logs[logs.length - 1] : null;
-}
-
-// Update typing status
-function updateTypingStatus(message) {
-    const statusLog = getCurrentStatusLog();
-    if (!statusLog) return;
-
-    const isGeneric = genericStatuses.some(g => message.includes(g) || g.includes(message));
-    if (isGeneric) {
-        const genericText = statusLog.querySelector('#genericStatusText');
-        if (genericText) genericText.textContent = message;
-    } else {
-        const statusDetails = statusLog.querySelector('#statusDetails');
-        if (statusDetails) {
-            const isSubAction = message.trim().startsWith('↳') || message.trim().startsWith('⎿');
-            const statusItem = document.createElement('div');
-            statusItem.className = isSubAction ? 'status-item sub-action' : 'status-item';
-            statusItem.innerHTML = isSubAction
-                ? `<i class="fas fa-check"></i> ${message.trim()}`
-                : `<i class="fas fa-circle-notch fa-spin"></i> ${message}`;
-            statusDetails.appendChild(statusItem);
-        }
+    // Show status bar and update text
+    statusBar.style.display = 'flex';
+    const statusText = statusBar.querySelector('.status-text');
+    const statusIcon = statusBar.querySelector('.status-icon');
+    if (statusText) statusText.textContent = statusMessage;
+    if (statusIcon) {
+        const newIcon = getStatusIcon(statusMessage);
+        statusIcon.className = `fas ${newIcon} fa-spin status-icon`;
     }
-    setTimeout(() => document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight, 50);
+}
+
+// Get current status log (for backward compatibility, but now uses status bar)
+function getCurrentStatusLog() {
+    return document.getElementById('inputStatusBar');
+}
+
+// Update typing status - now updates the fixed status bar above input
+function updateTypingStatus(message) {
+    const statusBar = document.getElementById('inputStatusBar');
+    if (!statusBar) return;
+
+    // Make sure status bar is visible
+    statusBar.style.display = 'flex';
+
+    const statusText = statusBar.querySelector('.status-text');
+    const statusIcon = statusBar.querySelector('.status-icon');
+
+    if (statusText) statusText.textContent = message;
+    if (statusIcon) {
+        const newIcon = getStatusIcon(message);
+        statusIcon.className = `fas ${newIcon} fa-spin status-icon`;
+    }
 }
 
 function hideTypingIndicator() {
+    const statusBar = document.getElementById('inputStatusBar');
+    if (statusBar) statusBar.style.display = 'none';
+
+    // Also clean up any old status logs that might still exist
     document.getElementById('typingIndicator')?.remove();
-    getCurrentStatusLog()?.remove();
-    document.querySelectorAll('.status-log.complete').forEach(log => log.remove());
+    document.querySelectorAll('.status-log').forEach(log => log.remove());
 }
 
 // Hide welcome message

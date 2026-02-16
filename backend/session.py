@@ -130,14 +130,28 @@ class AuggieSession:
         self.process = self.master_fd = None
         self.initialized = False
 
-    def wait_for_prompt(self, timeout=60):
-        """Wait for auggie to be ready - including indexing completion."""
+    def wait_for_prompt(self, timeout=60, status_callback=None):
+        """Wait for auggie to be ready - including indexing completion.
+
+        Args:
+            timeout: Maximum time to wait in seconds
+            status_callback: Optional callback function(message) for status updates
+        """
         start, output = time.time(), ""
         prompt_seen = False
         indexing_complete = False
         indexing_started = False
+        last_status_time = 0
 
         log.info(f"[SESSION] Waiting for prompt and indexing (timeout={timeout}s)...")
+
+        def send_status(msg):
+            nonlocal last_status_time
+            now = time.time()
+            # Throttle status updates to every 0.5 seconds
+            if status_callback and (now - last_status_time) >= 0.5:
+                status_callback(msg)
+                last_status_time = now
 
         while time.time() - start < timeout:
             if select.select([self.master_fd], [], [], 0.3)[0]:
@@ -153,11 +167,14 @@ class AuggieSession:
                     # Check for indexing status
                     if 'Indexing...' in chunk or 'Indexing' in output:
                         indexing_started = True
+                        elapsed = time.time() - start
                         log.info(f"[SESSION] Indexing in progress...")
+                        send_status(f"Indexing codebase... ({elapsed:.0f}s)")
 
                     if 'Indexing complete' in chunk or 'Indexing complete' in output:
                         indexing_complete = True
                         log.info(f"[SESSION] Indexing complete after {time.time()-start:.1f}s")
+                        send_status("Indexing complete!")
 
                     # Ready when: prompt seen AND (indexing complete OR no indexing started after 5s)
                     if prompt_seen:
@@ -176,6 +193,11 @@ class AuggieSession:
                 except OSError as e:
                     log.error(f"[SESSION] OSError reading: {e}")
                     break
+            else:
+                # No data, but send periodic status if indexing
+                if indexing_started and not indexing_complete:
+                    elapsed = time.time() - start
+                    send_status(f"Indexing codebase... ({elapsed:.0f}s)")
 
         # Timeout - but if prompt was seen, still try to proceed
         if prompt_seen:

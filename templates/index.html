@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Digistant</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=163">
+    <link rel="stylesheet" href="/static/css/style.css?v=167">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -73,8 +73,8 @@
                 <div class="welcome-message">
                     <img src="/static/images/assistant.jpg" alt="Digistant" class="welcome-logo">
                     <h2>Hello! I'm Digistant</h2>
-                    <p class="welcome-subtitle">Your AI coding assistant. Ask me anything about your project.</p>
-                    <p class="quick-actions-label">Quick actions</p>
+                    <p class="welcome-subtitle">Your AI-powered coding companion. I can help you explore code, write scripts, and answer questions.</p>
+                    <p class="quick-actions-label">Try asking</p>
                     <div class="quick-actions">
                         <button class="action-btn" onclick="sendSuggestion('Show me the folder structure of this project with main files and their purposes')">
                             <i class="fas fa-sitemap"></i>
@@ -88,12 +88,12 @@
                             <i class="fas fa-server"></i>
                             <span>Check port</span>
                         </button>
-                        <button class="action-btn" onclick="sendSuggestion('Write a Python function to check if a number is prime and test it with examples')">
-                            <i class="fas fa-code"></i>
-                            <span>Write code</span>
+                        <button class="action-btn" onclick="sendSuggestion('What are the latest AI news and developments today?')">
+                            <i class="fas fa-newspaper"></i>
+                            <span>AI news today</span>
                         </button>
                         <button class="action-btn" onclick="sendSuggestion('Find all TODO comments in this project and list them with their file locations')">
-                            <i class="fas fa-search"></i>
+                            <i class="fas fa-clipboard-list"></i>
                             <span>Find TODOs</span>
                         </button>
                         <button class="action-btn" onclick="sendSuggestion('Show me the git status and recent commits in this repository')">
@@ -101,10 +101,16 @@
                             <span>Git status</span>
                         </button>
                     </div>
+                    <p class="welcome-hint">Press <kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for new line</p>
                 </div>
             </div>
 
             <div class="chat-input-container">
+                <!-- Status bar above input -->
+                <div class="input-status-bar" id="inputStatusBar" style="display: none;">
+                    <i class="fas fa-circle-notch fa-spin status-icon"></i>
+                    <span class="status-text">Processing...</span>
+                </div>
                 <div class="chat-input-wrapper">
                     <textarea
                         id="messageInput"
@@ -119,6 +125,11 @@
                     </button>
                     <button class="stop-btn" onclick="stopStreaming()" id="stopBtn" style="display: none;" title="Stop generating" aria-label="Stop generating">
                         <i class="fas fa-stop"></i>
+                    </button>
+                </div>
+                <div class="input-quick-shortcuts">
+                    <button class="shortcut-btn" onclick="sendSuggestion('commit the changes with small message')" title="commit the changes with small message">
+                        <i class="fas fa-code-commit"></i> commit
                     </button>
                 </div>
             </div>
@@ -232,6 +243,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=63"></script>
+    <script src="/static/js/app.js?v=69"></script>
 </body>
 </html>

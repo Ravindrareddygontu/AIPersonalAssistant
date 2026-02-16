@@ -81,23 +81,70 @@ class SessionHandler:
     def __init__(self, workspace: str, model: str):
         self.workspace = workspace if os.path.isdir(workspace) else os.path.expanduser('~')
         self.model = model
+        self._status_queue = []  # Queue for status messages from callback
 
     def get_session(self):
         """Get or create a session, handling initialization."""
         return SessionManager.get_or_create(self.workspace, self.model)
 
+    def _status_callback(self, message: str):
+        """Callback to receive status messages during wait_for_prompt."""
+        self._status_queue.append(message)
+
     def start_session(self, session, status_msg: str):
-        """Start a new session and wait for initialization."""
+        """Start a new session and wait for initialization.
+
+        Yields SSE status messages during initialization for real-time updates.
+        """
         yield SSEFormatter.send({'type': 'status', 'message': status_msg})
         session.start()
-        yield SSEFormatter.send({'type': 'status', 'message': 'Waiting for Augment to initialize...'})
+        yield SSEFormatter.send({'type': 'status', 'message': 'Initializing Augment...'})
 
-        if not session.wait_for_prompt()[0]:
+        # Clear status queue
+        self._status_queue = []
+
+        # Start polling for prompt with status callback
+        # We need to use threading to collect status messages while waiting
+        import threading
+        import queue
+
+        status_q = queue.Queue()
+        result_holder = {'success': False, 'output': ''}
+
+        def callback(msg):
+            status_q.put(msg)
+
+        def wait_thread():
+            success, output = session.wait_for_prompt(status_callback=callback)
+            result_holder['success'] = success
+            result_holder['output'] = output
+            status_q.put(None)  # Signal completion
+
+        # Start wait in background thread
+        thread = threading.Thread(target=wait_thread, daemon=True)
+        thread.start()
+
+        # Yield status messages as they come
+        while True:
+            try:
+                msg = status_q.get(timeout=0.5)
+                if msg is None:
+                    break  # Wait completed
+                yield SSEFormatter.send({'type': 'status', 'message': msg})
+            except queue.Empty:
+                # No message yet, just continue waiting
+                pass
+
+        # Wait for thread to finish
+        thread.join(timeout=5)
+
+        if not result_holder['success']:
             session.cleanup()
             yield SSEFormatter.send({'type': 'error', 'message': 'Failed to start Augment'})
             return False
 
         session.initialized = True
+        yield SSEFormatter.send({'type': 'status', 'message': 'Ready!'})
         return True
 
     def send_message(self, session, message: str) -> bool:
@@ -130,8 +177,8 @@ class StreamGenerator:
     STREAM_TIMEOUT = 300  # 5 minutes max
     # Performance-tuned timeouts - balance speed vs tool execution
     CONTENT_SILENCE_TIMEOUT = 5.0  # Base silence timeout for complete content
-    CONTENT_SILENCE_EXTENDED = 30.0  # Extended timeout when tools are executing
-    CONTENT_SILENCE_INCOMPLETE = 15.0  # Timeout when content doesn't look complete
+    CONTENT_SILENCE_EXTENDED = 60.0  # Extended timeout when tools are executing (increased from 30)
+    CONTENT_SILENCE_INCOMPLETE = 45.0  # Timeout when content doesn't look complete (increased from 15)
     END_PATTERN_SILENCE = 0.5  # End pattern detected, wait a bit more
     RESPONSE_MARKER_TIMEOUT = 5.0  # Data silence after response started
     WAIT_FOR_MARKER_TIMEOUT = 45.0  # Max wait for first response marker
@@ -152,10 +199,25 @@ class StreamGenerator:
     def generate(self):
         """Main generator for SSE stream."""
         log.info(f"Starting generate for: {self.message[:50]}...")
-        yield self.sse.padding()
+        try:
+            yield self.sse.padding()
+        except (BrokenPipeError, ConnectionResetError, OSError) as e:
+            log.warning(f"Client disconnected early (padding): {type(e).__name__}")
+            return
 
         try:
             yield from self._handle_session()
+        except (BrokenPipeError, ConnectionResetError) as e:
+            # Client disconnected - this is normal, just log and exit gracefully
+            log.warning(f"Client disconnected during streaming: {type(e).__name__}")
+            return
+        except OSError as e:
+            # Check if it's a broken pipe variant
+            if e.errno == 32:  # EPIPE - Broken pipe
+                log.warning(f"Client disconnected (EPIPE): {e}")
+                return
+            # Re-raise other OSErrors
+            raise
         except Exception as e:
             log.error(f"Exception: {e}")
             # Send Slack notification for error
@@ -168,8 +230,13 @@ class StreamGenerator:
                 stopped=False,
                 execution_time=execution_time
             )
-            yield self.sse.send({'type': 'error', 'message': str(e)})
-            yield self.sse.send({'type': 'done'})
+            try:
+                yield self.sse.send({'type': 'error', 'message': str(e)})
+                yield self.sse.send({'type': 'done'})
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                # Client already disconnected, can't send error
+                log.warning("Could not send error to client - already disconnected")
+                return
 
     def _handle_session(self):
         """Handle session setup and message sending."""
@@ -249,6 +316,10 @@ class StreamGenerator:
         fd = session.master_fd
         _log(f"Starting stream loop, fd={fd}")
 
+        # Track last status update time to avoid spamming
+        last_status_time = 0
+        last_status_msg = ""
+
         while state.elapsed_since_message < self.STREAM_TIMEOUT:
             # Check for abort
             if _abort_flag.is_set():
@@ -280,13 +351,46 @@ class StreamGenerator:
                 # Process accumulated data
                 yield from self._process_accumulated_data(state)
             else:
-                # No data available, check exit conditions
+                # No data available - still process accumulated data to flush buffered content
+                # This handles the 0.3s timeout for partial lines without newlines
+                yield from self._process_accumulated_data(state)
+
+                # Send periodic status updates
+                now = time.time()
+                if now - last_status_time >= 1.0:  # Update every second
+                    status_msg = self._get_current_status(state)
+                    if status_msg and status_msg != last_status_msg:
+                        yield self.sse.send({'type': 'status', 'message': status_msg})
+                        last_status_msg = status_msg
+                    last_status_time = now
+
+                # Check exit conditions
                 if self._should_exit(state):
                     session.drain_output(0.5)
                     break
 
         # Finalize response
         yield from self._finalize_response(session, state)
+
+    def _get_current_status(self, state: StreamState) -> str:
+        """Get current status message based on stream state."""
+        if state.streaming_started:
+            return ""  # Don't show status during actual streaming
+
+        elapsed = int(state.elapsed_since_message)
+
+        if not state.saw_message_echo:
+            return f"Sending request... ({elapsed}s)"
+
+        if not state.saw_response_marker:
+            if state.is_tool_executing():
+                return f"Executing tools... ({elapsed}s)"
+            return f"AI is thinking... ({elapsed}s)"
+
+        if state.is_tool_executing():
+            return f"Processing tools... ({elapsed}s)"
+
+        return f"Receiving response... ({elapsed}s)"
 
     def _process_accumulated_data(self, state: StreamState):
         """Process accumulated data from terminal buffer."""
@@ -408,7 +512,7 @@ class StreamGenerator:
                 return True
 
             # Final fallback timeout - very generous to avoid cutting off responses
-            fallback_timeout = 30.0  # 30 seconds - generous fallback
+            fallback_timeout = 60.0  # 60 seconds - generous fallback (increased from 30)
             if state.elapsed_since_data > fallback_timeout:
                 _log(f"Exit: fallback timeout, {state.elapsed_since_data:.1f}s data silence (no end signal)")
                 return True
