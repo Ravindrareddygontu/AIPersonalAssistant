@@ -338,6 +338,9 @@ class StreamGenerator:
                         chunk = os.read(fd, 8192).decode('utf-8', errors='ignore')
                         if not chunk:
                             break
+                        # New data arrived after an end-pattern signal; treat it as transient
+                        if state.end_pattern_seen:
+                            state.end_pattern_seen = False
                         state.all_output += chunk
                         state.update_data_time()
                     except BlockingIOError:
@@ -478,12 +481,13 @@ class StreamGenerator:
             if not content:
                 return
 
-            state.update_content_time()
             state.end_pattern_seen = False
 
             # Store the FULL content before streaming (important for content_looks_complete)
             # This includes partial last line that hasn't been streamed yet
-            state.current_full_content = content
+            if content != state.current_full_content:
+                state.update_content_time()
+                state.current_full_content = content
 
             if not state.streaming_started:
                 state.mark_streaming_started()
@@ -510,7 +514,7 @@ class StreamGenerator:
         """
         # PRIMARY EXIT: End pattern detected (empty prompt = auggie ready for next input)
         # This is THE definitive signal that the response is complete
-        if state.end_pattern_seen:
+        if state.end_pattern_seen and state.elapsed_since_data > self.END_PATTERN_SILENCE:
             _log(f"Exit: end_pattern_seen (auggie ready for input)")
             return True
 
@@ -527,8 +531,11 @@ class StreamGenerator:
         # Response started but no end pattern yet - wait for signal
         if state.saw_response_marker:
             # If no new data for a while, end it (fallback for missed end pattern)
-            if state.elapsed_since_data > 3.0:
-                _log(f"Exit: {state.elapsed_since_data:.1f}s data silence - assuming complete")
+            if state.content_looks_complete() and state.elapsed_since_data > 1.5:
+                _log(f"Exit: {state.elapsed_since_data:.1f}s data silence - content looks complete")
+                return True
+            if state.elapsed_since_data > 12.0:
+                _log(f"Exit: {state.elapsed_since_data:.1f}s data silence - assuming complete (fallback)")
                 return True
 
         # Timeout waiting for response marker (auggie hasn't started responding)
@@ -707,4 +714,3 @@ def chat_reset():
     response_data = {'status': 'ok', 'message': 'Session reset successfully'}
     log.info(f"[RESPONSE] POST /api/chat/reset | Status: 200 | {response_data}")
     return jsonify(response_data)
-

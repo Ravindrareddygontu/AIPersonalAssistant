@@ -29,6 +29,7 @@
     --user-msg-text: #ffffff;
     --highlight: #89B4E8;         /* Sky-blue highlight */
     --highlight-soft: rgba(137, 180, 232, 0.15);
+
 }
 
 /* Light theme - Blue Jay inspired */
@@ -769,14 +770,6 @@ body {
     line-height: 1.75;
     color: var(--text);
     letter-spacing: 0.01em;
-}
-
-.message-content p {
-    margin: 0;
-}
-
-.message-content p + p {
-    margin-top: 14px;
 }
 
 .message-content br {

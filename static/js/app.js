@@ -800,7 +800,9 @@ const TOOL_CONFIG = {
     tools: [
         { name: 'Terminal', icon: 'fa-terminal', type: 'terminal' },
         { name: 'Read Directory', icon: 'fa-folder-open', type: 'read' },
+        { name: 'Read directory', icon: 'fa-folder-open', type: 'read' },
         { name: 'Read File', icon: 'fa-file-code', type: 'read' },
+        { name: 'Read file', icon: 'fa-file-code', type: 'read' },
         { name: 'Read Process', icon: 'fa-stream', type: 'read' },
         { name: 'Write File', icon: 'fa-file-pen', type: 'action' },
         { name: 'Edit File', icon: 'fa-edit', type: 'action' },
@@ -1967,6 +1969,14 @@ function cleanGarbageCharacters(text) {
 
 // Detect and format section headers (text ending with colon on its own line)
 function formatSectionHeaders(text) {
+    // 0) Headings followed by a list (e.g., "Key Points" then bullets)
+    text = text.replace(/^([A-Z][A-Za-z0-9\s\-]{2,50})\s*$(?=\n[\s]*([•\-\*]|\d+\.)\s+)/gm, (match, header) => {
+        if (!header.includes('|')) {
+            return `<div class="section-header"><strong>${header}</strong></div>`;
+        }
+        return match;
+    });
+
     // Match lines that look like section headers:
     // 1. Bold text on its own line
     text = text.replace(/^(<strong>([^<]+)<\/strong>)\s*$/gm, '<div class="section-header">$1</div>');
@@ -1980,6 +1990,14 @@ function formatSectionHeaders(text) {
         return match;
     });
 
+    // 2b. Numbered standalone headings like "1. Overview"
+    text = text.replace(/^\s*(\d+)[\.\)]\s+([A-Z][A-Za-z0-9\s\-]{2,50})\s*$/gm, (match, num, header) => {
+        if (!header.includes('|')) {
+            return `<div class="section-header"><strong>${num}. ${header}</strong></div>`;
+        }
+        return match;
+    });
+
     // 3. Capitalized phrases that are short introductory lines (without colon but standalone)
     text = text.replace(/^([A-Z][A-Za-z\s]{3,40})\s*$/gm, (match, header) => {
         // Common section header words
@@ -1988,6 +2006,14 @@ function formatSectionHeaders(text) {
             'Problem', 'Issue', 'Cause', 'Fix', 'Changes', 'Updates', 'Status'];
         const hasKeyword = headerKeywords.some(kw => header.includes(kw));
         if (hasKeyword && !header.includes('|')) {
+            return `<div class="section-header"><strong>${header}</strong></div>`;
+        }
+        return match;
+    });
+
+    // 4. All-caps short lines
+    text = text.replace(/^([A-Z][A-Z0-9\s\-]{2,40})\s*$/gm, (match, header) => {
+        if (!header.includes('|')) {
             return `<div class="section-header"><strong>${header}</strong></div>`;
         }
         return match;
@@ -2073,6 +2099,13 @@ function formatMessage(text) {
 
     // Section headers (standalone bold text or capitalized text before content)
     text = formatSectionHeaders(text);
+
+    // Key: Value lines (lightweight emphasis for readability)
+    text = text.replace(/^([A-Z][A-Za-z0-9\s\-\/]{2,30}):\s+(.{1,160})$/gm, (match, key, value) => {
+        if (key.includes('|') || value.includes('|')) return match;
+        if (value.includes('http') || value.length > 160) return match;
+        return `<div class="sub-item"><span class="sub-arrow">↳</span><strong>${key}:</strong> ${value}</div>`;
+    });
 
     // Lists with nested support
     const lines = text.split('\n');
