@@ -37,24 +37,43 @@ class AuggieSession:
         self.in_use = False  # Track if terminal is actively being used (streaming)
 
     def start(self):
+        import os
+        import pty
+        import time
+        import struct
+        import fcntl
+        import termios
+
         master_fd, slave_fd = pty.openpty()
+
+        # Properly set PTY window size
+        rows = 100
+        cols = 200
+        winsize = struct.pack("HHHH", rows, cols, 0, 0)
+        fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, winsize)
+
         env = os.environ.copy()
-        # Ensure nvm node path is in PATH (critical for desktop icon launch)
+
         nvm_bin = '/home/dell/.nvm/versions/node/v20.20.0/bin'
         if nvm_bin not in env.get('PATH', ''):
             env['PATH'] = nvm_bin + ':' + env.get('PATH', '/usr/bin:/bin')
-        env.update({'TERM': 'xterm-256color', 'AUGMENT_WORKSPACE': self.workspace, 'COLUMNS': '200', 'LINES': '100'})
 
-        # Find auggie - try common locations
+        env.update({
+            'TERM': 'xterm-256color',
+            'AUGMENT_WORKSPACE': self.workspace
+        })
+
         auggie_cmd = 'auggie'
-        for path in ['/home/dell/.nvm/versions/node/v20.20.0/bin/auggie',
-                     os.path.expanduser('~/.nvm/versions/node/v20.20.0/bin/auggie'),
-                     '/usr/local/bin/auggie', '/usr/bin/auggie']:
+        for path in [
+            '/home/dell/.nvm/versions/node/v20.20.0/bin/auggie',
+            os.path.expanduser('~/.nvm/versions/node/v20.20.0/bin/auggie'),
+            '/usr/local/bin/auggie',
+            '/usr/bin/auggie'
+        ]:
             if os.path.exists(path):
                 auggie_cmd = path
                 break
 
-        # Build command with model if specified
         cmd = [auggie_cmd]
         auggie_model_id = None
         if self.model:
@@ -62,12 +81,32 @@ class AuggieSession:
             cmd.extend(['-m', auggie_model_id])
 
         log.info(f"[SESSION] Starting auggie from: {auggie_cmd}, workspace: {self.workspace}, model: {self.model} (auggie_id: {auggie_model_id})")
-        self.process = subprocess.Popen(cmd, stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
-                                        cwd=self.workspace, env=env, preexec_fn=os.setsid)
+
+        self.process = subprocess.Popen(
+            cmd,
+            stdin = slave_fd,
+            stdout = slave_fd,
+            stderr = slave_fd,
+            cwd = self.workspace,
+            env = env,
+            preexec_fn = os.setsid,
+            close_fds = True
+        )
+
         os.close(slave_fd)
+
+        # Set window size on master_fd as well (some apps read from master side)
+        fcntl.ioctl(master_fd, termios.TIOCSWINSZ, winsize)
+
+        # Set master_fd to non-blocking mode for proper async reads
+        flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
+        fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
         self.master_fd = master_fd
         self.last_used = time.time()
+
         log.info(f"[SESSION] Process started with PID: {self.process.pid}")
+
         return self.master_fd
 
     def is_alive(self):

@@ -323,6 +323,11 @@ class StreamGenerator:
 
     def _process_content(self, clean: str, state: StreamState):
         """Process and stream content."""
+        # DEBUG: Log raw PTY output to understand parsing issues
+        if not hasattr(state, '_debug_logged') and len(clean) > 500:
+            log.debug(f"[DEBUG] Raw clean output (last 1000 chars): {repr(clean[-1000:])}")
+            state._debug_logged = True
+
         content = self.processor.process_chunk(clean, state)
 
         if content and len(content) > state.streamed_length:
@@ -427,7 +432,13 @@ class StreamGenerator:
         # Extract final content
         clean_all = TextCleaner.strip_ansi(state.all_output)
         relevant_output = clean_all[state.output_start_pos:] if state.output_start_pos > 0 else clean_all
+
+        # DEBUG: Log the relevant output to see what we're extracting from
+        log.info(f"[DEBUG_FINAL] relevant_output length: {len(relevant_output)}")
+        log.info(f"[DEBUG_FINAL] Last 500 chars: {repr(relevant_output[-500:])}")
+
         response_text = ResponseExtractor.extract_full(relevant_output, self.message)
+        log.info(f"[DEBUG_FINAL] Extracted response_text: {repr(response_text[:200] if response_text else 'None')}")
 
         # Use current_full_content (includes partial last line) over last_streamed_content
         # This ensures we don't lose content that was being buffered

@@ -26,10 +26,7 @@ class StreamProcessor:
         'esc to interrupt',
         'Processing response',
         'Executing tools',
-        'Summarizing',
-        'summarizing',
-        'Thinking',
-        'thinking...',
+        'Summarizing conversation history',
         '▇▇▇',  # Progress bar
     ]
 
@@ -93,6 +90,25 @@ class StreamProcessor:
         content = []
         in_response = False
 
+        # DEBUG: Log lines to understand the output format
+        if len(lines) > 5:
+            if not hasattr(state, '_debug_extract_logged'):
+                log.info(f"[DEBUG_EXTRACT] First 10 lines after message echo:")
+                for i, line in enumerate(lines[:10]):
+                    log.info(f"[DEBUG_EXTRACT] Line {i}: {repr(line[:100] if len(line) > 100 else line)}")
+                state._debug_extract_logged = True
+            # Log first occurrence of each marker type
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+                if stripped.startswith('●'):
+                    if not hasattr(state, '_debug_response_marker_logged'):
+                        log.info(f"[DEBUG_MARKER] Found RESPONSE marker (●) at line {i}: {repr(stripped[:80])}")
+                        state._debug_response_marker_logged = True
+                elif stripped.startswith('~'):
+                    if not hasattr(state, '_debug_thinking_marker_logged'):
+                        log.info(f"[DEBUG_MARKER] Found THINKING marker (~) at line {i}: {repr(stripped[:80])}")
+                        state._debug_thinking_marker_logged = True
+
         for line in lines:
             stripped = line.strip()
 
@@ -105,7 +121,7 @@ class StreamProcessor:
                 continue
 
             # STOP CONDITIONS - marks end of AI response
-            if self._is_stop_condition(stripped):
+            if self._is_stop_condition(stripped, in_response):
                 break
 
             # Skip patterns we want to filter out
@@ -113,26 +129,58 @@ class StreamProcessor:
                 continue
 
             # Process response markers
-            if stripped.startswith('~') or stripped.startswith('●'):
+            # ~ is "thinking" text (auggie's internal reasoning) - NOT the actual response
+            # ● is the actual response content to be streamed
+            if stripped.startswith('●'):
                 in_response = True
                 state.mark_response_marker_seen()
+                log.debug(f"[MARKER] Found response marker (●): {repr(stripped[:50])}")
                 c = stripped[1:].strip()
                 if c:
                     content.append(c)
+            elif stripped.startswith('~'):
+                # Thinking marker - don't add to content but note that auggie is working
+                # This is internal reasoning, not the response to stream
+                log.debug(f"[MARKER] Found thinking marker (~): {repr(stripped[:50])}")
+                # Don't set in_response=True for thinking markers
+                continue
             elif stripped.startswith('⎿') and in_response:
                 c = stripped[1:].strip()
                 if c:
                     content.append(f"↳ {c}")
             elif in_response and stripped:
-                if not any(skip in stripped for skip in ['Claude Opus', 'Version 0.']):
+                # Skip UI messages and model identifiers
+                if not any(skip in stripped for skip in ['Claude Opus', 'Version 0.', 'Message will be queued']):
                     content.append(stripped)
 
         return '\n'.join(content) if content else None
 
-    def _is_stop_condition(self, stripped: str) -> bool:
-        """Check if line indicates we should stop extracting."""
-        # Prompt indicators
-        if stripped.startswith('│ ›') or stripped == '│':
+    def _is_stop_condition(self, stripped: str, in_response: bool = False) -> bool:
+        """Check if line indicates we should stop extracting.
+
+        Args:
+            stripped: The stripped line to check
+            in_response: Whether we've already started seeing response content
+        """
+        # "Message will be queued" is a UI notification that appears BEFORE the actual response
+        # It has the │ › prefix but should NOT stop extraction
+        if 'Message will be queued' in stripped:
+            return False
+
+        # Prompt indicators - only stop if we've already seen response content
+        # Before seeing response, these could be UI notifications
+        if stripped.startswith('│ ›'):
+            # Empty prompt is a definitive stop
+            rest = stripped[3:].strip()
+            if not rest or rest == '│':
+                return True
+            # If we're already in response, any prompt indicator stops us
+            if in_response:
+                return True
+            # Before response, only stop if it looks like a user input prompt (not UI message)
+            return False
+
+        if stripped == '│':
             return True
         # Lone prompt character
         if stripped.startswith('›'):
@@ -142,9 +190,6 @@ class StreamProcessor:
             return True
         # Path-like lines (terminal prompt)
         if stripped.startswith('/') and '/' in stripped[1:] and len(stripped) < 100:
-            return True
-        # Queued message indicator
-        if 'Message will be queued' in stripped:
             return True
         return False
 
