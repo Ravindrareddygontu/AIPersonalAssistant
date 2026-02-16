@@ -396,14 +396,7 @@ class StreamGenerator:
         if state.is_tool_executing():
             return f"Running tools... ({elapsed}s)"
 
-        if state.streaming_started:
-            # Dynamic status during streaming
-            chars = state.streamed_length
-            if chars > 1000:
-                return f"Streaming... {chars // 1000}k"
-            return f"Streaming... {chars}"
-
-        return f"Receiving response... ({elapsed}s)"
+        return None
 
     def _detect_activity(self, output: str) -> str | None:
         """Detect specific activity from terminal output."""
