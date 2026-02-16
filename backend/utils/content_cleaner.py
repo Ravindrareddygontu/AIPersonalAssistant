@@ -61,8 +61,9 @@ class ContentCleaner:
             cleaned_lines.append(line)
 
         result = '\n'.join(cleaned_lines).rstrip()
-        # Final cleanup: remove trailing semicolons and numbers
-        result = result.rstrip(';0123456789')
+        # Final cleanup: remove trailing semicolons followed by numbers (escape code remnants)
+        # Only strip if it looks like escape code garbage: ends with ;NN pattern
+        result = re.sub(r';[0-9]+$', '', result)
         return result
 
     @classmethod

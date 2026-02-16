@@ -1991,6 +1991,41 @@ body:has(.sidebar.collapsed) #devToolsModal {
     border-color: var(--text-muted);
 }
 
+/* Slack Webhook Setting */
+.slack-webhook-setting {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: -8px;
+    margin-bottom: 14px;
+    gap: 12px;
+}
+
+.slack-webhook-setting label {
+    font-size: 0.75rem;
+    margin-bottom: 0;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.slack-webhook-setting input.setting-input {
+    flex: 1;
+    padding: 6px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    min-width: 0;
+}
+
+.slack-webhook-setting input.setting-input:focus {
+    border-color: var(--primary);
+    outline: none;
+}
+
 /* Reminders Section */
 .reminders-section {
     margin-top: 24px;

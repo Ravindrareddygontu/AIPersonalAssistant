@@ -23,6 +23,7 @@ from backend.utils.content_cleaner import ContentCleaner
 from backend.models.stream_state import StreamState
 from backend.services.chat_repository import ChatRepository
 from backend.services.stream_processor import StreamProcessor
+from backend.services.slack.notifier import notify_completion
 
 log = logging.getLogger('chat')
 chat_bp = Blueprint('chat', __name__)
@@ -140,6 +141,7 @@ class StreamGenerator:
         self.workspace = workspace
         self.chat_id = chat_id
         self.message_id = None
+        self.start_time = time.time()  # Track execution time for Slack
 
         # Initialize components - only create repository if history is enabled
         self.repository = ChatRepository(chat_id) if (chat_id and settings.history_enabled) else None
@@ -156,6 +158,16 @@ class StreamGenerator:
             yield from self._handle_session()
         except Exception as e:
             log.error(f"Exception: {e}")
+            # Send Slack notification for error
+            execution_time = time.time() - self.start_time
+            notify_completion(
+                question=self.message,
+                content="",
+                success=False,
+                error=str(e),
+                stopped=False,
+                execution_time=execution_time
+            )
             yield self.sse.send({'type': 'error', 'message': str(e)})
             yield self.sse.send({'type': 'done'})
 
@@ -421,6 +433,16 @@ class StreamGenerator:
         except Exception as e:
             log.warning(f"Error during abort: {e}")
 
+        # Send Slack notification for stopped request
+        execution_time = time.time() - self.start_time
+        notify_completion(
+            question=self.message,
+            content="",
+            success=False,
+            stopped=True,
+            execution_time=execution_time
+        )
+
         yield self.sse.send({'type': 'aborted', 'message': 'Request aborted'})
         yield self.sse.send({'type': 'done'})
 
@@ -479,6 +501,18 @@ class StreamGenerator:
         # Save to database
         if final_content and self.repository and self.message_id:
             self.repository.save_answer(self.message_id, final_content)
+
+        # Send Slack notification for completed request
+        execution_time = time.time() - self.start_time
+        has_error = not final_content or "Couldn't extract response" in (final_content or "")
+        notify_completion(
+            question=self.message,
+            content=final_content or "",
+            success=not has_error,
+            error="Couldn't extract response" if has_error else None,
+            stopped=False,
+            execution_time=execution_time
+        )
 
         # Send final events
         _log("Sending done event")

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Digistant</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=132">
+    <link rel="stylesheet" href="/static/css/style.css?v=135">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -138,6 +138,16 @@
                         <span class="toggle-slider"></span>
                     </label>
                 </div>
+                <div class="setting-item setting-toggle">
+                    <label><i class="fab fa-slack"></i> Slack Notifications</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="slackNotifyToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="setting-item slack-webhook-setting" id="slackWebhookSetting" style="display: none;">
+                    <input type="text" id="slackWebhookUrl" placeholder="https://hooks.slack.com/services/..." class="setting-input" title="Webhook URL">
+                </div>
                 <!-- Hidden inputs for compatibility with saveSettings -->
                 <input type="hidden" id="workspaceInput">
                 <select id="modelSelect" style="display: none;"></select>
@@ -207,6 +217,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=51"></script>
+    <script src="/static/js/app.js?v=52"></script>
 </body>
 </html>

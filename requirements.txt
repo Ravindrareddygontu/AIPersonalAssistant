@@ -3,3 +3,7 @@ requests>=2.28.0
 auggie-sdk>=0.1.10
 pymongo>=4.0.0
 
+# Slack integration (optional)
+slack-bolt>=1.18.0
+slack-sdk>=3.21.0
+

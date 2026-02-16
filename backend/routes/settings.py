@@ -62,11 +62,24 @@ def save_settings():
         settings.history_enabled = data['history_enabled']
         log.info(f"[SETTINGS] History enabled changed: {old_history} -> {settings.history_enabled}")
 
+    # Handle slack_notify
+    if 'slack_notify' in data:
+        old_slack_notify = settings.slack_notify
+        settings.slack_notify = data['slack_notify']
+        log.info(f"[SETTINGS] Slack notify changed: {old_slack_notify} -> {settings.slack_notify}")
+
+    # Handle slack_webhook_url
+    if 'slack_webhook_url' in data:
+        settings.slack_webhook_url = data['slack_webhook_url']
+        log.info(f"[SETTINGS] Slack webhook URL updated")
+
     response_data = {
         'status': 'success',
         'workspace': settings.workspace,
         'model': settings.model,
-        'history_enabled': settings.history_enabled
+        'history_enabled': settings.history_enabled,
+        'slack_notify': settings.slack_notify,
+        'slack_webhook_url': settings.slack_webhook_url
     }
     _log_response('POST', url, 200, response_data)
     return jsonify(response_data)

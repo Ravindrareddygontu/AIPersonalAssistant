@@ -10,6 +10,8 @@ let browserCurrentPath = '';
 let sidebarOpen = true;
 let currentAbortController = null;
 let historyEnabled = true;  // Global toggle for chat history storage
+let slackNotifyEnabled = false;  // Send status to Slack after completion
+let slackWebhookUrl = '';  // Slack webhook URL
 
 // Network request/response logger
 function logRequest(method, url, body = null) {
@@ -123,6 +125,12 @@ async function loadSettingsFromServer() {
             updateHistoryToggle();
             updateSidebarVisibility();
         }
+        // Handle slack settings
+        if (typeof data.slack_notify !== 'undefined') {
+            slackNotifyEnabled = data.slack_notify;
+            slackWebhookUrl = data.slack_webhook_url || '';
+            updateSlackToggle();
+        }
     } catch (error) {
         console.error('Failed to load settings:', error);
     }
@@ -152,6 +160,67 @@ function updateHistoryToggle() {
                 console.error('Failed to update history setting:', error);
             }
         };
+    }
+}
+
+// Update Slack toggle checkbox state
+function updateSlackToggle() {
+    const toggle = document.getElementById('slackNotifyToggle');
+    const webhookSetting = document.getElementById('slackWebhookSetting');
+    const webhookInput = document.getElementById('slackWebhookUrl');
+
+    if (toggle) {
+        toggle.checked = slackNotifyEnabled;
+        // Show/hide webhook URL field based on toggle
+        if (webhookSetting) {
+            webhookSetting.style.display = slackNotifyEnabled ? 'flex' : 'none';
+        }
+        if (webhookInput) {
+            webhookInput.value = slackWebhookUrl;
+        }
+
+        // Add change listener for toggle
+        toggle.onchange = async function() {
+            slackNotifyEnabled = this.checked;
+            if (webhookSetting) {
+                webhookSetting.style.display = slackNotifyEnabled ? 'flex' : 'none';
+            }
+            // Save to server
+            await saveSlackSettings();
+            showNotification(slackNotifyEnabled ? 'Slack notifications enabled' : 'Slack notifications disabled');
+        };
+    }
+
+    // Add change listener for webhook URL
+    if (webhookInput) {
+        webhookInput.onblur = async function() {
+            if (slackWebhookUrl !== this.value) {
+                slackWebhookUrl = this.value;
+                await saveSlackSettings();
+                if (slackWebhookUrl) {
+                    showNotification('Slack webhook URL saved');
+                }
+            }
+        };
+    }
+}
+
+// Save Slack settings to server
+async function saveSlackSettings() {
+    const url = '/api/settings';
+    const requestBody = {
+        slack_notify: slackNotifyEnabled,
+        slack_webhook_url: slackWebhookUrl
+    };
+    try {
+        await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+        console.log('[slackSettings] Updated:', requestBody);
+    } catch (error) {
+        console.error('Failed to update Slack settings:', error);
     }
 }
 
