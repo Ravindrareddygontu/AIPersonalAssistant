@@ -25,4 +25,5 @@ Thumbs.db
 # App specific
 chats/
 *.log
+.env
 
