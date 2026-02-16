@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Digistant</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=128">
+    <link rel="stylesheet" href="/static/css/style.css?v=132">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -44,10 +44,13 @@
         <main class="chat-main">
             <header class="chat-header">
                 <div class="header-left">
-                    <div class="workspace-badge" id="workspaceBadge" onclick="toggleSettings()">
+                    <div class="workspace-badge" id="workspaceBadge" onclick="browseWorkspace()" title="Change workspace">
                         <i class="fas fa-folder"></i>
                         <span id="workspaceDisplay">~/</span>
                     </div>
+                    <select id="modelSelectHeader" class="model-select-header" onchange="updateModelFromHeader()" title="Select AI Model">
+                        <!-- Options populated by JS -->
+                    </select>
                 </div>
                 <div class="header-actions">
                     <button class="icon-btn" onclick="refreshPage()" title="Refresh">
@@ -128,21 +131,6 @@
                 </button>
             </div>
             <div class="modal-body">
-                <div class="setting-item">
-                    <label><i class="fas fa-folder-tree"></i> Workspace Directory</label>
-                    <div class="workspace-input">
-                        <input type="text" id="workspaceInput" placeholder="/home/dell/Projects/POC'S/ai-chat-app">
-                        <button class="browse-btn" onclick="browseWorkspace()" title="Browse folders">
-                            <i class="fas fa-folder-open"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="setting-item">
-                    <label><i class="fas fa-robot"></i> AI Model</label>
-                    <select id="modelSelect" class="model-select">
-                        <!-- Options populated by JS -->
-                    </select>
-                </div>
                 <div class="setting-item setting-toggle">
                     <label><i class="fas fa-history"></i> Save Chat History</label>
                     <label class="toggle-switch">
@@ -150,7 +138,9 @@
                         <span class="toggle-slider"></span>
                     </label>
                 </div>
-                <button class="save-settings-btn" onclick="saveSettings()">Save Settings</button>
+                <!-- Hidden inputs for compatibility with saveSettings -->
+                <input type="hidden" id="workspaceInput">
+                <select id="modelSelect" style="display: none;"></select>
 
                 <!-- Reminders Section -->
                 <div class="reminders-section">
@@ -217,6 +207,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=50"></script>
+    <script src="/static/js/app.js?v=51"></script>
 </body>
 </html>

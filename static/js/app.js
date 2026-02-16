@@ -133,6 +133,25 @@ function updateHistoryToggle() {
     const toggle = document.getElementById('historyToggle');
     if (toggle) {
         toggle.checked = historyEnabled;
+        // Add change listener for auto-save
+        toggle.onchange = async function() {
+            historyEnabled = this.checked;
+            updateSidebarVisibility();
+            // Save to server immediately
+            const url = '/api/settings';
+            const requestBody = { workspace: currentWorkspace, model: currentModel, history_enabled: historyEnabled };
+            try {
+                await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+                console.log('[historyToggle] History setting updated to:', historyEnabled);
+                showNotification(historyEnabled ? 'Chat history enabled' : 'Chat history disabled');
+            } catch (error) {
+                console.error('Failed to update history setting:', error);
+            }
+        };
     }
 }
 
@@ -149,21 +168,53 @@ function updateSidebarVisibility() {
     }
 }
 
-// Populate model select dropdown
+// Populate model select dropdown (both header and settings modal)
 function populateModelSelect() {
     const select = document.getElementById('modelSelect');
-    if (!select) return;
+    const headerSelect = document.getElementById('modelSelectHeader');
 
-    select.innerHTML = '';
-    availableModels.forEach(model => {
-        const option = document.createElement('option');
-        option.value = model;
-        option.textContent = model;
-        if (model === currentModel) {
-            option.selected = true;
-        }
-        select.appendChild(option);
+    [select, headerSelect].forEach(sel => {
+        if (!sel) return;
+        sel.innerHTML = '';
+        availableModels.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            if (model === currentModel) {
+                option.selected = true;
+            }
+            sel.appendChild(option);
+        });
     });
+}
+
+// Update model from header select and save immediately
+async function updateModelFromHeader() {
+    const headerSelect = document.getElementById('modelSelectHeader');
+    const modalSelect = document.getElementById('modelSelect');
+    if (!headerSelect) return;
+
+    const model = headerSelect.value;
+    currentModel = model;
+
+    // Sync with modal select
+    if (modalSelect) {
+        modalSelect.value = model;
+    }
+
+    // Save to server immediately
+    const url = '/api/settings';
+    const requestBody = { workspace: currentWorkspace, model: model, history_enabled: historyEnabled };
+    try {
+        await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+        console.log('[updateModelFromHeader] Model updated to:', model);
+    } catch (error) {
+        console.error('Failed to update model:', error);
+    }
 }
 
 // Legacy alias for compatibility
@@ -1932,6 +1983,11 @@ async function saveSettings() {
             localStorage.setItem('workspace', currentWorkspace);
             updateWorkspaceDisplay();
             updateSidebarVisibility();
+            // Sync header model select
+            const headerSelect = document.getElementById('modelSelectHeader');
+            if (headerSelect) {
+                headerSelect.value = currentModel;
+            }
             showNotification('Settings saved!');
             toggleSettings();
         } else {

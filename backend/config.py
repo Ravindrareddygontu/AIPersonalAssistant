@@ -12,6 +12,7 @@ SKIP_PATTERNS = [
     'Claude Opus', 'Version 0.', '@veefin.com', '@gmail.com', 'ravindrar@',
     'Processing response...', 'esc to interrupt', 'Sending request...',
     '▇▇▇▇▇', '? to show shortcuts', 'Get started',
+    'Executing tools...',
 ]
 
 BOX_CHARS_PATTERN = re.compile(r'^[╭╮╯╰│─╗╔║╚╝═█▇▆▅▄▃▂▁░▒▓\s]+$')

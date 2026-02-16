@@ -292,7 +292,8 @@ body {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 12px;
+    padding: 0 12px;
+    height: 32px;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -316,6 +317,30 @@ body {
 .workspace-badge i {
     color: var(--primary);
     font-size: 0.75rem;
+}
+
+.model-select-header {
+    padding: 0 10px;
+    height: 32px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    outline: none;
+    min-width: 140px;
+}
+
+.model-select-header:hover {
+    border-color: var(--primary);
+}
+
+.model-select-header:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
 }
 
 .header-actions {
@@ -1705,9 +1730,22 @@ body {
     display: block;
 }
 
+/* Settings and Dev Tools modals should appear on the right side */
+#settingsModal,
+#devToolsModal {
+    left: auto;
+    right: 20px;
+}
+
 /* Adjust modal position when sidebar is collapsed */
 body:has(.sidebar.collapsed) .modal {
     left: 60px;
+}
+
+body:has(.sidebar.collapsed) #settingsModal,
+body:has(.sidebar.collapsed) #devToolsModal {
+    left: auto;
+    right: 20px;
 }
 
 .modal-content {
