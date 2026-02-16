@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Digistant</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=167">
+    <link rel="stylesheet" href="/static/css/style.css?v=177">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -71,10 +71,7 @@
 
             <div class="chat-messages" id="chatMessages">
                 <div class="welcome-message">
-                    <img src="/static/images/assistant.jpg" alt="Digistant" class="welcome-logo">
-                    <h2>Hello! I'm Digistant</h2>
-                    <p class="welcome-subtitle">Your AI-powered coding companion. I can help you explore code, write scripts, and answer questions.</p>
-                    <p class="quick-actions-label">Try asking</p>
+                    <h2>Hello, what do you want?</h2>
                     <div class="quick-actions">
                         <button class="action-btn" onclick="sendSuggestion('Show me the folder structure of this project with main files and their purposes')">
                             <i class="fas fa-sitemap"></i>
@@ -101,7 +98,6 @@
                             <span>Git status</span>
                         </button>
                     </div>
-                    <p class="welcome-hint">Press <kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for new line</p>
                 </div>
             </div>
 

@@ -23,7 +23,7 @@
         .particles { position: absolute; width: 100%; height: 100%; overflow: hidden; }
         .particle {
             position: absolute; width: 4px; height: 4px;
-            background: #58a6ff; border-radius: 50%; opacity: 0;
+            background: #4A90D9; border-radius: 50%; opacity: 0;
             animation: float 4s ease-in-out infinite;
         }
         .particle:nth-child(1) { left: 10%; animation-delay: 0s; }
@@ -44,7 +44,7 @@
         .logo-glow {
             position: absolute; width: 120px; height: 120px;
             top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: radial-gradient(circle, rgba(88,166,255,0.4) 0%, transparent 70%);
+            background: radial-gradient(circle, rgba(74,144,217,0.4) 0%, transparent 70%);
             animation: glow 2s ease-in-out infinite; border-radius: 50%;
         }
         @keyframes glow {
@@ -55,22 +55,22 @@
             width: 90px; height: 90px; border-radius: 50%;
             position: relative; z-index: 2;
             animation: logoFloat 3s ease-in-out infinite;
-            box-shadow: 0 0 30px rgba(88,166,255,0.3), 0 0 60px rgba(163,113,247,0.2);
+            box-shadow: 0 0 30px rgba(74,144,217,0.4), 0 0 60px rgba(108,180,238,0.25);
         }
         @keyframes logoFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         .orbit-ring {
             position: absolute; width: 130px; height: 130px;
             top: 50%; left: 50%; transform: translate(-50%, -50%);
-            border: 2px solid transparent; border-top-color: #58a6ff;
+            border: 2px solid transparent; border-top-color: #4A90D9;
             border-radius: 50%; animation: orbit 2s linear infinite;
         }
         @keyframes orbit { to { transform: translate(-50%, -50%) rotate(360deg); } }
         .app-name {
             font-size: 32px; font-weight: 700; margin-bottom: 8px;
-            background: linear-gradient(90deg, #58a6ff, #a371f7, #58a6ff);
-            background-size: 200% auto;
+            background: linear-gradient(90deg, #4A90D9, #6CB4EE, #3178C6, #4A90D9);
+            background-size: 300% auto;
             -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            animation: gradient 2s ease infinite; letter-spacing: -0.5px;
+            animation: gradient 3s ease infinite; letter-spacing: -0.5px;
         }
         @keyframes gradient { 0%, 100% { background-position: 0% center; } 50% { background-position: 100% center; } }
         .tagline { font-size: 13px; color: #8b949e; margin-bottom: 32px; letter-spacing: 2px; text-transform: uppercase; }
@@ -81,9 +81,9 @@
         }
         .progress-fill {
             height: 100%;
-            background: linear-gradient(90deg, #58a6ff, #a371f7, #58a6ff);
-            background-size: 200% 100%; width: 0%;
-            animation: progress 2.5s ease-out forwards, shimmer 1.5s ease-in-out infinite;
+            background: linear-gradient(90deg, #4A90D9, #6CB4EE, #3178C6, #4A90D9);
+            background-size: 300% 100%; width: 0%;
+            animation: progress 2.5s ease-out forwards, shimmer 2s ease-in-out infinite;
         }
         @keyframes progress { 0% { width: 0%; } 30% { width: 35%; } 60% { width: 70%; } 90% { width: 90%; } 100% { width: 95%; } }
         @keyframes shimmer { 0%, 100% { background-position: 0% center; } 50% { background-position: 100% center; } }

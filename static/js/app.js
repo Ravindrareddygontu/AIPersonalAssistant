@@ -37,10 +37,7 @@ function generateMessageId(chatId, index, content) {
 // Shared welcome message HTML
 const WELCOME_HTML = `
     <div class="welcome-message">
-        <img src="/static/images/assistant.jpg" alt="Digistant" class="welcome-logo">
-        <h2>Hello! I'm Digistant</h2>
-        <p class="welcome-subtitle">Your AI-powered coding companion. I can help you explore code, write scripts, and answer questions.</p>
-        <p class="quick-actions-label">Try asking</p>
+        <h2>Hello, what do you want?</h2>
         <div class="quick-actions">
             <button class="action-btn" onclick="sendSuggestion('Show me the folder structure of this project with main files and their purposes')">
                 <i class="fas fa-sitemap"></i>
@@ -67,7 +64,6 @@ const WELCOME_HTML = `
                 <span>Git status</span>
             </button>
         </div>
-        <p class="welcome-hint">Press <kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for new line</p>
     </div>
 `;
 
@@ -715,8 +711,8 @@ function appendStreamingContent(newContent, requestId) {
 
     if (!streamingMessageDiv) return;
 
-    // Update status to show we're receiving content (status bar stays visible)
-    updateTypingStatus('Streaming response...');
+    // Don't overwrite status here - let backend's dynamic status messages show
+    // (e.g., "Summarizing conversation...", "Executing tool...", etc.)
 
     streamingContent += newContent;
 
@@ -978,9 +974,11 @@ function formatStreamingToolBlocks(text, toolBlocksArray) {
                 // Collect command lines
                 let commandLines = [firstLine];
                 let resultLines_tool = [];
+                let codeDiffLines = [];
                 let hasResult = false;
                 let isComplete = false;
                 let hasError = false;
+                let inCodeDiff = false;
                 i++;
 
                 // Look ahead for more content
@@ -1000,14 +998,25 @@ function formatStreamingToolBlocks(text, toolBlocksArray) {
                             hasError = true;
                         }
 
-                        // Check if this is a completion keyword
+                        // Check if this is an "Edited" result - expect code diff lines to follow
+                        if (resultContent.toLowerCase().includes('edited') &&
+                            resultContent.toLowerCase().includes('additions')) {
+                            inCodeDiff = true;
+                        }
+
+                        // Check if this is a completion keyword (but not if in code diff mode)
                         const lower = resultContent.toLowerCase();
                         const isEnd = TOOL_CONFIG.resultEndKeywords.some(kw => lower.includes(kw));
-                        if (isEnd) {
+                        if (isEnd && !inCodeDiff) {
                             isComplete = true;
                             i++;
                             break;
                         }
+                        i++;
+                    }
+                    // Code diff lines (e.g., "589 + // comment" or "590 - old code")
+                    else if (inCodeDiff && isCodeDiffLine(trimmed)) {
+                        codeDiffLines.push(trimmed);
                         i++;
                     }
                     // New tool starting - end current block
@@ -1017,6 +1026,9 @@ function formatStreamingToolBlocks(text, toolBlocksArray) {
                     }
                     // Empty line after results = end of block
                     else if (trimmed === '' && hasResult) {
+                        if (inCodeDiff && codeDiffLines.length > 0) {
+                            inCodeDiff = false;
+                        }
                         isComplete = true;
                         i++;
                         break;
@@ -1024,6 +1036,16 @@ function formatStreamingToolBlocks(text, toolBlocksArray) {
                     // More command content (before results)
                     else if (!hasResult) {
                         commandLines.push(nextLine);
+                        i++;
+                    }
+                    // In code diff mode but not a diff line - might be continuation or end
+                    else if (inCodeDiff) {
+                        // Treat as continuation of diff (wrapped lines) or end if it looks like regular text
+                        if (isExplanatoryText && isExplanatoryText(trimmed)) {
+                            isComplete = true;
+                            break;
+                        }
+                        codeDiffLines.push(trimmed);
                         i++;
                     }
                     // Text after results = end of block
@@ -1041,6 +1063,7 @@ function formatStreamingToolBlocks(text, toolBlocksArray) {
                     icon: toolConfig.icon,
                     command: commandLines.join('\n').trim(),
                     results: resultLines_tool,
+                    codeDiff: codeDiffLines,
                     hasError: hasError,
                     isStreaming: !isComplete
                 });
@@ -1093,8 +1116,13 @@ function renderStreamingToolBlock(tool) {
         html += `</div>`;
     }
 
-    // Note: No streaming cursor here - the generic cursor at the end of the message handles this
     html += `</div>`;
+
+    // Render code diff lines (for Edit File blocks) - on the fly during streaming
+    if (tool.codeDiff && tool.codeDiff.length > 0) {
+        html += renderCodeDiffBlock(tool.codeDiff, tool.isStreaming);
+    }
+
     return html;
 }
 
@@ -1735,27 +1763,61 @@ function renderToolBlock(tool) {
     // Render code diff lines outside tool-block (after the yellow border ends)
     if (tool.codeDiff && tool.codeDiff.length > 0) {
         html += `</div>`; // Close tool-block first
-        html += `<div class="tool-code-diff-wrapper">`;
-        html += `<span class="diff-arrow">↳</span>`;
-        html += `<div class="tool-code-diff">`;
-        tool.codeDiff.forEach(line => {
-            const escaped = escapeHtml(line);
-            // Highlight additions (green) and removals (red)
-            if (/^\d+\s*\+/.test(line)) {
-                html += `<div class="diff-line diff-add">${escaped}</div>`;
-            } else if (/^\d+\s*-/.test(line)) {
-                html += `<div class="diff-line diff-remove">${escaped}</div>`;
-            } else {
-                html += `<div class="diff-line">${escaped}</div>`;
-            }
-        });
-        html += `</div>`;
-        html += `</div>`;
+        html += renderCodeDiffBlock(tool.codeDiff);
         return html; // Already closed tool-block
     }
 
     html += `</div>`;
     return html;
+}
+
+// Render a collapsible code diff block
+function renderCodeDiffBlock(codeDiffLines, isStreaming = false) {
+    // Count additions and removals
+    let additions = 0, removals = 0;
+    codeDiffLines.forEach(line => {
+        if (/^\d+\s*\+/.test(line)) additions++;
+        else if (/^\d+\s*-/.test(line)) removals++;
+    });
+
+    const streamingClass = isStreaming ? ' streaming' : '';
+    let html = `<div class="tool-code-diff-wrapper${streamingClass}" onclick="toggleCodeDiff(event, this)">`;
+
+    // Clickable header
+    html += `<div class="tool-code-diff-header">`;
+    html += `<span class="diff-arrow">↳</span>`;
+    html += `<span class="diff-label">Code Changes</span>`;
+    html += `<span class="diff-stats">`;
+    if (additions > 0) html += `<span class="diff-stat-add">+${additions}</span>`;
+    if (removals > 0) html += `<span class="diff-stat-remove">-${removals}</span>`;
+    html += `</span>`;
+    html += `<i class="fas fa-chevron-down diff-toggle-icon"></i>`;
+    html += `</div>`;
+
+    // Code diff content
+    html += `<div class="tool-code-diff">`;
+    codeDiffLines.forEach(line => {
+        const escaped = escapeHtml(line);
+        // Highlight additions (green) and removals (red)
+        if (/^\d+\s*\+/.test(line)) {
+            html += `<div class="diff-line diff-add">${escaped}</div>`;
+        } else if (/^\d+\s*-/.test(line)) {
+            html += `<div class="diff-line diff-remove">${escaped}</div>`;
+        } else {
+            html += `<div class="diff-line">${escaped}</div>`;
+        }
+    });
+    html += `</div>`;
+    html += `</div>`;
+
+    return html;
+}
+
+// Toggle code diff collapse/expand
+function toggleCodeDiff(event, wrapper) {
+    // Don't toggle if clicking inside the diff content
+    if (event.target.closest('.tool-code-diff')) return;
+    wrapper.classList.toggle('collapsed');
 }
 
 // Helper to escape HTML

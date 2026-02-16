@@ -1,30 +1,62 @@
 :root {
-    --primary: #3B82F6;
-    --primary-hover: #2563EB;
-    --bg: #0d1117;
-    --bg-secondary: #161b22;
-    --bg-tertiary: #1c2128;
-    --bg-hover: #21262d;
-    --text: #e6edf3;
-    --text-muted: #7d8590;
-    --border: #30363d;
+    /* Blue Jay Color Combinations - Dark Theme */
+    /* Accurate Blue Jay plumage: lavender-blue to mid-blue crest/back/wings/tail,
+       white face, off-white underside, black collar, sky-blue & black wing bars */
+    --jay-lavender: #7B8FC2;      /* Lavender-blue (crest, back) */
+    --jay-mid-blue: #5078B0;      /* Mid-blue (wings, tail) */
+    --jay-sky-blue: #89B4E8;      /* Sky-blue (wing bar highlights) */
+    --jay-white: #F8FAFB;         /* White (face) */
+    --jay-offwhite: #E8EDF2;      /* Off-white (underside) */
+    --jay-black: #1C1F26;         /* Black (collar, markings) */
+
+    --primary: #5078B0;           /* Mid-blue - main feather color */
+    --primary-hover: #3D5F8F;     /* Deeper blue on hover */
+    --primary-light: #89B4E8;     /* Sky-blue accent */
+    --secondary: #7B8FC2;         /* Lavender-blue */
+    --accent: #E8EDF2;            /* Off-white accent */
+    --accent-contrast: #2A3A52;   /* Deep blue-black */
+    --bg: #121518;                /* Dark background (jay's black collar) */
+    --bg-secondary: #181C21;      /* Slightly lighter */
+    --bg-tertiary: #1F252C;       /* Tertiary background */
+    --bg-hover: #283040;          /* Hover state with blue tint */
+    --text: #F8FAFB;              /* White text (jay's face) */
+    --text-muted: #9AA8B8;        /* Muted lavender-gray */
+    --border: #2E3A4A;            /* Blue-tinted border */
     --success: #3fb950;
     --error: #f85149;
-    --user-msg-bg: #3B82F6;
+    --warning: #d29922;
+    --user-msg-bg: linear-gradient(135deg, #7B8FC2 0%, #5078B0 50%, #3D5F8F 100%);
     --user-msg-text: #ffffff;
+    --highlight: #89B4E8;         /* Sky-blue highlight */
+    --highlight-soft: rgba(137, 180, 232, 0.15);
 }
 
-/* Light theme */
+/* Light theme - Blue Jay inspired */
 .light-theme {
-    --bg: #ffffff;
-    --bg-secondary: #f6f8fa;
-    --bg-tertiary: #eef1f4;
-    --bg-hover: #eaeef2;
-    --text: #1f2328;
-    --text-muted: #656d76;
-    --border: #d0d7de;
-    --user-msg-bg: #0969da;
+    --jay-lavender: #7B8FC2;      /* Lavender-blue */
+    --jay-mid-blue: #5078B0;      /* Mid-blue */
+    --jay-sky-blue: #89B4E8;      /* Sky-blue */
+    --jay-white: #FFFFFF;         /* Pure white */
+    --jay-offwhite: #F5F7FA;      /* Off-white */
+    --jay-black: #1C1F26;         /* Black markings */
+
+    --primary: #5078B0;           /* Mid-blue */
+    --primary-hover: #3D5F8F;     /* Deeper blue */
+    --primary-light: #89B4E8;     /* Sky-blue */
+    --secondary: #7B8FC2;         /* Lavender-blue */
+    --accent: #E8EDF2;            /* Off-white (jay's underside) */
+    --accent-contrast: #2A3A52;   /* Deep blue-black */
+    --bg: #FAFBFC;                /* Clean white (jay's face) */
+    --bg-secondary: #F0F4F8;      /* Soft off-white */
+    --bg-tertiary: #E4EAF0;       /* Light lavender-gray */
+    --bg-hover: #D8E2EC;          /* Hover with blue tint */
+    --text: #1C1F26;              /* Black text (jay's collar) */
+    --text-muted: #5A6878;        /* Muted blue-gray */
+    --border: #C8D4E0;            /* Soft blue border */
+    --user-msg-bg: linear-gradient(135deg, #7B8FC2 0%, #5078B0 50%, #3D5F8F 100%);
     --user-msg-text: #ffffff;
+    --highlight: #5078B0;
+    --highlight-soft: rgba(80, 120, 176, 0.1);
 }
 
 * {
@@ -178,10 +210,10 @@ body {
 .new-chat-btn {
     width: 100%;
     padding: 11px 16px;
-    background: var(--primary);
-    border: none;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
     border-radius: 10px;
-    color: white;
+    color: var(--text);
     font-size: 0.85rem;
     font-weight: 500;
     cursor: pointer;
@@ -189,19 +221,17 @@ body {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
+    transition: border-color 0.2s, box-shadow 0.2s, color 0.2s;
 }
 
 .new-chat-btn:hover {
-    background: var(--primary-hover);
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-    transform: translateY(-1px);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(80, 120, 176, 0.15);
+    color: var(--primary-light);
 }
 
 .new-chat-btn:active {
-    transform: translateY(0);
-    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.2);
+    box-shadow: 0 0 0 2px rgba(80, 120, 176, 0.2);
 }
 
 .new-chat-btn i {
@@ -412,7 +442,7 @@ body {
 .logo {
     font-size: 1.2rem;
     font-weight: 700;
-    color: #38bdf8;
+    color: var(--jay-blue-bright);
     display: flex;
     align-items: center;
     gap: 10px;
@@ -637,16 +667,16 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(99, 102, 241, 0.05) 100%);
+    background: linear-gradient(135deg, rgba(43, 122, 201, 0.1) 0%, rgba(74, 159, 232, 0.06) 100%);
     opacity: 0;
     transition: opacity 0.25s ease;
 }
 
 .action-btn:hover {
     background: var(--bg-hover);
-    border-color: var(--primary);
+    border-color: var(--jay-blue);
     transform: translateY(-3px);
-    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.2);
+    box-shadow: 0 8px 24px rgba(43, 122, 201, 0.25);
 }
 
 .action-btn:hover::before {
@@ -655,11 +685,11 @@ body {
 
 .action-btn:active {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+    box-shadow: 0 4px 12px rgba(43, 122, 201, 0.2);
 }
 
 .action-btn i {
-    color: var(--primary);
+    color: var(--jay-blue-bright);
     font-size: 1.4rem;
     transition: all 0.25s ease;
     position: relative;
@@ -668,7 +698,8 @@ body {
 
 .action-btn:hover i {
     transform: scale(1.15);
-    filter: drop-shadow(0 2px 4px rgba(16, 185, 129, 0.3));
+    color: var(--jay-white);
+    filter: drop-shadow(0 2px 4px rgba(43, 122, 201, 0.4));
 }
 
 .action-btn span {
@@ -953,7 +984,7 @@ body {
 }
 
 .user-copy-btn.copied {
-    color: #22c55e;
+    color: var(--jay-sky-blue, #89B4E8);  /* Sky-blue copied indicator */
 }
 
 /* Inline edit textarea and buttons */
@@ -1120,8 +1151,8 @@ body {
 
 .table-copy-btn.copied {
     opacity: 1;
-    color: #22c55e;
-    border-color: #22c55e;
+    color: var(--jay-sky-blue, #89B4E8);  /* Sky-blue copied indicator */
+    border-color: var(--jay-sky-blue, #89B4E8);
 }
 
 /* Markdown Tables - Enhanced styling */
@@ -1468,14 +1499,14 @@ body {
 }
 
 .tool-block.tool-terminal .tool-command {
-    background: #1e252e;
-    color: #f5f8fa;
+    background: var(--jay-black);
+    color: var(--jay-white);
     padding: 10px 12px;
     line-height: 1.4;
 }
 
 .tool-block.tool-terminal .tool-command code {
-    color: #eaf5f0;
+    color: var(--accent);
     white-space: normal;
     word-break: break-word;
     font-size: 0.82rem;
@@ -1495,7 +1526,7 @@ body {
 }
 
 .tool-block.tool-terminal .tool-result .result-arrow {
-    color: #58a6ff;
+    color: var(--jay-blue-bright);
 }
 
 /* Tool copy button */
@@ -1519,7 +1550,7 @@ body {
 
 .tool-copy-btn.copied {
     opacity: 1;
-    color: #22c55e;
+    color: var(--jay-sky-blue, #89B4E8);  /* Sky-blue copied indicator */
 }
 
 /* Read Directory/File blocks - Violet border theme (like Terminal) */
@@ -1643,7 +1674,7 @@ body {
     max-height: 270px;
     overflow: auto;
     padding: 10px 14px;
-    background: #0d1117;
+    background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 6px;
     font-family: inherit;
@@ -1710,9 +1741,9 @@ body {
     font-weight: 700;
 }
 
-/* Result status highlighting */
+/* Result status highlighting - Blue Jay colors */
 .tool-result .result-success {
-    color: #22c55e;
+    color: var(--jay-sky-blue, #89B4E8);  /* Sky-blue from wing bars */
 }
 
 .tool-result .result-error {
@@ -1841,7 +1872,7 @@ body {
 
 .chat-input-wrapper:focus-within {
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    box-shadow: 0 0 0 3px rgba(80, 120, 176, 0.15);
 }
 
 /* Quick shortcut buttons below input box */
@@ -1900,31 +1931,33 @@ body {
 .send-btn {
     width: 36px;
     height: 36px;
-    background: var(--primary);
-    border: none;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
     border-radius: 50%;
-    color: white;
+    color: var(--text);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.2s, transform 0.15s;
+    transition: border-color 0.2s, box-shadow 0.2s, color 0.2s;
     flex-shrink: 0;
 }
 
 .send-btn:hover:not(:disabled) {
-    background: var(--primary-hover);
-    transform: scale(1.05);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(80, 120, 176, 0.15);
+    color: var(--primary-light);
 }
 
 .send-btn:active:not(:disabled) {
-    transform: scale(0.95);
+    box-shadow: 0 0 0 2px rgba(80, 120, 176, 0.2);
 }
 
 .send-btn:disabled {
-    background: var(--border);
+    background: var(--bg-tertiary);
+    border-color: var(--border);
     cursor: not-allowed;
-    opacity: 0.6;
+    opacity: 0.5;
 }
 
 /* Stop Button */
@@ -2000,7 +2033,7 @@ body {
 }
 
 .status-log.complete .status-generic i {
-    color: #22c55e;
+    color: var(--jay-sky-blue, #89B4E8);  /* Sky-blue complete indicator */
 }
 
 /* Detailed status items - stack up */
@@ -2031,11 +2064,11 @@ body {
 }
 
 .status-item.sub-action i {
-    color: #22c55e;
+    color: var(--jay-sky-blue, #89B4E8);  /* Sky-blue for sub-actions */
 }
 
 .status-log.complete .status-item i {
-    color: #22c55e;
+    color: var(--jay-sky-blue, #89B4E8);  /* Sky-blue complete indicator */
 }
 
 /* Loading Animation */
@@ -2149,7 +2182,7 @@ body {
 }
 
 .tool-block.streaming .tool-results .result-arrow {
-    color: #58a6ff;
+    color: var(--jay-blue-bright);
     font-weight: 700;
     flex-shrink: 0;
 }
@@ -2731,14 +2764,14 @@ body:has(.sidebar.collapsed) #devToolsModal {
 
 .add-reminder-btn {
     padding: 8px 12px;
-    background: var(--primary);
-    border: none;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: white;
+    color: var(--text);
     font-size: 0.75rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: border-color 0.2s, box-shadow 0.2s, color 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2750,7 +2783,9 @@ body:has(.sidebar.collapsed) #devToolsModal {
 }
 
 .add-reminder-btn:hover {
-    background: var(--primary-hover);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(80, 120, 176, 0.15);
+    color: var(--primary-light);
 }
 
 .no-reminders {
@@ -2796,18 +2831,20 @@ body:has(.sidebar.collapsed) #devToolsModal {
 .save-settings-btn {
     width: 100%;
     padding: 10px 18px;
-    background: var(--primary);
-    border: none;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
     border-radius: 8px;
-    color: white;
+    color: var(--text);
     font-size: 0.85rem;
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: border-color 0.2s, box-shadow 0.2s, color 0.2s;
 }
 
 .save-settings-btn:hover {
-    background: var(--primary-hover);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(80, 120, 176, 0.15);
+    color: var(--primary-light);
 }
 
 /* Directory browser */
