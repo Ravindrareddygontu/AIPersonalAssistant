@@ -1,0 +1,104 @@
+{
+  "timestamp": "2026-02-16T18:01:06.130805",
+  "total_tests": 10,
+  "passed": 9,
+  "failed": 1,
+  "pass_rate": "90.0%",
+  "total_time": 722.4601292610168,
+  "avg_first_chunk_time": 0.4020414113998413,
+  "total_bytes_received": 8434695,
+  "tests": [
+    {
+      "question": "What is 2 + 2?",
+      "success": true,
+      "time": 10.984832286834717,
+      "first_chunk_time": 0.4020955562591553,
+      "content_length": 9,
+      "tool_blocks": 0,
+      "errors": []
+    },
+    {
+      "question": "Find where the function formatMessage is defined in this codebase",
+      "success": false,
+      "time": 73.94186735153198,
+      "first_chunk_time": 0.4020540714263916,
+      "content_length": 196,
+      "tool_blocks": 1,
+      "errors": [
+        "Extended silence timeout"
+      ]
+    },
+    {
+      "question": "Search the codebase and find: 1) How is the PTY session started with auggie? 2) What timeouts are co",
+      "success": true,
+      "time": 62.34679651260376,
+      "first_chunk_time": 0.4019811153411865,
+      "content_length": 3701,
+      "tool_blocks": 1,
+      "errors": []
+    },
+    {
+      "question": "What is the current version of Python and when was it released? Search the web for the latest inform",
+      "success": true,
+      "time": 27.231918573379517,
+      "first_chunk_time": 0.4017927646636963,
+      "content_length": 1022,
+      "tool_blocks": 1,
+      "errors": []
+    },
+    {
+      "question": "Read the content of backend/session.py and tell me what AuggieSession class does",
+      "success": true,
+      "time": 43.628010511398315,
+      "first_chunk_time": 0.40225815773010254,
+      "content_length": 2382,
+      "tool_blocks": 0,
+      "errors": []
+    },
+    {
+      "question": "Run 'ls -la backend/' and show me the files",
+      "success": true,
+      "time": 24.699532508850098,
+      "first_chunk_time": 0.40238523483276367,
+      "content_length": 1181,
+      "tool_blocks": 1,
+      "errors": []
+    },
+    {
+      "question": "Explain in detail the complete architecture of this chat application. Include: 1) Backend structure ",
+      "success": true,
+      "time": 181.1900691986084,
+      "first_chunk_time": 0.4022960662841797,
+      "content_length": 35065,
+      "tool_blocks": 0,
+      "errors": []
+    },
+    {
+      "question": "Search the codebase for any API endpoints, base URLs, or configuration related to chat or messaging.",
+      "success": true,
+      "time": 59.45581603050232,
+      "first_chunk_time": 0.4014852046966553,
+      "content_length": 5204,
+      "tool_blocks": 1,
+      "errors": []
+    },
+    {
+      "question": "First check what's in the backend/routes directory, then read the chat.py file and explain the main ",
+      "success": true,
+      "time": 51.32489800453186,
+      "first_chunk_time": 0.40186452865600586,
+      "content_length": 4059,
+      "tool_blocks": 0,
+      "errors": []
+    },
+    {
+      "question": "I need you to help me understand the streaming implementation in this codebase. Specifically: 1) How",
+      "success": true,
+      "time": 187.65638828277588,
+      "first_chunk_time": 0.40220141410827637,
+      "content_length": 41993,
+      "tool_blocks": 1533,
+      "errors": []
+    }
+  ]
+}

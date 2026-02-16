@@ -500,21 +500,9 @@ class StreamGenerator:
 
         # Response started but no end pattern yet - wait for signal
         if state.saw_response_marker:
-            # If content looks complete AND no new data for a while, end it
-            # This handles cases where end pattern detection fails
-            if state.content_looks_complete() and state.elapsed_since_data > 5.0:
-                _log(f"Exit: content complete + {state.elapsed_since_data:.1f}s data silence")
-                return True
-
-            # If content does NOT look complete, wait longer - auggie may be thinking
-            if not state.content_looks_complete() and state.elapsed_since_data > self.CONTENT_SILENCE_INCOMPLETE:
-                _log(f"Exit: incomplete content + {state.elapsed_since_data:.1f}s silence (forced)")
-                return True
-
-            # Final fallback timeout - very generous to avoid cutting off responses
-            fallback_timeout = 60.0  # 60 seconds - generous fallback (increased from 30)
-            if state.elapsed_since_data > fallback_timeout:
-                _log(f"Exit: fallback timeout, {state.elapsed_since_data:.1f}s data silence (no end signal)")
+            # If no new data for a while, end it (fallback for missed end pattern)
+            if state.elapsed_since_data > 3.0:
+                _log(f"Exit: {state.elapsed_since_data:.1f}s data silence - assuming complete")
                 return True
 
         # Timeout waiting for response marker (auggie hasn't started responding)

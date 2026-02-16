@@ -245,37 +245,25 @@ class StreamProcessor:
         empty_prompt_pattern = re.compile(r'│ ›\s{20,}│')
 
         if empty_prompt_pattern.search(last_section):
-            # Found empty prompt pattern, but verify the content is actually complete
-            # This prevents cutting off responses when the prompt briefly appears mid-generation
-            if state.content_looks_complete():
-                log.info("[END_DETECT] Found empty input prompt with complete content - response complete")
+            # Found empty prompt pattern - this is the definitive signal
+            # Trust this signal when we have substantial content
+            if state.has_substantial_content(min_length=10, min_time=1.0):
+                log.info("[END_DETECT] Found empty input prompt - response complete")
                 return True
-            else:
-                # Content doesn't look complete yet - might be mid-sentence
-                # Log but don't trigger end yet - wait for content to look complete
-                log.debug("[END_DETECT] Found empty prompt but content looks incomplete, waiting...")
 
         # Secondary check: Look for the COMPLETE end sequence:
         # 1. Empty prompt line: │ ›  (spaces) │
         # 2. Followed by box bottom: ╰───...───╯
-        # This is more strict to avoid false positives from box characters mid-response
-        if state.has_substantial_content(min_length=100, min_time=3.0):
-            # Look for the complete end sequence in the very last part
+        if state.has_substantial_content(min_length=10, min_time=1.0):
             end_section = last_section[-400:] if len(last_section) > 400 else last_section
 
-            # Pattern: prompt line followed by box bottom (the actual end of auggie UI)
-            # Must have BOTH the prompt pattern AND box bottom in correct sequence
             prompt_match = self.END_PATTERN_PROMPT.search(end_section)
             box_match = self.END_PATTERN_BOX.search(end_section)
 
             if prompt_match and box_match:
-                # Ensure box bottom comes AFTER or near the prompt (within 100 chars)
-                # This prevents false positives from box characters appearing earlier
                 if box_match.start() >= prompt_match.start() - 50:
-                    # Additional check: content should look complete (has ending punctuation)
-                    if state.content_looks_complete():
-                        log.info("[END_DETECT] Found prompt + box bottom sequence with complete content")
-                        return True
+                    log.info("[END_DETECT] Found prompt + box bottom sequence")
+                    return True
 
         return False
 
