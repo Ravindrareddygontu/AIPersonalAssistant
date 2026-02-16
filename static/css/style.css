@@ -1,6 +1,6 @@
 :root {
-    --primary: #10b981;
-    --primary-hover: #059669;
+    --primary: #3B82F6;
+    --primary-hover: #2563EB;
     --bg: #0d1117;
     --bg-secondary: #161b22;
     --bg-tertiary: #1c2128;
@@ -10,7 +10,7 @@
     --border: #30363d;
     --success: #3fb950;
     --error: #f85149;
-    --user-msg-bg: #238636;
+    --user-msg-bg: #3B82F6;
     --user-msg-text: #ffffff;
 }
 
@@ -1133,7 +1133,7 @@ body {
     border-spacing: 0;
     margin: 0;
     font-family: inherit;
-    font-size: 0.92rem;
+    font-size: 0.88rem;
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid var(--border);
@@ -1149,7 +1149,7 @@ body {
     border-bottom: 2px solid rgba(99, 102, 241, 0.3);
     border-right: 1px solid var(--border);
     letter-spacing: 0.3px;
-    font-size: 0.92rem;
+    font-size: 0.88rem;
     text-transform: none;
 }
 
@@ -1806,30 +1806,14 @@ body {
 .input-status-bar {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 16px;
-    margin-bottom: 8px;
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(124, 58, 237, 0.06));
-    border: 1px solid rgba(99, 102, 241, 0.25);
-    border-radius: 12px;
-    font-size: 13px;
-    color: var(--text-primary);
-    font-weight: 500;
+    gap: 8px;
+    padding: 6px 16px;
+    margin-bottom: 4px;
+    font-size: 14px;
+    color: var(--text-muted);
     width: calc(100% - 15%);
     margin-left: auto;
     margin-right: 10%;
-    animation: statusSlideIn 0.2s ease-out;
-}
-
-@keyframes statusSlideIn {
-    from {
-        opacity: 0;
-        transform: translateY(8px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
 }
 
 .input-status-bar .status-icon {
@@ -2226,7 +2210,7 @@ body {
     border-spacing: 0;
     margin: 0;
     font-family: inherit;
-    font-size: 0.92rem;
+    font-size: 0.88rem;
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid var(--border);
@@ -2243,7 +2227,7 @@ body {
     border-bottom: 2px solid rgba(99, 102, 241, 0.3);
     border-right: 1px solid var(--border);
     letter-spacing: 0.3px;
-    font-size: 0.92rem;
+    font-size: 0.88rem;
     text-transform: none;
 }
 

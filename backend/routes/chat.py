@@ -374,9 +374,6 @@ class StreamGenerator:
 
     def _get_current_status(self, state: StreamState) -> str:
         """Get current status message based on stream state."""
-        if state.streaming_started:
-            return ""  # Don't show status during actual streaming
-
         elapsed = int(state.elapsed_since_message)
 
         if not state.saw_message_echo:
@@ -388,7 +385,14 @@ class StreamGenerator:
             return f"AI is thinking... ({elapsed}s)"
 
         if state.is_tool_executing():
-            return f"Processing tools... ({elapsed}s)"
+            return f"Running tools... ({elapsed}s)"
+
+        if state.streaming_started:
+            # Dynamic status during streaming
+            chars = state.streamed_length
+            if chars > 1000:
+                return f"Streaming... {chars // 1000}k"
+            return f"Streaming... {chars}"
 
         return f"Receiving response... ({elapsed}s)"
 
