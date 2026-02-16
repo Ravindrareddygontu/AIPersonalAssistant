@@ -350,19 +350,20 @@ class StreamGenerator:
 
                 # Process accumulated data
                 yield from self._process_accumulated_data(state)
-            else:
+
+            # Send periodic status updates (moved outside else to update during data flow too)
+            now = time.time()
+            if now - last_status_time >= 0.5:  # Update every 0.5 seconds for more responsive UI
+                status_msg = self._get_current_status(state)
+                if status_msg and status_msg != last_status_msg:
+                    yield self.sse.send({'type': 'status', 'message': status_msg})
+                    last_status_msg = status_msg
+                last_status_time = now
+
+            if not ready:
                 # No data available - still process accumulated data to flush buffered content
                 # This handles the 0.3s timeout for partial lines without newlines
                 yield from self._process_accumulated_data(state)
-
-                # Send periodic status updates
-                now = time.time()
-                if now - last_status_time >= 1.0:  # Update every second
-                    status_msg = self._get_current_status(state)
-                    if status_msg and status_msg != last_status_msg:
-                        yield self.sse.send({'type': 'status', 'message': status_msg})
-                        last_status_msg = status_msg
-                    last_status_time = now
 
                 # Check exit conditions
                 if self._should_exit(state):
@@ -375,6 +376,14 @@ class StreamGenerator:
     def _get_current_status(self, state: StreamState) -> str:
         """Get current status message based on stream state."""
         elapsed = int(state.elapsed_since_message)
+
+        # Check for specific activity indicators in terminal output
+        output_tail = state.all_output[-500:] if len(state.all_output) > 500 else state.all_output
+
+        # Detect specific activities from terminal output
+        activity_msg = self._detect_activity(output_tail)
+        if activity_msg:
+            return f"{activity_msg} ({elapsed}s)"
 
         if not state.saw_message_echo:
             return f"Sending request... ({elapsed}s)"
@@ -395,6 +404,26 @@ class StreamGenerator:
             return f"Streaming... {chars}"
 
         return f"Receiving response... ({elapsed}s)"
+
+    def _detect_activity(self, output: str) -> str | None:
+        """Detect specific activity from terminal output."""
+        # Use exact patterns as they appear in terminal output
+        activities = [
+            'Summarizing conversation history',
+            'Processing response',
+            'Sending request',
+            'Receiving response',
+            'Codebase search',
+            'Executing tools',
+            'Reading file',
+            'Searching',
+        ]
+
+        for activity in activities:
+            if activity in output:
+                return activity
+
+        return None
 
     def _process_accumulated_data(self, state: StreamState):
         """Process accumulated data from terminal buffer."""
