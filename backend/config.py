@@ -11,6 +11,7 @@ SKIP_PATTERNS = [
     'from a project directory', 'Ctrl+P to enhance', 'Ctrl+S to stash',
     'Claude Opus', 'Version 0.', '@veefin.com', '@gmail.com', 'ravindrar@',
     'Processing response...', 'esc to interrupt', 'Sending request...',
+    'Receiving response', 'Summarizing conversation history',
     '▇▇▇▇▇', '? to show shortcuts', 'Get started',
     'Executing tools...',
 ]
@@ -133,4 +134,3 @@ SLACK_ENABLED = os.environ.get('SLACK_ENABLED', 'false').lower() == 'true'
 def is_slack_configured() -> bool:
     """Check if Slack integration is properly configured."""
     return bool(SLACK_BOT_TOKEN and SLACK_APP_TOKEN)
-

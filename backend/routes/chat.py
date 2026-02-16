@@ -179,7 +179,7 @@ class StreamGenerator:
     CONTENT_SILENCE_TIMEOUT = 5.0  # Base silence timeout for complete content
     CONTENT_SILENCE_EXTENDED = 60.0  # Extended timeout when tools are executing (increased from 30)
     CONTENT_SILENCE_INCOMPLETE = 45.0  # Timeout when content doesn't look complete (increased from 15)
-    END_PATTERN_SILENCE = 0.5  # End pattern detected, wait a bit more
+    END_PATTERN_SILENCE = 1.0  # End pattern detected, wait 1s before ending
     RESPONSE_MARKER_TIMEOUT = 5.0  # Data silence after response started
     WAIT_FOR_MARKER_TIMEOUT = 45.0  # Max wait for first response marker
 
@@ -378,27 +378,15 @@ class StreamGenerator:
 
     def _get_current_status(self, state: StreamState) -> str:
         """Get current status message based on stream state."""
-        elapsed = int(state.elapsed_since_message)
-
         # Check for specific activity indicators in terminal output
         output_tail = state.all_output[-500:] if len(state.all_output) > 500 else state.all_output
 
         # Detect specific activities from terminal output
         activity_msg = self._detect_activity(output_tail)
         if activity_msg:
-            return f"{activity_msg} ({elapsed}s)"
+            return activity_msg
 
-        if not state.saw_message_echo:
-            return f"Sending request... ({elapsed}s)"
-
-        if not state.saw_response_marker:
-            if state.is_tool_executing():
-                return f"Executing tools... ({elapsed}s)"
-            return f"AI is thinking... ({elapsed}s)"
-
-        if state.is_tool_executing():
-            return f"Running tools... ({elapsed}s)"
-
+        # Only surface status lines emitted by auggie itself
         return None
 
     def _detect_activity(self, output: str) -> str | None:
@@ -415,9 +403,12 @@ class StreamGenerator:
             'Searching',
         ]
 
-        for activity in activities:
-            if activity in output:
-                return activity
+        lines = [line.strip() for line in output.splitlines() if line.strip()]
+        for line in reversed(lines):
+            for activity in activities:
+                if activity in line:
+                    # Return the exact line as shown by auggie
+                    return line
 
         return None
 
