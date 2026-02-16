@@ -630,9 +630,11 @@ function createMessageHTML(role, content, index, messageId = null) {
     } else {
         // Edit and copy buttons outside the box, bottom right
         const encodedContent = btoa(unescape(encodeURIComponent(content)));
+        // User messages: plain text with newlines preserved, no markdown formatting
+        const plainContent = escapeHtml(content).replace(/\n/g, '<br>');
         return `<div class="message-avatar"><i class="fas ${icon}"></i></div>
             <div class="message-content">
-                <div class="message-text">${formatMessage(content)}</div>
+                <div class="message-text">${plainContent}</div>
             </div>
             <div class="message-actions-outside">
                 <button class="user-copy-btn" data-content="${encodedContent}" title="Copy message">
@@ -780,6 +782,42 @@ function formatMessageIncremental(text) {
     return formatted;
 }
 
+// ============================================================================
+// TOOL FORMATTING CONFIG - Edit this section when changing AI providers
+// ============================================================================
+const TOOL_CONFIG = {
+    // Tools: name, icon, type (for styling)
+    tools: [
+        { name: 'Terminal', icon: 'fa-terminal', type: 'terminal' },
+        { name: 'Read Directory', icon: 'fa-folder-open', type: 'read' },
+        { name: 'Read File', icon: 'fa-file-code', type: 'read' },
+        { name: 'Read Process', icon: 'fa-stream', type: 'read' },
+        { name: 'Write File', icon: 'fa-file-pen', type: 'action' },
+        { name: 'Edit File', icon: 'fa-edit', type: 'action' },
+        { name: 'Search', icon: 'fa-search', type: 'action' },
+        { name: 'Codebase Search', icon: 'fa-code', type: 'action' },
+        { name: 'Codebase search', icon: 'fa-code', type: 'action' },
+        { name: 'Web Search', icon: 'fa-globe', type: 'action' },
+    ],
+    // Result line prefix
+    resultPrefix: '↳',
+    // Result status keywords that END a tool block (case insensitive)
+    resultEndKeywords: [
+        'command completed', 'command error', 'listed', 'read',
+        'process completed', 'wrote', 'edited', 'found', 'no results'
+    ],
+};
+
+// Cached regex for tool parsing - built once for performance
+let _cachedToolStartRegex = null;
+function getToolStartRegex() {
+    if (!_cachedToolStartRegex) {
+        const toolNames = TOOL_CONFIG.tools.map(t => t.name).join('|');
+        _cachedToolStartRegex = new RegExp(`^(${toolNames})\\s+-\\s+(.+)$`);
+    }
+    return _cachedToolStartRegex;
+}
+
 // Format only complete markdown structures (tables, code blocks, lists, etc.)
 function formatCompleteStructures(text) {
     if (!text) return '';
@@ -802,6 +840,10 @@ function formatCompleteStructures(text) {
         return `__CODEBLOCK_${idx}__`;
     });
 
+    // Handle streaming tool blocks
+    const toolBlocks = [];
+    result = formatStreamingToolBlocks(result, toolBlocks);
+
     // Handle inline code
     result = result.replace(/`([^`\n]+)`/g, '<code>$1</code>');
 
@@ -821,7 +863,9 @@ function formatCompleteStructures(text) {
                 const cells = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
                 return cells ? `<tr>${cells}</tr>` : null;
             }).filter(Boolean).join('');
-            return `<table class="md-table"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>`;
+            // Encode original markdown for copy
+            const encodedTable = btoa(unescape(encodeURIComponent(match.trim())));
+            return `<div class="table-wrapper"><button class="table-copy-btn" data-table="${encodedTable}" title="Copy table"><i class="fas fa-copy"></i></button><table class="md-table"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
         } catch (e) {
             return match;
         }
@@ -878,15 +922,167 @@ function formatCompleteStructures(text) {
     });
     result = formattedLines.join('\n');
 
-    // Line breaks
+    // Line breaks - but collapse multiple empty lines
+    result = result.replace(/\n{3,}/g, '\n\n');  // Max 2 newlines
     result = result.replace(/\n/g, '<br>');
+    // Collapse multiple <br> tags
+    result = result.replace(/(<br>){3,}/g, '<br><br>');
 
     // Restore code blocks
     codeBlocks.forEach((block, idx) => {
         result = result.replace(`__CODEBLOCK_${idx}__`, block);
     });
 
+    // Restore tool blocks - remove surrounding <br> tags for cleaner look
+    toolBlocks.forEach((block, idx) => {
+        // Remove <br> right before and after tool blocks
+        result = result.replace(new RegExp(`(<br>)*__TOOLBLOCK_${idx}__(<br>)*`, 'g'), block);
+    });
+
     return result;
+}
+
+// Format streaming tool blocks - detect and render tool blocks during streaming
+function formatStreamingToolBlocks(text, toolBlocksArray) {
+    const toolStartRegex = getToolStartRegex();
+    const lines = text.split('\n');
+    const resultLines = [];
+    let i = 0;
+
+    while (i < lines.length) {
+        const line = lines[i];
+        const toolMatch = line.match(toolStartRegex);
+
+        if (toolMatch) {
+            const [, toolName, firstLine] = toolMatch;
+            const toolConfig = TOOL_CONFIG.tools.find(t => t.name === toolName);
+
+            if (toolConfig) {
+                // Collect command lines
+                let commandLines = [firstLine];
+                let resultLines_tool = [];
+                let hasResult = false;
+                let isComplete = false;
+                let hasError = false;
+                i++;
+
+                // Look ahead for more content
+                while (i < lines.length) {
+                    const nextLine = lines[i];
+                    const trimmed = nextLine.trim();
+
+                    // Check if this is a result line (starts with ↳)
+                    if (trimmed.startsWith(TOOL_CONFIG.resultPrefix)) {
+                        hasResult = true;
+                        const resultContent = trimmed.substring(1).trim();
+                        resultLines_tool.push(resultContent);
+
+                        // Check for error
+                        if (resultContent.toLowerCase().includes('error') ||
+                            resultContent.toLowerCase().includes('traceback')) {
+                            hasError = true;
+                        }
+
+                        // Check if this is a completion keyword
+                        const lower = resultContent.toLowerCase();
+                        const isEnd = TOOL_CONFIG.resultEndKeywords.some(kw => lower.includes(kw));
+                        if (isEnd) {
+                            isComplete = true;
+                            i++;
+                            break;
+                        }
+                        i++;
+                    }
+                    // New tool starting - end current block
+                    else if (toolStartRegex.test(nextLine)) {
+                        isComplete = hasResult; // Complete if we have results
+                        break;
+                    }
+                    // Empty line after results = end of block
+                    else if (trimmed === '' && hasResult) {
+                        isComplete = true;
+                        i++;
+                        break;
+                    }
+                    // More command content (before results)
+                    else if (!hasResult) {
+                        commandLines.push(nextLine);
+                        i++;
+                    }
+                    // Text after results = end of block
+                    else {
+                        isComplete = true;
+                        break;
+                    }
+                }
+
+                // Render the tool block (streaming or complete)
+                const idx = toolBlocksArray.length;
+                const html = renderStreamingToolBlock({
+                    toolType: toolConfig.type,
+                    name: toolConfig.name,
+                    icon: toolConfig.icon,
+                    command: commandLines.join('\n').trim(),
+                    results: resultLines_tool,
+                    hasError: hasError,
+                    isStreaming: !isComplete
+                });
+                toolBlocksArray.push(html);
+                resultLines.push(`__TOOLBLOCK_${idx}__`);
+                continue;
+            }
+        }
+
+        // Regular line
+        resultLines.push(line);
+        i++;
+    }
+
+    return resultLines.join('\n');
+}
+
+// Render a streaming tool block (with loading indicator if incomplete)
+// When complete, use same structure as renderToolBlock for consistency
+function renderStreamingToolBlock(tool) {
+    const typeClass = `tool-${tool.toolType}`;
+    const errorClass = tool.hasError ? ' has-error' : '';
+    const streamingClass = tool.isStreaming ? ' streaming' : '';
+
+    let html = `<div class="tool-block ${typeClass}${errorClass}${streamingClass}">`;
+    html += `<div class="tool-header"><i class="fas ${tool.icon}"></i> ${tool.name}`;
+
+    // Add copy button for Terminal blocks
+    if (tool.toolType === 'terminal') {
+        const encodedCommand = btoa(unescape(encodeURIComponent(tool.command)));
+        html += `<button class="tool-copy-btn" data-command="${encodedCommand}" title="Copy command"><i class="fas fa-copy"></i></button>`;
+    }
+    html += `</div>`;
+
+    // Command section - wrap in <code> like final version
+    html += `<div class="tool-command"><code>${escapeHtml(tool.command)}</code></div>`;
+
+    // Results section - use same structure as renderToolBlock (tool-result with result-line)
+    if (tool.results && tool.results.length > 0) {
+        html += `<div class="tool-result">`;
+        tool.results.forEach(r => {
+            let resultHtml = escapeHtml(r);
+            if (r.toLowerCase().includes('error')) {
+                resultHtml = `<span class="result-error">${resultHtml}</span>`;
+            } else if (r.toLowerCase().includes('completed')) {
+                resultHtml = `<span class="result-success">${resultHtml}</span>`;
+            }
+            html += `<div class="result-line"><span class="result-arrow">↳</span> ${resultHtml}</div>`;
+        });
+        html += `</div>`;
+    }
+
+    // Streaming indicator
+    if (tool.isStreaming) {
+        html += `<div class="tool-streaming-indicator"><span class="streaming-cursor">▋</span></div>`;
+    }
+
+    html += `</div>`;
+    return html;
 }
 
 // Reset incremental format cache (call when starting new stream)
@@ -1257,31 +1453,6 @@ function addCodeCopyButtons(container) {
     });
 }
 
-// ============================================================================
-// TOOL FORMATTING CONFIG - Edit this section when changing AI providers
-// ============================================================================
-const TOOL_CONFIG = {
-    // Tools: name, icon, type (for styling)
-    tools: [
-        { name: 'Terminal', icon: 'fa-terminal', type: 'terminal' },
-        { name: 'Read Directory', icon: 'fa-folder-open', type: 'read' },
-        { name: 'Read File', icon: 'fa-file-code', type: 'read' },
-        { name: 'Read Process', icon: 'fa-stream', type: 'read' },
-        { name: 'Write File', icon: 'fa-file-pen', type: 'action' },
-        { name: 'Edit File', icon: 'fa-edit', type: 'action' },
-        { name: 'Search', icon: 'fa-search', type: 'action' },
-        { name: 'Codebase Search', icon: 'fa-code', type: 'action' },
-        { name: 'Web Search', icon: 'fa-globe', type: 'action' },
-    ],
-    // Result line prefix
-    resultPrefix: '↳',
-    // Result status keywords that END a tool block (case insensitive)
-    resultEndKeywords: [
-        'command completed', 'command error', 'listed', 'read',
-        'process completed', 'wrote', 'edited', 'found', 'no results'
-    ],
-};
-
 // Check if a result line indicates successful end of tool output
 function isSuccessEndLine(text) {
     const lower = text.toLowerCase();
@@ -1346,16 +1517,6 @@ function isExplanatoryText(text) {
                              !trimmed.startsWith('File ');
 
     return isProperSentence;
-}
-
-// Cached regex for tool parsing - built once for performance
-let _cachedToolStartRegex = null;
-function getToolStartRegex() {
-    if (!_cachedToolStartRegex) {
-        const toolNames = TOOL_CONFIG.tools.map(t => t.name).join('|');
-        _cachedToolStartRegex = new RegExp(`^(${toolNames})\\s+-\\s+(.+)$`);
-    }
-    return _cachedToolStartRegex;
 }
 
 // Parse tool blocks from text - accurate boundary detection
@@ -1622,6 +1783,15 @@ document.addEventListener('click', function(e) {
         return;
     }
 
+    // Table copy button
+    const tableCopyBtn = e.target.closest('.table-copy-btn');
+    if (tableCopyBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        copyTable(tableCopyBtn);
+        return;
+    }
+
     // User message copy button
     const userCopyBtn = e.target.closest('.user-copy-btn');
     if (userCopyBtn) {
@@ -1667,6 +1837,28 @@ function copyUserMessage(btn) {
         }, 2000);
     }).catch(err => {
         console.error('Failed to copy:', err);
+    });
+}
+
+// Copy table to clipboard
+function copyTable(btn) {
+    const encodedTable = btn.getAttribute('data-table');
+    if (!encodedTable) return;
+
+    // Decode from base64
+    const tableMarkdown = decodeURIComponent(escape(atob(encodedTable)));
+
+    navigator.clipboard.writeText(tableMarkdown).then(() => {
+        // Show success feedback
+        const icon = btn.querySelector('i');
+        icon.className = 'fas fa-check';
+        btn.classList.add('copied');
+        setTimeout(() => {
+            icon.className = 'fas fa-copy';
+            btn.classList.remove('copied');
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy table:', err);
     });
 }
 
@@ -1771,7 +1963,9 @@ function formatMessage(text) {
                 const cells = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
                 return cells ? `<tr>${cells}</tr>` : null;
             }).filter(Boolean).join('');
-            return `<table class="md-table"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>`;
+            // Encode original markdown for copy
+            const encodedTable = btoa(unescape(encodeURIComponent(match.trim())));
+            return `<div class="table-wrapper"><button class="table-copy-btn" data-table="${encodedTable}" title="Copy table"><i class="fas fa-copy"></i></button><table class="md-table"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
         } catch (e) {
             return match; // Return original if parsing fails
         }
@@ -1789,42 +1983,86 @@ function formatMessage(text) {
     // Section headers (standalone bold text or capitalized text before content)
     text = formatSectionHeaders(text);
 
-    // Lists
+    // Lists with nested support
     const lines = text.split('\n');
-    let inList = false;
-    let listType = null;
     const processedLines = [];
+    const listStack = []; // Stack to track nested lists: [{type: 'ul'|'ol', indent: number}]
 
     for (const line of lines) {
-        const bulletMatch = line.match(/^[\s]*[•\-\*]\s+(.+)$/);
-        const numberedMatch = line.match(/^[\s]*(\d+)\.\s+(.+)$/);
+        // Match bullet or numbered list items with their indentation
+        const bulletMatch = line.match(/^([\s]*)[•\-\*]\s+(.+)$/);
+        const numberedMatch = line.match(/^([\s]*)(\d+)\.\s+(.+)$/);
 
-        if (bulletMatch) {
-            if (!inList || listType !== 'ul') {
-                if (inList) processedLines.push(listType === 'ul' ? '</ul>' : '</ol>');
-                processedLines.push('<ul class="md-list">');
-                inList = true;
-                listType = 'ul';
+        if (bulletMatch || numberedMatch) {
+            const indent = (bulletMatch ? bulletMatch[1] : numberedMatch[1]).length;
+            const itemType = bulletMatch ? 'ul' : 'ol';
+            const content = bulletMatch ? bulletMatch[2] : numberedMatch[3];
+            const num = numberedMatch ? parseInt(numberedMatch[2], 10) : null;
+
+            // Close lists that are deeper than current indent
+            while (listStack.length > 0 && listStack[listStack.length - 1].indent >= indent) {
+                const closed = listStack.pop();
+                processedLines.push(closed.type === 'ul' ? '</ul></li>' : '</ol></li>');
             }
-            processedLines.push(`<li>${bulletMatch[1]}</li>`);
-        } else if (numberedMatch) {
-            if (!inList || listType !== 'ol') {
-                if (inList) processedLines.push(listType === 'ul' ? '</ul>' : '</ol>');
-                processedLines.push('<ol class="md-list">');
-                inList = true;
-                listType = 'ol';
+
+            // Check if we need to start a new list or continue existing one
+            const currentList = listStack.length > 0 ? listStack[listStack.length - 1] : null;
+
+            if (!currentList || indent > currentList.indent) {
+                // Starting a new nested list
+                if (currentList && indent > currentList.indent) {
+                    // Remove the closing </li> from the last item to nest inside it
+                    const lastLine = processedLines[processedLines.length - 1];
+                    if (lastLine && lastLine.endsWith('</li>')) {
+                        processedLines[processedLines.length - 1] = lastLine.slice(0, -5);
+                    }
+                }
+                if (itemType === 'ul') {
+                    processedLines.push('<ul class="md-list">');
+                } else {
+                    processedLines.push(`<ol class="md-list" start="${num}">`);
+                }
+                listStack.push({ type: itemType, indent: indent });
+            } else if (currentList.type !== itemType) {
+                // Switching list type at same level
+                processedLines.push(currentList.type === 'ul' ? '</ul>' : '</ol>');
+                listStack.pop();
+                if (itemType === 'ul') {
+                    processedLines.push('<ul class="md-list">');
+                } else {
+                    processedLines.push(`<ol class="md-list" start="${num}">`);
+                }
+                listStack.push({ type: itemType, indent: indent });
             }
-            processedLines.push(`<li>${numberedMatch[2]}</li>`);
+
+            // Add the list item
+            if (itemType === 'ul') {
+                processedLines.push(`<li>${content}</li>`);
+            } else {
+                processedLines.push(`<li value="${num}">${content}</li>`);
+            }
         } else {
-            if (inList) {
-                processedLines.push(listType === 'ul' ? '</ul>' : '</ol>');
-                inList = false;
-                listType = null;
+            // Not a list item - close all open lists
+            while (listStack.length > 0) {
+                const closed = listStack.pop();
+                if (listStack.length > 0) {
+                    processedLines.push(closed.type === 'ul' ? '</ul></li>' : '</ol></li>');
+                } else {
+                    processedLines.push(closed.type === 'ul' ? '</ul>' : '</ol>');
+                }
             }
             processedLines.push(line);
         }
     }
-    if (inList) processedLines.push(listType === 'ul' ? '</ul>' : '</ol>');
+    // Close any remaining open lists
+    while (listStack.length > 0) {
+        const closed = listStack.pop();
+        if (listStack.length > 0) {
+            processedLines.push(closed.type === 'ul' ? '</ul></li>' : '</ol></li>');
+        } else {
+            processedLines.push(closed.type === 'ul' ? '</ul>' : '</ol>');
+        }
+    }
     text = processedLines.join('\n');
 
     // Paragraph and line breaks
@@ -2130,9 +2368,27 @@ async function loadBrowserDirectory(path) {
 }
 
 // Select current directory from browser
-function selectCurrentDir() {
+async function selectCurrentDir() {
     document.getElementById('workspaceInput').value = browserCurrentPath;
+    currentWorkspace = browserCurrentPath;
     closeBrowser();
+    updateWorkspaceDisplay();
+
+    // Save workspace to server without opening settings modal
+    try {
+        const response = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workspace: currentWorkspace })
+        });
+        const data = await response.json();
+        if (data.status === 'success') {
+            localStorage.setItem('workspace', currentWorkspace);
+            showNotification('Workspace changed!');
+        }
+    } catch (error) {
+        console.error('Error saving workspace:', error);
+    }
 }
 
 // Close browser modal

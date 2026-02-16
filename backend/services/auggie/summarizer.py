@@ -91,15 +91,7 @@ class ResponseSummarizer:
         # Build summary
         parts = []
         
-        # Status emoji
-        if errors:
-            parts.append("❌")
-        elif status == 'success':
-            parts.append("✅")
-        elif status == 'failure':
-            parts.append("⚠️")
-        else:
-            parts.append("📝")
+        # No emoji prefix - keep it clean for Slack formatting
         
         # Action summary
         actions = []
@@ -115,25 +107,19 @@ class ResponseSummarizer:
         if actions:
             parts.append(" | ".join(actions))
         
-        # Add specific details (truncated)
-        details = []
-        if files_created:
-            details.append(f"📄 Created: {', '.join(files_created[:3])}")
-        if files_modified:
-            details.append(f"✏️ Modified: {', '.join(files_modified[:3])}")
-        if errors:
-            details.append(f"❗ Error: {errors[0][:100]}")
-        
-        if details:
-            parts.append("\n" + "\n".join(details))
-        
+        # Add file details (without emojis)
+        if files_created and len(files_created) <= 3:
+            parts.append(f"({', '.join(files_created[:3])})")
+        elif files_modified and len(files_modified) <= 3:
+            parts.append(f"({', '.join(files_modified[:3])})")
+
         # If no specific actions detected, use first meaningful line
-        if not actions and not details:
+        if not actions:
             first_line = cls._get_first_meaningful_line(content)
             if first_line:
-                parts.append(first_line[:200])
-        
-        summary = " ".join(parts) if len(parts) > 1 else parts[0] if parts else "Task processed"
+                parts.append(first_line[:150])
+
+        summary = " ".join(parts) if parts else "Task completed"
         
         # Truncate if needed
         if len(summary) > max_length:
@@ -167,11 +153,44 @@ class ResponseSummarizer:
     
     @classmethod
     def _get_first_meaningful_line(cls, content: str) -> str:
-        """Get first non-empty, meaningful line."""
+        """Get first non-empty, meaningful line that's actual English."""
+        # Skip lines that are clearly UI elements or commands
+        skip_start = [
+            '↳', '│', '─', '╭', '╰', '●', '⎿', '┌', '└', '├',
+            '>', '$', '#', '```', '~~~', 'Terminal', 'Command'
+        ]
+
+        # Patterns that indicate a command/code line
+        command_indicators = [
+            '2>/dev/null', '/dev/null', '||', '&&', ' | ',
+            'grep ', 'awk ', 'sed ', 'cat ', 'ls ', 'cd ',
+            'pip ', 'npm ', 'git ', 'docker ', 'kubectl ',
+            '$(', '${', './', '../', '/usr/', '/bin/', '/home/'
+        ]
+
         for line in content.split('\n'):
             line = line.strip()
-            # Accept any non-empty line that's not just a comment
-            if line and not line.startswith('#'):
-                return line
-        return ""
+            if not line:
+                continue
+            # Skip UI/command lines by prefix
+            if any(line.startswith(s) for s in skip_start):
+                continue
+            # Skip very short lines
+            if len(line) < 10:
+                continue
+            # Skip lines that look like code
+            if line.startswith(('import ', 'from ', 'def ', 'class ', 'const ', 'let ', 'var ')):
+                continue
+            # Skip lines with command indicators
+            if any(cmd in line for cmd in command_indicators):
+                continue
+            # Skip lines with too many special chars (likely code/commands)
+            special_count = sum(1 for c in line if c in '|<>{}[]()$`\\;:')
+            if special_count > 3:
+                continue
+            # Accept lines with actual words
+            if any(c.isalpha() for c in line):
+                # Clean up and return
+                return line[:200]
+        return "Task completed"
 

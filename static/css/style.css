@@ -828,14 +828,47 @@ body {
     border: 1px solid var(--border);
 }
 
+/* Table wrapper with copy button */
+.table-wrapper {
+    position: relative;
+    margin: 18px 0;
+}
+
+.table-copy-btn {
+    position: absolute;
+    top: 2px;
+    right: 6px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    opacity: 0.5;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    transition: opacity 0.2s, background 0.2s;
+    z-index: 1;
+}
+
+.table-copy-btn:hover {
+    opacity: 1;
+    background: rgba(99, 102, 241, 0.15);
+}
+
+.table-copy-btn.copied {
+    opacity: 1;
+    color: #22c55e;
+}
+
 /* Markdown Tables - Enhanced styling */
-.message-content .md-table {
+.message-content .md-table,
+.table-wrapper .md-table {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
-    margin: 18px 0;
-    font-family: 'Inter', -apple-system, sans-serif;
-    font-size: 0.88rem;
+    margin: 0;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.82rem;
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid var(--border);
@@ -844,9 +877,9 @@ body {
 
 .message-content .md-table th {
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(124, 58, 237, 0.08));
-    padding: 6px 12px;
+    padding: 1px 7px;
     text-align: left;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text);
     border-bottom: 2px solid rgba(99, 102, 241, 0.3);
     letter-spacing: 0.3px;
@@ -855,10 +888,10 @@ body {
 }
 
 .message-content .md-table td {
-    padding: 5px 12px;
+    padding: 4px 9px;
     border-bottom: 1px solid var(--border);
     color: var(--text);
-    line-height: 1.4;
+    line-height: 1.3;
     vertical-align: top;
 }
 
@@ -882,15 +915,15 @@ body {
 
 /* Markdown Lists - Enhanced styling */
 .message-content .md-list {
-    margin: 12px 0;
-    padding-left: 24px;
+    margin: 10px 0;
+    padding-left: 16px;
 }
 
 .message-content .md-list li {
-    margin: 8px 0;
-    line-height: 1.7;
+    margin: 4px 0;
+    line-height: 1.55;
     color: var(--text);
-    padding-left: 6px;
+    padding-left: 4px;
     position: relative;
 }
 
@@ -899,36 +932,129 @@ body {
     font-weight: 600;
 }
 
+/* Ordered lists - custom numbering for tight spacing */
 .message-content ol.md-list {
-    list-style-type: decimal;
-    padding-left: 28px;
+    list-style-type: none;
+    padding-left: 0;
+    margin-left: 0;
+    counter-reset: list-counter;
+    margin-bottom: 12px;
 }
 
-.message-content ol.md-list li::marker {
+.message-content ol.md-list li {
+    counter-increment: list-counter;
+    padding-left: 0;
+    font-weight: 550;
+    margin-bottom: 10px;
+}
+
+.message-content ol.md-list li::before {
+    content: attr(value) ".";
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
+    color: var(--text);
+    font-weight: 600;
+    margin-right: 2px;
 }
 
+/* Unordered lists */
 .message-content ul.md-list {
     list-style-type: none;
-    padding-left: 20px;
+    padding-left: 12px;
 }
 
 .message-content ul.md-list li::before {
     content: "•";
-    color: var(--primary);
+    color: var(--text);
     font-weight: bold;
     display: inline-block;
-    width: 16px;
-    margin-left: -20px;
-    font-size: 1.1rem;
+    width: 10px;
+    margin-left: -14px;
+    margin-right: 4px;
+    font-size: 1.3rem;
     line-height: 1;
-    vertical-align: middle;
+    vertical-align: -2px;
 }
 
-/* Nested lists */
+/* Nested lists (sub-points) - indented more */
 .message-content .md-list .md-list {
-    margin: 6px 0;
+    margin: 3px 0 3px 0;
+    padding-left: 20px !important;
+    margin-left: 0 !important;
+}
+
+/* Nested unordered list inside ordered list - bullet aligns with parent text start */
+.message-content ol.md-list li > ul.md-list {
+    padding-left: 20px !important;
+    margin-left: 0 !important;
+    margin-top: 4px;
+}
+
+.message-content ol.md-list li > ul.md-list > li {
+    padding-left: 0 !important;
+    display: flex;
+    align-items: flex-start;
+}
+
+.message-content ol.md-list li > ul.md-list > li::before {
+    content: "•";
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-right: 4px;
+    margin-left: 0;
+    width: auto;
+    display: inline;
+    flex-shrink: 0;
+}
+
+/* Unordered list that follows ordered list (sibling) - indent to align with parent text */
+.message-content ol.md-list + ul.md-list {
+    padding-left: 32px !important;
+    margin-left: 0 !important;
+    margin-top: -6px;
+}
+
+/* Any ul that follows an ol (sub-points as siblings) */
+.message-content ol.md-list ~ ul.md-list {
+    padding-left: 32px !important;
+    margin-bottom: 15px !important;
+}
+
+/* Gap after the very last sub-points list before following text */
+.message-content ul.md-list:last-child {
+    margin-bottom: 40px !important;
+}
+
+/* Nested unordered list bullets */
+.message-content ul.md-list ul.md-list li::before {
+    content: "•";
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    width: 8px;
+    margin-left: -12px;
+    margin-right: 4px;
+}
+
+/* Second level nested bullets */
+.message-content ul.md-list ul.md-list ul.md-list li::before {
+    content: "•";
+    font-size: 0.65rem;
+    color: var(--text-muted);
+}
+
+/* Nested ordered list styling */
+.message-content ol.md-list ol.md-list {
+    list-style-type: lower-alpha;
+    padding-left: 20px;
+}
+
+.message-content ol.md-list ol.md-list ol.md-list {
+    list-style-type: lower-roman;
+}
+
+.message-content ol.md-list ol.md-list li::marker,
+.message-content ol.md-list ol.md-list ol.md-list li::marker {
+    color: var(--text-muted);
 }
 
 /* Section Headers - Visual separation for content sections */
@@ -1013,14 +1139,14 @@ body {
 }
 
 .tool-block .tool-result {
-    padding: 6px 12px;
+    padding: 2px 12px;
     font-size: 0.75rem;
-    line-height: 1.35;
+    line-height: 1.1;
     background: rgba(0, 0, 0, 0.12);
 }
 
 .tool-block .tool-result .result-line {
-    padding: 2px 0;
+    padding: 0;
     display: flex;
     align-items: flex-start;
     gap: 6px;
@@ -1032,47 +1158,47 @@ body {
     flex-shrink: 0;
 }
 
-/* Terminal blocks - Dark theme with green accent */
+/* Terminal blocks - Violet border theme */
 .tool-block.tool-terminal {
-    background: #0d1117;
-    border: 1px solid rgba(0, 255, 136, 0.4);
+    background: transparent;
+    border: 1px solid rgba(99, 102, 241, 0.4);
     margin: 12px 0;
     line-height: 1.5;
 }
 
 .tool-block.tool-terminal .tool-header {
-    background: rgba(0, 255, 136, 0.08);
-    color: #8fbfaa;
-    padding: 6px 12px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(124, 58, 237, 0.08));
+    color: var(--text-muted);
+    padding: 4px 11px;
     font-size: 0.65rem;
-    border-bottom: 1px solid rgba(0, 255, 136, 0.15);
+    border-bottom: 1px solid rgba(99, 102, 241, 0.25);
 }
 
 .tool-block.tool-terminal .tool-command {
-    background: #161b22;
-    color: #c9d1d9;
+    background: #1e252e;
+    color: #f5f8fa;
     padding: 10px 12px;
     line-height: 1.4;
 }
 
 .tool-block.tool-terminal .tool-command code {
-    color: #b8d4c8;
+    color: #eaf5f0;
     white-space: normal;
     word-break: break-word;
-    font-size: 0.75rem;
+    font-size: 0.82rem;
 }
 
 .tool-block.tool-terminal .tool-result {
-    background: #0d1117;
-    color: #8b949e;
-    padding: 6px 12px;
-    font-size: 0.75rem;
-    line-height: 1.35;
-    border-top: 1px solid #30363d;
+    background: transparent;
+    color: var(--text-muted);
+    padding: 2px 10px;
+    font-size: 0.72rem;
+    line-height: 1.1;
+    border-top: 1px solid rgba(99, 102, 241, 0.4);
 }
 
 .tool-block.tool-terminal .tool-result .result-line {
-    padding: 2px 0;
+    padding: 0;
 }
 
 .tool-block.tool-terminal .tool-result .result-arrow {
@@ -1103,18 +1229,18 @@ body {
     color: #22c55e;
 }
 
-/* Read Directory/File blocks - Purple theme */
+/* Read Directory/File blocks - Violet border theme (like Terminal) */
 .tool-block.tool-read {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), rgba(124, 58, 237, 0.04));
-    border-color: rgba(99, 102, 241, 0.35);
+    background: transparent;
+    border: 1px solid rgba(99, 102, 241, 0.4);
     margin: 12px 0;
     line-height: 1.5;
 }
 
 .tool-block.tool-read .tool-header {
-    background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), transparent);
-    color: var(--primary);
-    padding: 6px 12px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(124, 58, 237, 0.08));
+    color: var(--text-muted);
+    padding: 4px 11px;
     font-size: 0.65rem;
     border-bottom: 1px solid rgba(99, 102, 241, 0.25);
 }
@@ -1137,31 +1263,31 @@ body {
 }
 
 .tool-block.tool-read .tool-result {
-    background: rgba(99, 102, 241, 0.03);
+    background: transparent;
     color: var(--text-muted);
-    padding: 6px 12px;
-    font-size: 0.75rem;
-    line-height: 1.35;
-    border-top: 1px solid rgba(99, 102, 241, 0.15);
+    padding: 2px 10px;
+    font-size: 0.72rem;
+    line-height: 1.1;
+    border-top: 1px solid rgba(99, 102, 241, 0.4);
 }
 
 .tool-block.tool-read .tool-result .result-line {
-    padding: 2px 0;
+    padding: 0;
 }
 
-/* Action blocks (Write, Edit, Search) - Purple theme with theme-aware text */
+/* Action blocks (Write, Edit, Search) - Violet border theme (like Terminal) */
 .tool-block.tool-action {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), rgba(124, 58, 237, 0.04));
-    border-color: rgba(99, 102, 241, 0.5);
+    background: transparent;
+    border: 1px solid rgba(99, 102, 241, 0.4);
     margin: 12px 0;
     line-height: 1.5;
 }
 
 .tool-block.tool-action .tool-header {
-    background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), transparent);
-    color: var(--text);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(124, 58, 237, 0.08));
+    color: var(--text-muted);
     font-weight: 600;
-    padding: 6px 12px;
+    padding: 4px 11px;
     font-size: 0.65rem;
     border-bottom: 1px solid rgba(99, 102, 241, 0.25);
 }
@@ -1181,17 +1307,17 @@ body {
 }
 
 .tool-block.tool-action .tool-result {
-    background: rgba(99, 102, 241, 0.03);
+    background: transparent;
     color: var(--text-muted);
     font-weight: 500;
-    padding: 6px 12px;
-    font-size: 0.75rem;
-    line-height: 1.35;
-    border-top: 1px solid rgba(99, 102, 241, 0.15);
+    padding: 2px 10px;
+    font-size: 0.72rem;
+    line-height: 1.1;
+    border-top: 1px solid rgba(99, 102, 241, 0.4);
 }
 
 .tool-block.tool-action .tool-result .result-line {
-    padding: 2px 0;
+    padding: 0;
 }
 
 /* Remove bottom margin from tool-block when code diff follows */
@@ -1636,6 +1762,46 @@ body {
     animation: blink-cursor 1s infinite;
 }
 
+/* Streaming tool block styles */
+.tool-block.streaming {
+    border-style: dashed;
+}
+
+.tool-block.streaming .tool-streaming-indicator {
+    padding: 6px 12px;
+    background: rgba(99, 102, 241, 0.05);
+    border-top: 1px dashed rgba(99, 102, 241, 0.25);
+}
+
+.tool-block.streaming .streaming-cursor {
+    color: var(--primary);
+    animation: blink-cursor 1s infinite;
+    font-size: 0.8rem;
+}
+
+.tool-block.streaming .tool-results {
+    padding: 4px 10px;
+    font-size: 0.72rem;
+}
+
+.tool-block.streaming .tool-results .result-success,
+.tool-block.streaming .tool-results .result-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 1px 0;
+}
+
+.tool-block.streaming .tool-results .result-arrow {
+    color: #58a6ff;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.tool-block.streaming .tool-results .result-error .result-arrow {
+    color: #ef4444;
+}
+
 /* Streaming list item styles */
 .streaming-text .stream-li,
 .streaming-text .stream-li-num {
@@ -1666,13 +1832,18 @@ body {
 }
 
 /* Streaming text table styling - consistent with message-content tables */
+.streaming-text .table-wrapper {
+    position: relative;
+    margin: 18px 0;
+}
+
 .streaming-text .md-table {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
-    margin: 18px 0;
-    font-family: 'Inter', -apple-system, sans-serif;
-    font-size: 0.88rem;
+    margin: 0;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.82rem;
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid var(--border);
@@ -1682,9 +1853,9 @@ body {
 
 .streaming-text .md-table th {
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(124, 58, 237, 0.08));
-    padding: 6px 12px;
+    padding: 1px 7px;
     text-align: left;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text);
     border-bottom: 2px solid rgba(99, 102, 241, 0.3);
     letter-spacing: 0.3px;
@@ -1693,10 +1864,10 @@ body {
 }
 
 .streaming-text .md-table td {
-    padding: 5px 12px;
+    padding: 4px 9px;
     border-bottom: 1px solid var(--border);
     color: var(--text);
-    line-height: 1.4;
+    line-height: 1.3;
     vertical-align: top;
 }
 

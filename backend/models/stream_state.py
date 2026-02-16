@@ -212,8 +212,13 @@ class StreamState:
         if last_word.lower().rstrip('.,?!') in incomplete_words:
             return False
 
+        # Colon at end typically means more content is coming (e.g., "Let me check:")
+        # Don't consider this complete
+        if last_chars.endswith(':'):
+            return False
+
         # Has proper ending punctuation at the end (not just anywhere)
-        has_ending = any(last_chars.endswith(c) for c in ['.', '!', '?', ')', ']', '`', '"', "'", ':'])
+        has_ending = any(last_chars.endswith(c) for c in ['.', '!', '?', ')', ']', '`', '"', "'"])
 
         # Require proper ending punctuation - length alone is not enough
         # This prevents cutting off responses that are mid-sentence

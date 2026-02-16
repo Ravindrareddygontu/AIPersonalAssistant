@@ -6,7 +6,7 @@ This service sends concise 2-3 line summaries after chat completion:
 - Failure: what went wrong
 - Stopped: why it was interrupted
 
-Summaries are generated using Auggie AI in a background thread.
+Summaries are generated using pattern-based analysis in a background thread.
 """
 
 import json
@@ -57,6 +57,7 @@ class SlackNotifier:
             return False
 
         message = self._format_message(notification)
+        log.info(f"[SLACK] Sending message: {message[:200]}")
         return self._send_webhook(message)
 
     def _format_message(self, notif: SlackNotification) -> str:
@@ -66,35 +67,29 @@ class SlackNotifier:
         if len(question) > 100:
             question = question[:97] + "..."
 
-        # Build message based on status
+        # Build message based on status - minimal format
+        time_str = f" ({notif.execution_time:.0f}s)" if notif.execution_time else ""
+
         if notif.status == CompletionStatus.SUCCESS:
-            emoji = "✅"
-            status_text = "Completed"
             lines = [
-                f"{emoji} *{status_text}*: {question}",
-                f"📝 {notif.summary}"
+                f"Q: {question}{time_str}",
+                f"✓ {notif.summary}"
             ]
-            if notif.execution_time:
-                lines.append(f"⏱️ _{notif.execution_time:.1f}s_")
 
         elif notif.status == CompletionStatus.FAILURE:
-            emoji = "❌"
-            status_text = "Failed"
             lines = [
-                f"{emoji} *{status_text}*: {question}",
-                f"💥 {notif.error or notif.summary or 'Unknown error'}"
+                f"Q: {question}",
+                f"✗ {notif.error or notif.summary or 'Failed'}"
             ]
 
         elif notif.status == CompletionStatus.STOPPED:
-            emoji = "⏹️"
-            status_text = "Stopped"
             lines = [
-                f"{emoji} *{status_text}*: {question}",
-                f"🛑 {notif.summary or 'User interrupted the request'}"
+                f"Q: {question}",
+                f"⏹ {notif.summary or 'Stopped by user'}"
             ]
 
         else:
-            lines = [f"❓ *Unknown status*: {question}"]
+            lines = [f"Q: {question}"]
 
         return "\n".join(lines)
 
@@ -115,148 +110,40 @@ class SlackNotifier:
             return False
 
 
-def _generate_ai_summary(content: str, question: str, workspace: str) -> str:
+def _extract_summary(content: str) -> str:
     """
-    Use a dedicated Auggie process to generate a human-readable summary.
-    Creates an isolated process, gets the summary, then kills it.
-    Returns a 2-3 line English summary of what was accomplished.
+    Extract a short summary from the already-cleaned chat content.
+    The content is already cleaned by the frontend pipeline, so we just
+    need to get the first meaningful sentence.
     """
-    import os
-    import pty
-    import time
-    import select
-    import signal
-    from backend.utils.text import TextCleaner
+    if not content:
+        return "Task completed"
 
-    if not content or len(content) < 50:
-        return content[:200] if content else "Task completed"
+    # Skip patterns that indicate commands/terminal output
+    skip_indicators = [
+        'Terminal -', '2>/dev/null', '||', '&&', 'grep ', 'lsof ',
+        'netstat ', 'ps aux', 'cd ', '$ ', '# ', '```'
+    ]
 
-    # Truncate content if too long for summarization
-    truncated_content = content[:1500] if len(content) > 1500 else content
+    lines = content.split('\n')
+    for line in lines:
+        line = line.strip()
+        if not line or len(line) < 10:
+            continue
+        # Skip command-like lines
+        if any(indicator in line for indicator in skip_indicators):
+            continue
+        # Skip lines starting with special chars
+        if line[0] in '↳>$#│─╭╰●⎿':
+            continue
+        # Check if it's mostly English (at least 60% letters/spaces)
+        alpha_count = sum(1 for c in line if c.isalpha() or c.isspace())
+        if alpha_count < len(line) * 0.6:
+            continue
+        # Found a good line
+        return line[:200]
 
-    # Escape special characters for the prompt
-    escaped_content = truncated_content.replace('"', '\\"').replace('`', '\\`')
-
-    # Create a summarization prompt
-    prompt = f'Summarize in 2-3 short plain English sentences what was accomplished. No code or commands. Just the outcome: {escaped_content[:800]}'
-
-    master_fd = None
-    pid = None
-
-    try:
-        # Create a new PTY for isolated auggie process
-        pid, master_fd = pty.fork()
-
-        if pid == 0:
-            # Child process - exec auggie
-            os.chdir(workspace)
-            os.execvp('auggie', ['auggie'])
-
-        # Parent process - communicate with auggie
-        log.info("[SLACK] Started isolated auggie process for summarization")
-
-        # Wait for auggie to be ready (look for prompt)
-        start = time.time()
-        output = ""
-        ready = False
-
-        while time.time() - start < 30:  # 30s timeout for startup
-            r, _, _ = select.select([master_fd], [], [], 0.5)
-            if r:
-                try:
-                    chunk = os.read(master_fd, 4096).decode('utf-8', errors='ignore')
-                    output += chunk
-                    # Look for the input prompt
-                    if '>' in TextCleaner.strip_ansi(output) or '●' in output:
-                        ready = True
-                        break
-                except (OSError, IOError):
-                    break
-
-        if not ready:
-            log.warning("[SLACK] Auggie not ready for summarization")
-            return _fallback_summary(content)
-
-        # Send the prompt
-        os.write(master_fd, (prompt + '\n').encode('utf-8'))
-
-        # Read the response
-        output = ""
-        start = time.time()
-        last_data = time.time()
-
-        while time.time() - start < 60:  # 60s max for response
-            r, _, _ = select.select([master_fd], [], [], 0.5)
-            if r:
-                try:
-                    chunk = os.read(master_fd, 4096).decode('utf-8', errors='ignore')
-                    if chunk:
-                        output += chunk
-                        last_data = time.time()
-                except (OSError, IOError):
-                    break
-
-            # Check for completion (silence after getting data)
-            if output and time.time() - last_data > 3:
-                break
-
-        # Extract the summary from output
-        clean = TextCleaner.strip_ansi(output)
-
-        # Find the response after the prompt echo
-        lines = clean.split('\n')
-        summary_lines = []
-        found_prompt = False
-
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            # Skip the echoed prompt
-            if 'Summarize' in line or 'accomplished' in line:
-                found_prompt = True
-                continue
-            # Skip UI elements
-            if any(skip in line for skip in ['●', '>', '~', '⎿', '│', '─']):
-                continue
-            if found_prompt and line and len(line) > 10:
-                summary_lines.append(line)
-                if len(summary_lines) >= 3:
-                    break
-
-        if summary_lines:
-            summary = ' '.join(summary_lines)
-            if len(summary) > 300:
-                summary = summary[:297] + "..."
-            log.info(f"[SLACK] AI summary generated: {summary[:100]}...")
-            return summary
-        else:
-            log.warning("[SLACK] Could not extract summary from auggie response")
-            return _fallback_summary(content)
-
-    except Exception as e:
-        log.error(f"[SLACK] Error generating AI summary: {e}")
-        return _fallback_summary(content)
-    finally:
-        # Kill the auggie process
-        if pid and pid > 0:
-            try:
-                os.kill(pid, signal.SIGTERM)
-                time.sleep(0.1)
-                os.kill(pid, signal.SIGKILL)
-                os.waitpid(pid, os.WNOHANG)
-                log.info("[SLACK] Killed summarization auggie process")
-            except (OSError, ProcessLookupError):
-                pass
-        if master_fd:
-            try:
-                os.close(master_fd)
-            except OSError:
-                pass
-
-
-def _fallback_summary(content: str) -> str:
-    """Fallback to simple pattern-based summary."""
+    # Fallback: use pattern-based summarizer
     from backend.services.auggie import ResponseSummarizer
     return ResponseSummarizer.summarize(content, max_length=200)
 
@@ -268,25 +155,25 @@ def _send_notification_thread(
     error: Optional[str],
     stopped: bool,
     execution_time: Optional[float],
-    webhook_url: str,
-    workspace: str
+    webhook_url: str
 ):
     """
     Background thread to generate summary and send Slack notification.
-    Uses Auggie for AI-powered summarization, then cleans up.
+    Extracts summary from already-cleaned content.
     """
     try:
         # Determine status and generate summary
         if stopped:
             status = CompletionStatus.STOPPED
-            summary = "Request was interrupted by user"
+            summary = "Stopped by user"
         elif not success or error:
             status = CompletionStatus.FAILURE
             summary = error or "Request failed"
         else:
             status = CompletionStatus.SUCCESS
-            # Use AI to generate a proper English summary
-            summary = _generate_ai_summary(content, question, workspace)
+            # Extract summary from already-cleaned content
+            summary = _extract_summary(content)
+            log.info(f"[SLACK] Extracted summary: {summary}")
 
         notification = SlackNotification(
             question=question,
@@ -314,7 +201,7 @@ def notify_completion(
     """
     Send a completion notification to Slack in a background thread.
 
-    Uses Auggie AI to generate a proper English summary.
+    Extracts summary from already-cleaned content (no extra auggie call needed).
     Runs in background so it doesn't block the main response.
     """
     from backend.config import settings
@@ -336,8 +223,7 @@ def notify_completion(
             error,
             stopped,
             execution_time,
-            settings.slack_webhook_url,
-            settings.workspace
+            settings.slack_webhook_url
         ),
         daemon=True
     )
