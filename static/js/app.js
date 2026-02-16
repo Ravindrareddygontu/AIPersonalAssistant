@@ -37,25 +37,34 @@ function generateMessageId(chatId, index, content) {
 // Shared welcome message HTML
 const WELCOME_HTML = `
     <div class="welcome-message">
-        <h2>What can I help you with?</h2>
+        <img src="/static/images/assistant.jpg" alt="Digistant" class="welcome-logo">
+        <h2>Hello! I'm Digistant</h2>
+        <p class="welcome-subtitle">Your AI coding assistant. Ask me anything about your project.</p>
+        <p class="quick-actions-label">Quick actions</p>
         <div class="quick-actions">
-            <button class="action-btn" onclick="sendSuggestion('Show me the folder structure of this project')">
-                <i class="fas fa-sitemap"></i> Project structure
+            <button class="action-btn" onclick="sendSuggestion('Show me the folder structure of this project with main files and their purposes')">
+                <i class="fas fa-sitemap"></i>
+                <span>Project structure</span>
             </button>
-            <button class="action-btn" onclick="sendSuggestion('List all files in the current directory')">
-                <i class="fas fa-folder-tree"></i> List files
+            <button class="action-btn" onclick="sendSuggestion('List all files in the current directory and briefly describe what each one does')">
+                <i class="fas fa-folder-tree"></i>
+                <span>List files</span>
             </button>
             <button class="action-btn" onclick="sendSuggestion('Check if any application is running on port 5000 and show me the process details')">
-                <i class="fas fa-server"></i> Check port
+                <i class="fas fa-server"></i>
+                <span>Check port</span>
             </button>
             <button class="action-btn" onclick="sendSuggestion('Write a Python function to check if a number is prime and test it with examples')">
-                <i class="fas fa-code"></i> Write code
+                <i class="fas fa-code"></i>
+                <span>Write code</span>
             </button>
             <button class="action-btn" onclick="sendSuggestion('Find all TODO comments in this project and list them with their file locations')">
-                <i class="fas fa-search"></i> Find TODOs
+                <i class="fas fa-search"></i>
+                <span>Find TODOs</span>
             </button>
             <button class="action-btn" onclick="sendSuggestion('Show me the git status and recent commits in this repository')">
-                <i class="fas fa-code-branch"></i> Git status
+                <i class="fas fa-code-branch"></i>
+                <span>Git status</span>
             </button>
         </div>
     </div>
@@ -880,18 +889,25 @@ function formatCompleteStructures(text) {
     result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
 
+    // Section headers (text ending with colon like "Summary:", "Key findings:")
+    result = result.replace(/^([A-Z][A-Za-z0-9\s\-]+):\s*$/gm, (match, header) => {
+        if (header.length < 60 && !header.includes('|')) {
+            return `<div class="section-header"><strong>${header}</strong></div>`;
+        }
+        return match;
+    });
+
     // Simple list handling - convert existing markdown lists
     result = result.replace(/^[\s]*[-•]\s+(.+)$/gm, '<li class="stream-li">$1</li>');
     result = result.replace(/^[\s]*(\d+)\.\s+(.+)$/gm, '<li class="stream-li-num">$1. $2</li>');
 
-    // Terminal-style bullet points: add ~ only to the FIRST line of each paragraph
-    // Skip lines that are already formatted or are continuations of previous lines
+    // Process lines for formatting
     const lines = result.split('\n');
-    let prevWasEmpty = true;  // Track if previous line was empty (for paragraph detection)
+    let prevWasEmpty = true;
     const formattedLines = lines.map((line, idx) => {
         const trimmed = line.trim();
 
-        // Skip empty lines (mark for next iteration)
+        // Skip empty lines
         if (!trimmed) {
             prevWasEmpty = true;
             return line;
@@ -900,24 +916,20 @@ function formatCompleteStructures(text) {
         // Skip already formatted elements
         if (trimmed.startsWith('<h') ||
             trimmed.startsWith('<li') ||
+            trimmed.startsWith('<div') ||
             trimmed.startsWith('<table') ||
             trimmed.startsWith('<tr') ||
             trimmed.startsWith('<th') ||
             trimmed.startsWith('<td') ||
             trimmed.startsWith('__CODEBLOCK_') ||
+            trimmed.startsWith('__TOOLBLOCK_') ||
             trimmed.startsWith('|') ||
             trimmed.match(/^[-=]{3,}$/)) {
             prevWasEmpty = false;
             return line;
         }
 
-        // Only add bullet to FIRST line of a paragraph (after empty line or at start)
-        const shouldAddBullet = prevWasEmpty;
         prevWasEmpty = false;
-
-        if (shouldAddBullet) {
-            return `<span class="stream-bullet">~</span> ${line}`;
-        }
         return line;
     });
     result = formattedLines.join('\n');
@@ -1076,11 +1088,7 @@ function renderStreamingToolBlock(tool) {
         html += `</div>`;
     }
 
-    // Streaming indicator
-    if (tool.isStreaming) {
-        html += `<div class="tool-streaming-indicator"><span class="streaming-cursor">▋</span></div>`;
-    }
-
+    // Note: No streaming cursor here - the generic cursor at the end of the message handles this
     html += `</div>`;
     return html;
 }
@@ -1892,16 +1900,32 @@ function cleanGarbageCharacters(text) {
 
 // Detect and format section headers (text ending with colon on its own line)
 function formatSectionHeaders(text) {
-    // Match lines that look like section headers (bold text or text ending with colon)
-    // But not if they're part of a list or code block
+    // Match lines that look like section headers:
+    // 1. Bold text on its own line
     text = text.replace(/^(<strong>([^<]+)<\/strong>)\s*$/gm, '<div class="section-header">$1</div>');
-    text = text.replace(/^([A-Z][A-Za-z\s]+):?\s*$/gm, (match, header) => {
-        // Only if it looks like a section header (capitalized, not too long)
-        if (header.length < 50 && !header.includes('|')) {
+
+    // 2. Text ending with colon (like "Summary:", "Key findings:", "Process Details:")
+    text = text.replace(/^([A-Z][A-Za-z0-9\s\-]+):\s*$/gm, (match, header) => {
+        // Only if it looks like a section header (not too long, no pipes for tables)
+        if (header.length < 60 && !header.includes('|')) {
             return `<div class="section-header"><strong>${header}</strong></div>`;
         }
         return match;
     });
+
+    // 3. Capitalized phrases that are short introductory lines (without colon but standalone)
+    text = text.replace(/^([A-Z][A-Za-z\s]{3,40})\s*$/gm, (match, header) => {
+        // Common section header words
+        const headerKeywords = ['Summary', 'Details', 'Overview', 'Findings', 'Results',
+            'Analysis', 'Notes', 'Steps', 'Instructions', 'Explanation', 'Solution',
+            'Problem', 'Issue', 'Cause', 'Fix', 'Changes', 'Updates', 'Status'];
+        const hasKeyword = headerKeywords.some(kw => header.includes(kw));
+        if (hasKeyword && !header.includes('|')) {
+            return `<div class="section-header"><strong>${header}</strong></div>`;
+        }
+        return match;
+    });
+
     return text;
 }
 
@@ -2453,7 +2477,84 @@ function toggleSidebar() {
     sidebarOpen = !sidebarOpen;
     sidebar.classList.toggle('collapsed', !sidebarOpen);
     localStorage.setItem('sidebarOpen', sidebarOpen);
+    // Reset to default width when opening
+    if (sidebarOpen) {
+        sidebar.style.width = '280px';
+    }
 }
+
+// Sidebar resize functionality
+function initSidebarResizer() {
+    const sidebar = document.getElementById('sidebar');
+    const resizer = document.getElementById('sidebarResizer');
+    if (!resizer || !sidebar) return;
+
+    const MIN_WIDTH = 180;
+    const MAX_WIDTH = 450;
+    const CLOSE_THRESHOLD = 100; // Close sidebar if dragged below this width
+
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    resizer.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        startX = e.clientX;
+        startWidth = sidebar.offsetWidth;
+        sidebar.classList.add('resizing');
+        document.body.style.cursor = 'ew-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+
+        const deltaX = e.clientX - startX;
+        let newWidth = startWidth + deltaX;
+
+        // Check if should close
+        if (newWidth < CLOSE_THRESHOLD) {
+            sidebar.style.opacity = Math.max(0.3, newWidth / CLOSE_THRESHOLD);
+        } else {
+            sidebar.style.opacity = '1';
+        }
+
+        // Clamp width within bounds (but allow going below for close gesture)
+        if (newWidth >= MIN_WIDTH) {
+            newWidth = Math.min(newWidth, MAX_WIDTH);
+            sidebar.style.width = newWidth + 'px';
+        } else if (newWidth >= 0) {
+            sidebar.style.width = newWidth + 'px';
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (!isResizing) return;
+        isResizing = false;
+        sidebar.classList.remove('resizing');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        sidebar.style.opacity = '1';
+
+        const currentWidth = sidebar.offsetWidth;
+
+        // Close sidebar if below threshold
+        if (currentWidth < CLOSE_THRESHOLD) {
+            sidebar.style.width = '';
+            sidebarOpen = false;
+            sidebar.classList.add('collapsed');
+            localStorage.setItem('sidebarOpen', 'false');
+        } else {
+            // Ensure minimum width
+            const finalWidth = Math.max(currentWidth, MIN_WIDTH);
+            sidebar.style.width = finalWidth + 'px';
+        }
+    });
+}
+
+// Initialize sidebar resizer on DOM load
+document.addEventListener('DOMContentLoaded', initSidebarResizer);
 
 // Load chats from server
 async function loadChatsFromServer() {
@@ -2478,9 +2579,9 @@ function renderChatHistory(chats) {
 
     if (chats.length === 0) {
         container.innerHTML = `
-            <div style="text-align: center; padding: 20px; color: var(--text-muted); font-size: 0.85rem;">
-                <i class="fas fa-comments" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
-                No chat history yet
+            <div class="chat-history-empty">
+                <i class="fas fa-comments"></i>
+                <span>No conversations yet</span>
             </div>
         `;
         return;
@@ -2623,11 +2724,49 @@ async function loadChatFromServer(chatId) {
     }
 }
 
+// Custom confirm dialog
+function showConfirmDialog(message) {
+    return new Promise((resolve) => {
+        const dialog = document.getElementById('confirmDialog');
+        const messageEl = document.getElementById('confirmMessage');
+        const cancelBtn = document.getElementById('confirmCancel');
+        const deleteBtn = document.getElementById('confirmDelete');
+
+        messageEl.textContent = message;
+        dialog.classList.add('show');
+
+        const cleanup = () => {
+            dialog.classList.remove('show');
+            cancelBtn.onclick = null;
+            deleteBtn.onclick = null;
+        };
+
+        cancelBtn.onclick = () => {
+            cleanup();
+            resolve(false);
+        };
+
+        deleteBtn.onclick = () => {
+            cleanup();
+            resolve(true);
+        };
+
+        // Close on backdrop click
+        dialog.onclick = (e) => {
+            if (e.target === dialog) {
+                cleanup();
+                resolve(false);
+            }
+        };
+    });
+}
+
 // Delete a chat
 async function deleteChat(chatId, event) {
     if (event) event.stopPropagation();
 
-    if (!confirm('Delete this chat?')) return;
+    const confirmed = await showConfirmDialog('Delete this chat?');
+    if (!confirmed) return;
 
     const url = `/api/chats/${chatId}`;
     logRequest('DELETE', url);
@@ -2653,7 +2792,8 @@ async function deleteChat(chatId, event) {
 
 // Clear all chats
 async function clearAllChats() {
-    if (!confirm('Delete all chat history? This cannot be undone.')) return;
+    const confirmed = await showConfirmDialog('Delete all chat history? This cannot be undone.');
+    if (!confirmed) return;
 
     const url = '/api/chats/clear';
     logRequest('DELETE', url);

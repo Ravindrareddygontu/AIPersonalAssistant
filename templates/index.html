@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Digistant</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=136">
+    <link rel="stylesheet" href="/static/css/style.css?v=163">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -33,6 +33,7 @@
                     Clear History
                 </button>
             </div>
+            <div class="sidebar-resizer" id="sidebarResizer"></div>
         </aside>
 
         <!-- Floating sidebar toggle (visible when sidebar is hidden) -->
@@ -70,31 +71,34 @@
 
             <div class="chat-messages" id="chatMessages">
                 <div class="welcome-message">
-                    <h2>What can I help you with?</h2>
+                    <img src="/static/images/assistant.jpg" alt="Digistant" class="welcome-logo">
+                    <h2>Hello! I'm Digistant</h2>
+                    <p class="welcome-subtitle">Your AI coding assistant. Ask me anything about your project.</p>
+                    <p class="quick-actions-label">Quick actions</p>
                     <div class="quick-actions">
                         <button class="action-btn" onclick="sendSuggestion('Show me the folder structure of this project with main files and their purposes')">
                             <i class="fas fa-sitemap"></i>
-                            Project structure
+                            <span>Project structure</span>
                         </button>
                         <button class="action-btn" onclick="sendSuggestion('List all files in the current directory and briefly describe what each one does')">
                             <i class="fas fa-folder-tree"></i>
-                            List files
+                            <span>List files</span>
                         </button>
                         <button class="action-btn" onclick="sendSuggestion('Check if any application is running on port 5000 and show me the process details')">
                             <i class="fas fa-server"></i>
-                            Check port
+                            <span>Check port</span>
                         </button>
                         <button class="action-btn" onclick="sendSuggestion('Write a Python function to check if a number is prime and test it with examples')">
                             <i class="fas fa-code"></i>
-                            Write code
+                            <span>Write code</span>
                         </button>
                         <button class="action-btn" onclick="sendSuggestion('Find all TODO comments in this project and list them with their file locations')">
                             <i class="fas fa-search"></i>
-                            Find TODOs
+                            <span>Find TODOs</span>
                         </button>
                         <button class="action-btn" onclick="sendSuggestion('Show me the git status and recent commits in this repository')">
                             <i class="fas fa-code-branch"></i>
-                            Git status
+                            <span>Git status</span>
                         </button>
                     </div>
                 </div>
@@ -217,6 +221,17 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=56"></script>
+    <!-- Confirm Dialog -->
+    <div class="confirm-dialog" id="confirmDialog">
+        <div class="confirm-dialog-content">
+            <p class="confirm-message" id="confirmMessage">Are you sure?</p>
+            <div class="confirm-actions">
+                <button class="confirm-btn confirm-cancel" id="confirmCancel">Cancel</button>
+                <button class="confirm-btn confirm-delete" id="confirmDelete">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js?v=63"></script>
 </body>
 </html>

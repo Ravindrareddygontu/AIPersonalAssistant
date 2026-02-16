@@ -50,21 +50,69 @@ body {
 /* Sidebar */
 .sidebar {
     width: 280px;
+    min-width: 180px;
+    max-width: 450px;
     background: var(--bg-secondary);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     height: 100vh;
-    transition: transform 0.3s ease, width 0.3s ease;
     flex-shrink: 0;
+    position: relative;
+}
+
+.sidebar:not(.resizing) {
+    transition: transform 0.3s ease, width 0.3s ease;
 }
 
 .sidebar.collapsed {
     transform: translateX(-100%);
-    width: 0;
+    width: 0 !important;
+    min-width: 0;
     border-right: none;
     overflow: hidden;
     visibility: hidden;
+}
+
+/* Sidebar resize handle */
+.sidebar-resizer {
+    position: absolute;
+    top: 0;
+    right: -4px;
+    width: 8px;
+    height: 100%;
+    cursor: ew-resize;
+    z-index: 10;
+    background: transparent;
+    transition: background 0.2s ease;
+}
+
+.sidebar-resizer::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 3px;
+    height: 40px;
+    background: var(--border);
+    border-radius: 3px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.sidebar-resizer:hover::after,
+.sidebar.resizing .sidebar-resizer::after {
+    opacity: 1;
+}
+
+.sidebar-resizer:hover,
+.sidebar.resizing .sidebar-resizer {
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.sidebar.resizing .sidebar-resizer::after {
+    background: var(--primary);
 }
 
 /* Hide sidebar when history is disabled */
@@ -100,92 +148,169 @@ body {
 }
 
 .sidebar-header {
-    padding: 14px 16px;
+    padding: 16px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid var(--border);
 }
 
+.sidebar-header .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text);
+}
+
+.sidebar-header .logo-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    object-fit: cover;
+}
+
 .sidebar-actions {
-    padding: 12px;
-    border-bottom: 1px solid var(--border);
+    padding: 10px;
 }
 
 .new-chat-btn {
     width: 100%;
-    padding: 10px 16px;
+    padding: 11px 16px;
     background: var(--primary);
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     color: white;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 500;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    transition: background 0.15s;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
 }
 
 .new-chat-btn:hover {
     background: var(--primary-hover);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    transform: translateY(-1px);
+}
+
+.new-chat-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.2);
+}
+
+.new-chat-btn i {
+    font-size: 0.75rem;
 }
 
 .chat-history {
     flex: 1;
     overflow-y: auto;
-    padding: 12px;
+    padding: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+.chat-history::-webkit-scrollbar {
+    width: 4px;
+}
+
+.chat-history::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.chat-history::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+}
+
+.chat-history::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* Empty state styling */
+.chat-history-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.chat-history-empty i {
+    font-size: 2.5rem;
+    margin-bottom: 12px;
+    opacity: 0.4;
+}
+
+.chat-history-empty span {
+    font-size: 0.85rem;
+    opacity: 0.7;
 }
 
 .chat-history-item {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 16px;
-    border-radius: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
     cursor: pointer;
-    margin-bottom: 4px;
-    transition: all 0.15s;
+    margin-bottom: 1px;
+    transition: all 0.2s ease;
     position: relative;
     border: 1px solid transparent;
 }
 
 .chat-history-item:hover {
     background: var(--bg-hover);
-    border-color: var(--border);
 }
 
 .chat-history-item.active {
-    background: var(--bg-hover);
-    border-color: var(--primary);
+    background: var(--bg-tertiary);
+    border-color: var(--border);
 }
 
-.chat-history-item i {
+.chat-history-item i.fa-message {
     color: var(--text-muted);
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     flex-shrink: 0;
+    opacity: 0.6;
+    transition: all 0.2s ease;
 }
 
-.chat-history-item.active i {
+.chat-history-item:hover i.fa-message {
+    opacity: 0.9;
+}
+
+.chat-history-item.active i.fa-message {
     color: var(--primary);
+    opacity: 1;
 }
 
 .chat-history-item .chat-title {
     flex: 1;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     color: var(--text);
+    font-weight: 400;
+    transition: color 0.2s ease;
 }
 
-.chat-history-item .chat-date {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    position: absolute;
-    bottom: 4px;
-    right: 16px;
+.chat-history-item:hover .chat-title {
+    color: var(--text);
+}
+
+.chat-history-item.active .chat-title {
+    font-weight: 500;
 }
 
 .chat-history-item .delete-chat-btn {
@@ -194,46 +319,58 @@ body {
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    padding: 4px 6px;
-    border-radius: 4px;
-    transition: all 0.15s;
-    font-size: 0.8rem;
+    padding: 6px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .chat-history-item:hover .delete-chat-btn {
-    opacity: 1;
+    opacity: 0.6;
 }
 
 .chat-history-item .delete-chat-btn:hover {
-    background: rgba(248, 81, 73, 0.15);
+    opacity: 1;
+    background: rgba(248, 81, 73, 0.1);
     color: var(--error);
 }
 
 .sidebar-footer {
-    padding: 12px;
+    padding: 10px;
     border-top: 1px solid var(--border);
 }
 
 .sidebar-footer-btn {
     width: 100%;
-    padding: 10px 16px;
+    padding: 10px 14px;
     background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    border: 1px solid transparent;
+    border-radius: 10px;
     color: var(--text-muted);
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    transition: all 0.15s;
+    transition: all 0.2s ease;
+}
+
+.sidebar-footer-btn i {
+    font-size: 0.75rem;
+    opacity: 0.7;
 }
 
 .sidebar-footer-btn:hover {
-    background: var(--bg-hover);
+    background: rgba(248, 81, 73, 0.08);
     color: var(--error);
-    border-color: var(--error);
+}
+
+.sidebar-footer-btn:hover i {
+    opacity: 1;
 }
 
 .sidebar-toggle {
@@ -298,7 +435,7 @@ body {
     border: 1px solid var(--border);
     border-radius: 6px;
     font-size: 0.8rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: inherit;
     color: var(--text-muted);
     cursor: pointer;
     transition: all 0.15s;
@@ -326,7 +463,7 @@ body {
     border: 1px solid var(--border);
     border-radius: 6px;
     font-size: 0.8rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: inherit;
     color: var(--text);
     cursor: pointer;
     transition: all 0.15s;
@@ -352,9 +489,14 @@ body {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     color: var(--text-muted);
-    font-size: 0.9rem;
+    font-size: 0.75rem;
     cursor: pointer;
-    padding: 8px 12px;
+    height: 32px;
+    width: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border-radius: 8px;
     transition: all 0.2s ease;
 }
@@ -396,52 +538,116 @@ body {
 
 .welcome-message {
     text-align: center;
-    padding: 20px;
+    padding: 40px 20px;
     margin: 0 auto;
     max-width: 770px;
     width: 100%;
 }
 
+.welcome-logo {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 20px;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(16, 185, 129, 0.2);
+    animation: welcomePulse 3s ease-in-out infinite;
+}
+
+@keyframes welcomePulse {
+    0%, 100% { box-shadow: 0 4px 20px rgba(16, 185, 129, 0.2); }
+    50% { box-shadow: 0 4px 30px rgba(16, 185, 129, 0.35); }
+}
+
 .welcome-message h2 {
-    font-size: 1.4rem;
-    font-weight: 500;
-    margin-bottom: 20px;
+    font-size: 1.6rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text);
+    letter-spacing: -0.02em;
+}
+
+.welcome-subtitle {
+    font-size: 0.95rem;
     color: var(--text-muted);
+    margin-bottom: 32px;
+    line-height: 1.5;
+}
+
+.quick-actions-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 14px;
+    font-weight: 500;
 }
 
 /* Quick Actions Grid - aligned with input width */
 .quick-actions {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
+    gap: 12px;
     max-width: 770px;
     width: 100%;
     margin: 0 auto;
 }
 
 .action-btn {
-    padding: 16px 14px;
+    padding: 18px 16px;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 12px;
     color: var(--text);
     cursor: pointer;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     font-size: 0.85rem;
-    transition: all 0.15s;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.action-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--primary), rgba(99, 102, 241, 0.8));
+    transform: scaleX(0);
+    transition: transform 0.2s ease;
 }
 
 .action-btn:hover {
     background: var(--bg-hover);
     border-color: var(--primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+}
+
+.action-btn:hover::before {
+    transform: scaleX(1);
+}
+
+.action-btn:active {
+    transform: translateY(0);
 }
 
 .action-btn i {
     color: var(--primary);
-    font-size: 1.2rem;
+    font-size: 1.3rem;
+    transition: transform 0.2s ease;
+}
+
+.action-btn:hover i {
+    transform: scale(1.1);
+}
+
+.action-btn span {
+    font-weight: 500;
 }
 
 /* Messages */
@@ -813,7 +1019,7 @@ body {
 }
 
 .message-content code {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: inherit;
     font-size: 0.85rem;
 }
 
@@ -832,43 +1038,56 @@ body {
 .table-wrapper {
     position: relative;
     margin: 18px 0;
+    display: block;
+    width: fit-content;
+    max-width: 100%;
 }
 
 .table-copy-btn {
     position: absolute;
-    top: 2px;
-    right: 6px;
-    background: transparent;
-    border: none;
+    top: 4px;
+    right: 4px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
     color: var(--text-muted);
-    opacity: 0.5;
+    opacity: 0;
     cursor: pointer;
-    padding: 4px 6px;
+    padding: 4px 8px;
     border-radius: 4px;
     font-size: 0.7rem;
-    transition: opacity 0.2s, background 0.2s;
-    z-index: 1;
+    transition: all 0.2s ease;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.table-wrapper:hover .table-copy-btn {
+    opacity: 1;
 }
 
 .table-copy-btn:hover {
-    opacity: 1;
     background: rgba(99, 102, 241, 0.15);
+    border-color: var(--primary);
+    color: var(--text);
 }
 
 .table-copy-btn.copied {
     opacity: 1;
     color: #22c55e;
+    border-color: #22c55e;
 }
 
 /* Markdown Tables - Enhanced styling */
 .message-content .md-table,
 .table-wrapper .md-table {
-    width: 100%;
+    width: auto;
+    max-width: 100%;
     border-collapse: separate;
     border-spacing: 0;
     margin: 0;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-    font-size: 0.82rem;
+    font-family: inherit;
+    font-size: 0.92rem;
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid var(--border);
@@ -877,22 +1096,32 @@ body {
 
 .message-content .md-table th {
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(124, 58, 237, 0.08));
-    padding: 1px 7px;
+    padding: 5px 10px;
     text-align: left;
     font-weight: 500;
     color: var(--text);
     border-bottom: 2px solid rgba(99, 102, 241, 0.3);
+    border-right: 1px solid var(--border);
     letter-spacing: 0.3px;
-    font-size: 0.85rem;
+    font-size: 0.92rem;
     text-transform: none;
+}
+
+.message-content .md-table th:last-child {
+    border-right: none;
 }
 
 .message-content .md-table td {
     padding: 4px 9px;
     border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
     color: var(--text);
     line-height: 1.3;
     vertical-align: top;
+}
+
+.message-content .md-table td:last-child {
+    border-right: none;
 }
 
 .message-content .md-table tr:last-child td {
@@ -950,7 +1179,7 @@ body {
 
 .message-content ol.md-list li::before {
     content: attr(value) ".";
-    font-family: 'JetBrains Mono', monospace;
+    font-family: inherit;
     font-size: 0.82rem;
     color: var(--text);
     font-weight: 600;
@@ -1059,21 +1288,39 @@ body {
 
 /* Section Headers - Visual separation for content sections */
 .message-content .section-header {
-    margin: 20px 0 10px 0;
-    padding: 8px 0;
-    border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+    margin: 16px 0 8px 0;
+    padding: 6px 0 6px 12px;
+    border-left: 3px solid var(--primary);
+    background: linear-gradient(90deg, rgba(99, 102, 241, 0.08) 0%, transparent 100%);
+    border-radius: 0 4px 4px 0;
     color: var(--text);
 }
 
 .message-content .section-header strong {
-    font-size: 1rem;
+    font-size: 0.9rem;
     font-weight: 600;
     color: var(--text);
-    letter-spacing: 0.3px;
+    letter-spacing: 0.2px;
+    text-transform: none;
 }
 
 .message-content .section-header:first-child {
     margin-top: 0;
+}
+
+/* Generic paragraph text improvements */
+.message-content p {
+    margin: 8px 0;
+    line-height: 1.55;
+    color: var(--text);
+}
+
+.message-content p:first-child {
+    margin-top: 0;
+}
+
+.message-content p:last-child {
+    margin-bottom: 0;
 }
 
 /* Sub-items (↳) */
@@ -1123,7 +1370,7 @@ body {
 
 .tool-block .tool-command {
     padding: 10px 12px;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-family: inherit;
     overflow-x: auto;
     line-height: 1.4;
 }
@@ -1353,7 +1600,7 @@ body {
     background: #0d1117;
     border: 1px solid var(--border);
     border-radius: 6px;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-family: inherit;
     font-size: 0.78rem;
     line-height: 1.5;
     scrollbar-width: thin;
@@ -1462,7 +1709,7 @@ body {
 .tool-result.error-block .stack-trace {
     margin: 0;
     padding: 12px 14px;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-family: inherit;
     font-size: 0.78rem;
     line-height: 1.5;
     color: #fecaca;
@@ -1502,7 +1749,7 @@ body {
 .chat-input-container {
     padding: 16px 20px 48px 20px;
     display: flex;
-    justify-content: center;
+    justify-content: flex-end;
     width: 970px;
     margin: 0 auto;
 }
@@ -1516,7 +1763,8 @@ body {
     border-radius: 24px;
     padding: 8px 8px 8px 16px;
     transition: border-color 0.2s, box-shadow 0.2s;
-    width: calc(100% - 10%);
+    width: calc(100% - 15%);
+    margin-left: auto;
     margin-right: 10%;
 }
 
@@ -1614,13 +1862,14 @@ body {
 
 /* Status Log */
 .status-log {
-    width: 970px;
-    margin: 8px auto;
-    padding: 12px 16px;
+    width: 600px;
+    margin: 8px auto 8px 0;
+    margin-left: calc((100% - 970px) / 2);
+    padding: 10px 14px;
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(124, 58, 237, 0.03));
     border: 1px solid rgba(99, 102, 241, 0.15);
-    border-radius: 12px;
-    font-size: 13px;
+    border-radius: 10px;
+    font-size: 12px;
 }
 
 .status-log.complete {
@@ -1658,7 +1907,7 @@ body {
     gap: 8px;
     padding: 3px 0;
     color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: inherit;
     font-size: 12px;
 }
 
@@ -1808,7 +2057,7 @@ body {
     display: block;
     padding-left: 20px;
     position: relative;
-    margin: 4px 0;
+    margin: 1px 0;
 }
 
 .streaming-text .stream-li::before {
@@ -1818,13 +2067,20 @@ body {
     color: var(--primary);
 }
 
-/* Terminal-style bullet points for streaming text */
-.streaming-text .stream-bullet {
-    color: var(--primary);
+/* Section headers in streaming text */
+.streaming-text .section-header {
+    display: block;
+    margin: 12px 0 6px 0;
+    padding: 4px 0 4px 10px;
+    border-left: 3px solid var(--primary);
+    background: linear-gradient(90deg, rgba(99, 102, 241, 0.08) 0%, transparent 100%);
+    border-radius: 0 4px 4px 0;
+}
+
+.streaming-text .section-header strong {
+    font-size: 0.88rem;
     font-weight: 600;
-    margin-right: 6px;
-    font-family: 'JetBrains Mono', monospace;
-    opacity: 0.9;
+    color: var(--text);
 }
 
 .message.streaming .streaming-text {
@@ -1835,15 +2091,19 @@ body {
 .streaming-text .table-wrapper {
     position: relative;
     margin: 18px 0;
+    display: block;
+    width: fit-content;
+    max-width: 100%;
 }
 
 .streaming-text .md-table {
-    width: 100%;
+    width: auto;
+    max-width: 100%;
     border-collapse: separate;
     border-spacing: 0;
     margin: 0;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-    font-size: 0.82rem;
+    font-family: inherit;
+    font-size: 0.92rem;
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid var(--border);
@@ -1853,22 +2113,32 @@ body {
 
 .streaming-text .md-table th {
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(124, 58, 237, 0.08));
-    padding: 1px 7px;
+    padding: 5px 10px;
     text-align: left;
     font-weight: 500;
     color: var(--text);
     border-bottom: 2px solid rgba(99, 102, 241, 0.3);
+    border-right: 1px solid var(--border);
     letter-spacing: 0.3px;
-    font-size: 0.85rem;
+    font-size: 0.92rem;
     text-transform: none;
+}
+
+.streaming-text .md-table th:last-child {
+    border-right: none;
 }
 
 .streaming-text .md-table td {
     padding: 4px 9px;
     border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
     color: var(--text);
     line-height: 1.3;
     vertical-align: top;
+}
+
+.streaming-text .md-table td:last-child {
+    border-right: none;
 }
 
 .streaming-text .md-table tr:last-child td {
@@ -2007,7 +2277,17 @@ body:has(.sidebar.collapsed) #devToolsModal {
 
 .setting-item label i {
     color: var(--text-muted);
-    font-size: 0.85rem;
+    font-size: 0.75rem;
+}
+
+/* Smaller styling for toggle setting items */
+.setting-toggle label {
+    font-size: 0.75rem;
+    gap: 5px;
+}
+
+.setting-toggle label i {
+    font-size: 0.7rem;
 }
 
 /* Workspace Input */
@@ -2023,7 +2303,7 @@ body:has(.sidebar.collapsed) #devToolsModal {
     border: 1px solid var(--border);
     border-radius: 8px;
     color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: inherit;
     font-size: 0.85rem;
     transition: border-color 0.15s ease;
 }
@@ -2055,7 +2335,7 @@ body:has(.sidebar.collapsed) #devToolsModal {
     border: 1px solid var(--border);
     border-radius: 8px;
     color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: inherit;
     font-size: 0.85rem;
     transition: border-color 0.15s ease;
 }
@@ -2073,7 +2353,7 @@ body:has(.sidebar.collapsed) #devToolsModal {
     border: 1px solid var(--border);
     border-radius: 8px;
     color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: inherit;
     font-size: 0.85rem;
     cursor: pointer;
     transition: border-color 0.15s ease;
@@ -2112,8 +2392,8 @@ body:has(.sidebar.collapsed) #devToolsModal {
 
 .toggle-switch {
     position: relative;
-    width: 44px;
-    height: 24px;
+    width: 32px;
+    height: 18px;
     margin-bottom: 0 !important;
 }
 
@@ -2132,15 +2412,15 @@ body:has(.sidebar.collapsed) #devToolsModal {
     bottom: 0;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 24px;
+    border-radius: 18px;
     transition: all 0.2s ease;
 }
 
 .toggle-slider:before {
     position: absolute;
     content: "";
-    height: 18px;
-    width: 18px;
+    height: 12px;
+    width: 12px;
     left: 2px;
     bottom: 2px;
     background: var(--text-muted);
@@ -2154,7 +2434,7 @@ body:has(.sidebar.collapsed) #devToolsModal {
 }
 
 .toggle-switch input:checked + .toggle-slider:before {
-    transform: translateX(20px);
+    transform: translateX(14px);
     background: white;
 }
 
@@ -2187,7 +2467,7 @@ body:has(.sidebar.collapsed) #devToolsModal {
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: inherit;
     font-size: 0.75rem;
     min-width: 0;
 }
@@ -2199,40 +2479,41 @@ body:has(.sidebar.collapsed) #devToolsModal {
 
 /* Reminders Section */
 .reminders-section {
-    margin-top: 24px;
-    padding-top: 20px;
+    margin-top: 20px;
+    padding-top: 16px;
     border-top: 1px solid var(--border);
 }
 
 .reminders-section h3 {
-    font-size: 0.95rem;
+    font-size: 0.8rem;
     font-weight: 600;
     color: var(--text);
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .reminders-section h3 i {
     color: var(--primary);
+    font-size: 0.7rem;
 }
 
 .reminders-list {
-    max-height: 200px;
+    max-height: 180px;
     overflow-y: auto;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
 }
 
 .reminder-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 12px;
+    padding: 8px 10px;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 8px;
+    border-radius: 6px;
+    margin-bottom: 6px;
 }
 
 .reminder-item.disabled {
@@ -2246,7 +2527,7 @@ body:has(.sidebar.collapsed) #devToolsModal {
 
 .reminder-title {
     font-weight: 500;
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     color: var(--text);
     white-space: nowrap;
     overflow: hidden;
@@ -2254,15 +2535,15 @@ body:has(.sidebar.collapsed) #devToolsModal {
 }
 
 .reminder-details {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: var(--text-muted);
     margin-top: 2px;
 }
 
 .reminder-actions {
     display: flex;
-    gap: 6px;
-    margin-left: 10px;
+    gap: 4px;
+    margin-left: 8px;
 }
 
 .reminder-actions button {
@@ -2270,8 +2551,9 @@ body:has(.sidebar.collapsed) #devToolsModal {
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    padding: 4px 6px;
+    padding: 3px 5px;
     border-radius: 4px;
+    font-size: 0.7rem;
     transition: all 0.15s ease;
 }
 
@@ -2287,16 +2569,16 @@ body:has(.sidebar.collapsed) #devToolsModal {
 .add-reminder-form {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
 }
 
 .reminder-input {
-    padding: 10px 12px;
+    padding: 8px 10px;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 6px;
     color: var(--text);
-    font-size: 0.85rem;
+    font-size: 0.75rem;
 }
 
 .reminder-input:focus {
@@ -2306,7 +2588,7 @@ body:has(.sidebar.collapsed) #devToolsModal {
 
 .day-selector {
     display: flex;
-    gap: 6px;
+    gap: 4px;
     flex-wrap: wrap;
 }
 
@@ -2321,11 +2603,11 @@ body:has(.sidebar.collapsed) #devToolsModal {
 }
 
 .day-checkbox span {
-    padding: 6px 10px;
+    padding: 4px 8px;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    font-size: 0.75rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
     color: var(--text-muted);
     transition: all 0.15s ease;
 }
@@ -2341,19 +2623,23 @@ body:has(.sidebar.collapsed) #devToolsModal {
 }
 
 .add-reminder-btn {
-    padding: 10px 14px;
+    padding: 8px 12px;
     background: var(--primary);
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
     color: white;
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s ease;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: 5px;
+}
+
+.add-reminder-btn i {
+    font-size: 0.65rem;
 }
 
 .add-reminder-btn:hover {
@@ -2363,8 +2649,8 @@ body:has(.sidebar.collapsed) #devToolsModal {
 .no-reminders {
     text-align: center;
     color: var(--text-muted);
-    font-size: 0.85rem;
-    padding: 16px;
+    font-size: 0.75rem;
+    padding: 12px;
 }
 
 /* Developer tools buttons */
@@ -2424,7 +2710,7 @@ body:has(.sidebar.collapsed) #devToolsModal {
     border: 1px solid var(--border);
     border-radius: 8px;
     margin-bottom: 14px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: inherit;
     font-size: 0.8rem;
     color: var(--text-muted);
     word-break: break-all;
@@ -2485,4 +2771,75 @@ body:has(.sidebar.collapsed) #devToolsModal {
 
 ::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
+}
+
+/* Custom Confirm Dialog */
+.confirm-dialog {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2000;
+    background: rgba(0, 0, 0, 0.5);
+    align-items: flex-end;
+    justify-content: flex-start;
+    padding: 0 0 80px 20px;
+}
+
+.confirm-dialog.show {
+    display: flex;
+}
+
+.confirm-dialog-content {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    min-width: 220px;
+    max-width: 280px;
+}
+
+.confirm-message {
+    font-size: 0.9rem;
+    color: var(--text);
+    margin-bottom: 16px;
+    line-height: 1.4;
+}
+
+.confirm-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.confirm-btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+}
+
+.confirm-cancel {
+    background: var(--bg-hover);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+
+.confirm-cancel:hover {
+    background: var(--bg-tertiary);
+    color: var(--text);
+}
+
+.confirm-delete {
+    background: var(--error);
+    color: white;
+}
+
+.confirm-delete:hover {
+    background: #d73a3a;
 }
