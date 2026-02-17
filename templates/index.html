@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Digistant</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=181">
+    <link rel="stylesheet" href="/static/css/style.css?v=183">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -107,7 +107,19 @@
                     <i class="fas fa-circle-notch fa-spin status-icon"></i>
                     <span class="status-text">Processing...</span>
                 </div>
+                <!-- Image preview area -->
+                <div class="image-preview-area" id="imagePreviewArea" style="display: none;">
+                    <div class="image-preview-container" id="imagePreviewContainer"></div>
+                    <button class="clear-images-btn" onclick="clearSelectedImages()" title="Clear all images">
+                        <i class="fas fa-times"></i> Clear all
+                    </button>
+                </div>
                 <div class="chat-input-wrapper">
+                    <!-- Hidden file input for images (fallback for non-Electron) -->
+                    <input type="file" id="imageInput" accept="image/*" multiple style="display: none;" onchange="handleImageSelect(event)">
+                    <button class="image-btn" onclick="handleImageSelect()" id="imageBtn" title="Attach images (supports multiple)" aria-label="Attach images">
+                        <i class="fas fa-image"></i>
+                    </button>
                     <textarea
                         id="messageInput"
                         placeholder="Ask anything..."
@@ -239,6 +251,12 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=69"></script>
+    <!-- Background Requests Indicator -->
+    <div id="backgroundIndicator" class="background-indicator" style="display: none;">
+        <i class="fas fa-spinner fa-spin"></i>
+        <span>0</span> background
+    </div>
+
+    <script src="/static/js/app.js?v=74"></script>
 </body>
 </html>

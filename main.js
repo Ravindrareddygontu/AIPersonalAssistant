@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const http = require('http');
@@ -157,6 +157,30 @@ ipcMain.handle('reset-session', async () => {
     } catch (e) {
         return { success: false, error: e.message };
     }
+});
+
+// IPC handler for selecting image files
+ipcMain.handle('select-images', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Select Images',
+        properties: ['openFile', 'multiSelections'],
+        filters: [
+            { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }
+        ]
+    });
+
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+        return { canceled: true, paths: [] };
+    }
+
+    // Return array of objects with path and name
+    const images = result.filePaths.map(filePath => ({
+        path: filePath,
+        name: path.basename(filePath)
+    }));
+
+    log(`Selected ${images.length} images: ${images.map(i => i.path).join(', ')}`);
+    return { canceled: false, images };
 });
 
 function closeSplashAndShowMain() {

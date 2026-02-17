@@ -107,7 +107,9 @@ def list_chats():
     _log_request('GET', url)
     chats_collection = get_chats_collection()
     chats = []
-    for doc in chats_collection.find().sort('updated_at', -1):
+    # Sort by created_at descending (newest first, oldest at bottom)
+    # This prevents chat order from shifting when updated_at changes
+    for doc in chats_collection.find().sort('created_at', -1):
         db_messages = doc.get('messages', [])
         chats.append({
             'id': doc.get('id'),

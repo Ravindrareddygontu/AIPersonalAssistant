@@ -14,6 +14,255 @@ let slackNotifyEnabled = false;  // Send status to Slack after completion
 let slackWebhookUrl = '';  // Slack webhook URL
 let statusTimerInterval = null;  // Timer for status elapsed time
 let statusStartTime = null;  // When status started
+let selectedImages = [];  // Array of selected image file paths
+
+// ============ IMAGE INPUT HANDLING ============
+
+// Handle image file selection using Electron's native dialog
+async function handleImageSelect(event) {
+    // Check if we're in Electron and have the API
+    if (window.electronAPI && window.electronAPI.selectImages) {
+        // Use Electron's native dialog for absolute paths
+        try {
+            const result = await window.electronAPI.selectImages();
+            console.log('[IMAGES] Dialog result:', result);
+
+            if (result.canceled || !result.images || result.images.length === 0) {
+                console.log('[IMAGES] Selection canceled or empty');
+                return;
+            }
+
+            for (const img of result.images) {
+                console.log(`[IMAGES] Selected: ${img.path}`);
+
+                // Avoid duplicates
+                if (selectedImages.find(existing => existing.path === img.path)) {
+                    console.log(`[IMAGES] Skipping duplicate: ${img.path}`);
+                    continue;
+                }
+
+                selectedImages.push({
+                    path: img.path,
+                    name: img.name,
+                    previewUrl: `file://${img.path}`  // Use file:// URL for preview
+                });
+            }
+
+            updateImagePreview();
+            console.log(`[IMAGES] Total selected: ${selectedImages.length}`, selectedImages.map(i => i.path));
+        } catch (err) {
+            console.error('[IMAGES] Error selecting images:', err);
+        }
+    } else {
+        // Fallback for non-Electron (browser testing)
+        const files = event?.target?.files;
+        if (!files || files.length === 0) return;
+
+        for (const file of files) {
+            console.log(`[IMAGES] File object (fallback):`, { name: file.name, path: file.path });
+
+            let filePath = file.path || file.name;
+
+            if (!filePath.startsWith('/') && !filePath.startsWith('~')) {
+                console.warn(`[IMAGES] Path "${filePath}" is not absolute - auggie may not find it`);
+            }
+
+            if (selectedImages.find(img => img.path === filePath)) continue;
+
+            selectedImages.push({
+                path: filePath,
+                name: file.name,
+                previewUrl: URL.createObjectURL(file)
+            });
+        }
+
+        updateImagePreview();
+        event.target.value = '';
+        console.log(`[IMAGES] Selected ${selectedImages.length} images:`, selectedImages.map(i => i.path));
+    }
+}
+
+// Update the image preview UI
+function updateImagePreview() {
+    const previewArea = document.getElementById('imagePreviewArea');
+    const container = document.getElementById('imagePreviewContainer');
+    const inputWrapper = document.querySelector('.chat-input-wrapper');
+    const imageBtn = document.getElementById('imageBtn');
+
+    if (selectedImages.length === 0) {
+        previewArea.style.display = 'none';
+        inputWrapper.classList.remove('has-images');
+        imageBtn.classList.remove('has-images');
+        return;
+    }
+
+    previewArea.style.display = 'flex';
+    inputWrapper.classList.add('has-images');
+    imageBtn.classList.add('has-images');
+
+    container.innerHTML = selectedImages.map((img, index) => `
+        <div class="image-preview-item">
+            <img src="${img.previewUrl}" alt="${img.name}">
+            <button class="remove-image" onclick="removeImage(${index})" title="Remove image">
+                <i class="fas fa-times"></i>
+            </button>
+            <div class="image-name">${img.name}</div>
+        </div>
+    `).join('');
+}
+
+// Remove a single image by index
+function removeImage(index) {
+    if (index >= 0 && index < selectedImages.length) {
+        // Revoke the object URL to free memory
+        URL.revokeObjectURL(selectedImages[index].previewUrl);
+        selectedImages.splice(index, 1);
+        updateImagePreview();
+        console.log(`[IMAGES] Removed image, ${selectedImages.length} remaining`);
+    }
+}
+
+// Clear all selected images
+function clearSelectedImages() {
+    // Revoke all object URLs
+    selectedImages.forEach(img => URL.revokeObjectURL(img.previewUrl));
+    selectedImages = [];
+    updateImagePreview();
+    console.log('[IMAGES] Cleared all images');
+}
+
+// Format message for auggie with images
+function formatMessageWithImages(message, images) {
+    if (images.length === 0) return message;
+
+    // Format: /images <path>|||<question>
+    // Using ||| as separator because paths can contain spaces
+    // Currently only supports single image (auggie limitation)
+    const imagePath = images[0].path;
+    return `/images ${imagePath}|||${message}`;
+}
+
+// ============ BACKGROUND PROCESSING WITH MAX 2 CONCURRENT THREADS ============
+const MAX_CONCURRENT_REQUESTS = 2;
+const activeRequests = new Map();  // chatId -> { abortController, streamingContent, status, chatHistory, requestId }
+
+// Get count of active requests
+function getActiveRequestCount() {
+    return activeRequests.size;
+}
+
+// Check if a chat has an active request
+function hasActiveRequest(chatId) {
+    return activeRequests.has(chatId);
+}
+
+// Get active request for a chat
+function getActiveRequest(chatId) {
+    return activeRequests.get(chatId);
+}
+
+// Create a new active request entry
+function createActiveRequest(chatId, abortController, requestId) {
+    const request = {
+        abortController,
+        requestId,
+        streamingContent: '',
+        status: 'starting',
+        statusMessage: '',
+        chatHistory: [...chatHistory],  // Copy current history
+        startTime: Date.now()
+    };
+    activeRequests.set(chatId, request);
+    console.log(`[BG] Created request for chat ${chatId}, active count: ${activeRequests.size}`);
+    updateBackgroundIndicator();
+    return request;
+}
+
+// Update streaming content for a background request
+function updateActiveRequestContent(chatId, content) {
+    const request = activeRequests.get(chatId);
+    if (request) {
+        request.streamingContent = content;
+    }
+}
+
+// Update status for a background request
+function updateActiveRequestStatus(chatId, status, message = '') {
+    const request = activeRequests.get(chatId);
+    if (request) {
+        request.status = status;
+        request.statusMessage = message;
+    }
+}
+
+// Complete and remove an active request
+// For background requests: adds message to history and saves
+// For foreground requests: just cleans up tracking (finalizeStreamingMessage handles the rest)
+function completeActiveRequest(chatId, finalContent, isBackground = false) {
+    const request = activeRequests.get(chatId);
+    if (request) {
+        console.log(`[BG] Completing request for chat ${chatId}, isBackground: ${isBackground}, content length: ${finalContent?.length}`);
+
+        // Only add to history for background requests
+        // Foreground requests are handled by finalizeStreamingMessage
+        if (isBackground) {
+            const index = request.chatHistory.length;
+            const messageId = generateMessageId(chatId, index, finalContent);
+            request.chatHistory.push({ role: 'assistant', content: finalContent, messageId });
+
+            // Save to cache and server
+            saveChatToCache(chatId, request.chatHistory);
+            fetch(`/api/chats/${chatId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages: request.chatHistory })
+            }).then(() => markCacheSynced(chatId))
+              .catch(err => console.error('[BG] Failed to save completed chat:', err));
+        }
+
+        activeRequests.delete(chatId);
+        updateBackgroundIndicator();
+
+        // Refresh sidebar to update indicators
+        loadChatsFromServer();
+    }
+}
+
+// Abort and remove an active request
+function abortActiveRequest(chatId) {
+    const request = activeRequests.get(chatId);
+    if (request) {
+        console.log(`[BG] Aborting request for chat ${chatId}`);
+        request.abortController.abort();
+        activeRequests.delete(chatId);
+        updateBackgroundIndicator();
+    }
+}
+
+// Update the background processing indicator in UI
+function updateBackgroundIndicator() {
+    let indicator = document.getElementById('backgroundIndicator');
+    const count = activeRequests.size;
+
+    if (count === 0) {
+        if (indicator) indicator.style.display = 'none';
+        return;
+    }
+
+    // Create indicator if it doesn't exist
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'backgroundIndicator';
+        indicator.className = 'background-indicator';
+        indicator.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>0</span> background`;
+        document.body.appendChild(indicator);
+    }
+
+    indicator.style.display = 'flex';
+    indicator.querySelector('span').textContent = count;
+    indicator.title = `${count} request(s) processing in background`;
+}
+// ============ END BACKGROUND PROCESSING ============
 
 // ============ LOCAL CACHE MECHANISM FOR MESSAGE RELIABILITY ============
 const CACHE_PREFIX = 'chat_cache_';
@@ -526,15 +775,35 @@ async function sendMessage() {
 
     if (!message || isProcessing) return;
 
+    // Check max concurrent requests limit
+    if (getActiveRequestCount() >= MAX_CONCURRENT_REQUESTS) {
+        showNotification(`Maximum ${MAX_CONCURRENT_REQUESTS} concurrent requests reached. Please wait for one to complete.`);
+        return;
+    }
+
     // Increment request ID - this invalidates any previous request
     currentRequestId++;
     const thisRequestId = currentRequestId;
-    console.log(`[API] Starting request #${thisRequestId}`);
+    const thisChatId = currentChatId;  // Capture chat ID for this request
+    console.log(`[API] Starting request #${thisRequestId} for chat ${thisChatId}`);
+
+    // Capture selected images before clearing
+    const imagesToSend = [...selectedImages];
+    const hasImages = imagesToSend.length > 0;
+
+    // Format message for auggie if images are attached
+    const formattedMessage = formatMessageWithImages(message, imagesToSend);
+
+    // Display message to user (show original message, not the /images command)
+    const displayMessage = hasImages
+        ? `📷 [${imagesToSend.length} image${imagesToSend.length > 1 ? 's' : ''}] ${message}`
+        : message;
 
     input.value = '';
     autoResize(input);
+    clearSelectedImages();  // Clear images after capturing
     hideWelcome();
-    addMessage('user', message, true);  // skipSave: backend handles saving
+    addMessage('user', displayMessage, true);  // skipSave: backend handles saving
     showTypingIndicator('Connecting...');
     isProcessing = true;
     document.getElementById('sendBtn').disabled = true;
@@ -543,9 +812,17 @@ async function sendMessage() {
     // Create abort controller for this request
     currentAbortController = new AbortController();
 
+    // Register this as an active background request
+    const activeRequest = createActiveRequest(thisChatId, currentAbortController, thisRequestId);
+
     const url = '/api/chat/stream';
-    const requestBody = { message, workspace: currentWorkspace, chatId: currentChatId };
+    // Send the formatted message (with /images prefix if images attached)
+    const requestBody = { message: formattedMessage, workspace: currentWorkspace, chatId: currentChatId };
     logRequest('POST', url, requestBody);
+
+    if (hasImages) {
+        console.log(`[IMAGES] Sending message with ${imagesToSend.length} images:`, imagesToSend.map(i => i.path));
+    }
 
     try {
         const response = await fetch(url, {
@@ -579,11 +856,9 @@ async function sendMessage() {
                 if (!line.startsWith('data: ')) continue;
 
                 // CRITICAL: Check if this request is still current
-                // If a new request has started, ignore events from this stale request
-                if (thisRequestId !== currentRequestId) {
-                    console.log(`[API] IGNORING event from stale request #${thisRequestId} (current is #${currentRequestId})`);
-                    continue;
-                }
+                // Check if user switched to different chat (background processing)
+                const isBackground = thisChatId !== currentChatId;
+                const bgRequest = getActiveRequest(thisChatId);
 
                 try {
                     const data = JSON.parse(line.slice(6));
@@ -591,49 +866,69 @@ async function sendMessage() {
 
                     switch (data.type) {
                         case 'status':
-                            // Only update status if this is still the current request
-                            if (thisRequestId === currentRequestId) {
+                            // Update background request status tracking
+                            if (bgRequest) {
+                                updateActiveRequestStatus(thisChatId, 'processing', data.message);
+                            }
+                            // Only update UI if this is foreground (current chat)
+                            if (!isBackground) {
                                 updateTypingStatus(data.message);
-                            } else {
-                                console.log(`[API] IGNORING status from stale request #${thisRequestId}`);
                             }
                             break;
                         case 'stream_start':
-                            console.log(`[API] Request #${thisRequestId} stream_start`);
-                            // Only start streaming if this is still the current request
-                            if (thisRequestId !== currentRequestId) {
-                                console.log(`[API] IGNORING stream_start from stale request #${thisRequestId}`);
-                                break;
+                            console.log(`[API] Request #${thisRequestId} stream_start (background: ${isBackground})`);
+                            if (bgRequest) {
+                                updateActiveRequestStatus(thisChatId, 'streaming');
                             }
-                            // Don't set hardcoded status - let backend's dynamic status flow through
-                            startStreamingMessage(thisRequestId);
+                            // Only create streaming div if this is foreground
+                            if (!isBackground) {
+                                startStreamingMessage(thisRequestId);
+                            }
                             break;
                         case 'stream':
-                            appendStreamingContent(data.content, thisRequestId);
+                            // Always accumulate content for the active request tracking
+                            if (bgRequest) {
+                                bgRequest.streamingContent += data.content;
+                            }
+                            // Update UI if this is the current (foreground) chat
+                            if (!isBackground) {
+                                appendStreamingContent(data.content, thisRequestId);
+                            }
                             break;
                         case 'stream_end':
-                            console.log(`[API] Request #${thisRequestId} stream_end - content length:`, data.content?.length, ', streamingContent length:', streamingContent?.length);
-                            // IMPORTANT: Prefer accumulated streamingContent over backend's cleaned content
-                            // Backend cleaning can truncate content if it contains path-like lines
-                            // Only use backend content if streamingContent is empty/short
+                            console.log(`[API] Request #${thisRequestId} stream_end (background: ${isBackground})`);
+                            // Get final content - prefer accumulated streamingContent over backend's
+                            const bgContent = bgRequest?.streamingContent || '';
                             const backendContent = data.content?.trim() || '';
-                            const streamedContent = streamingContent?.trim() || '';
-                            // Use streamingContent if it's longer (backend may have truncated)
+                            // For foreground, use global streamingContent; for background use bgRequest's
+                            const streamedContent = isBackground ? bgContent : (streamingContent?.trim() || '');
                             const useStreamed = streamedContent.length >= backendContent.length;
-                            const finalContent = useStreamed ? streamingContent : (backendContent || streamingContent);
+                            const finalContent = useStreamed ? (isBackground ? bgContent : streamingContent) : (backendContent || streamedContent);
                             console.log(`[API] Using ${useStreamed ? 'STREAMED' : 'BACKEND'} content, length:`, finalContent?.length);
-                            finalizeStreamingMessage(finalContent, thisRequestId);
-                            hideTypingIndicator();
+
+                            if (isBackground) {
+                                // Complete background request - save to that chat
+                                completeActiveRequest(thisChatId, finalContent, true);
+                            } else {
+                                // Foreground - finalize UI and complete tracking
+                                finalizeStreamingMessage(finalContent, thisRequestId);
+                                completeActiveRequest(thisChatId, finalContent, false);
+                                hideTypingIndicator();
+                            }
                             streamingCompleted = true;
                             break;
                         case 'response':
                             console.log('[API] response - length:', data.message?.length, 'streamingCompleted:', streamingCompleted);
                             if (!streamingCompleted) {
-                                console.log('[API] Adding response via addMessage (streaming was not used)');
-                                hideTypingIndicator();
-                                addMessage('assistant', data.message);
-                            } else {
-                                console.log('[API] Skipping response - already handled via streaming');
+                                if (isBackground) {
+                                    // Complete background request
+                                    completeActiveRequest(thisChatId, data.message, true);
+                                } else {
+                                    console.log('[API] Adding response via addMessage (streaming was not used)');
+                                    hideTypingIndicator();
+                                    addMessage('assistant', data.message);
+                                    completeActiveRequest(thisChatId, data.message, false);
+                                }
                             }
                             if (data.workspace && data.workspace !== currentWorkspace) {
                                 currentWorkspace = data.workspace;
@@ -641,49 +936,62 @@ async function sendMessage() {
                             }
                             break;
                         case 'error':
-                            hideTypingIndicator();
-                            addMessage('assistant', `❌ Error: ${data.message}`);
+                            // Remove from active requests on error
+                            activeRequests.delete(thisChatId);
+                            updateBackgroundIndicator();
+                            if (!isBackground) {
+                                hideTypingIndicator();
+                                addMessage('assistant', `❌ Error: ${data.message}`);
+                            }
                             break;
                         case 'aborted':
                             // Request was aborted (e.g., due to edit/retry)
                             console.log('[API] Request aborted by server');
-                            hideTypingIndicator();
-                            // Remove any partial streaming message
-                            if (streamingMessageDiv) {
-                                streamingMessageDiv.remove();
-                                streamingMessageDiv = null;
+                            activeRequests.delete(thisChatId);
+                            updateBackgroundIndicator();
+                            if (!isBackground) {
+                                hideTypingIndicator();
+                                if (streamingMessageDiv) {
+                                    streamingMessageDiv.remove();
+                                    streamingMessageDiv = null;
+                                }
+                                streamingContent = '';
+                                streamingFinalized = true;
                             }
-                            streamingContent = '';
-                            streamingFinalized = true;  // Prevent any further finalization
                             break;
                         case 'done':
-                            // Response complete - immediately re-enable input
-                            console.log('[API] done event received');
-                            console.log('[API] State: streamingMessageDiv=', !!streamingMessageDiv, ', streamingCompleted=', streamingCompleted, ', chatHistory.length=', chatHistory.length);
+                            // Response complete
+                            console.log(`[API] done event received (background: ${isBackground})`);
 
-                            // Ensure streaming message is finalized if still active
-                            if (streamingMessageDiv && !streamingCompleted) {
-                                console.log('[API] Finalizing streaming message on done event, content length:', streamingContent?.length);
-                                finalizeStreamingMessage(streamingContent, thisRequestId);
+                            // Ensure request is completed and cleaned up
+                            if (!streamingCompleted && bgRequest) {
+                                const doneContent = bgRequest.streamingContent || streamingContent;
+                                if (isBackground) {
+                                    completeActiveRequest(thisChatId, doneContent, true);
+                                } else if (streamingMessageDiv) {
+                                    finalizeStreamingMessage(doneContent, thisRequestId);
+                                    completeActiveRequest(thisChatId, doneContent, false);
+                                }
                                 streamingCompleted = true;
                             }
 
-                            isProcessing = false;
-                            hideTypingIndicator();
-                            const sendBtnDone = document.getElementById('sendBtn');
-                            const inputDone = document.getElementById('messageInput');
-                            if (sendBtnDone) {
-                                sendBtnDone.disabled = false;
-                                console.log('[API] Send button enabled');
+                            // Only update UI if this is current chat
+                            if (!isBackground && thisChatId === currentChatId) {
+                                isProcessing = false;
+                                hideTypingIndicator();
+                                const sendBtnDone = document.getElementById('sendBtn');
+                                const inputDone = document.getElementById('messageInput');
+                                if (sendBtnDone) {
+                                    sendBtnDone.disabled = false;
+                                }
+                                if (inputDone) {
+                                    inputDone.disabled = false;
+                                    inputDone.readOnly = false;
+                                    inputDone.style.pointerEvents = 'auto';
+                                    inputDone.focus();
+                                }
+                                hideStopButton();
                             }
-                            if (inputDone) {
-                                inputDone.disabled = false;
-                                inputDone.readOnly = false;
-                                inputDone.style.pointerEvents = 'auto';
-                                inputDone.focus();
-                                console.log('[API] Input field enabled and focused');
-                            }
-                            hideStopButton();
                             console.log('[API] Done processing complete');
                             break;
                     }
@@ -691,13 +999,15 @@ async function sendMessage() {
             }
         }
     } catch (error) {
+        // Clean up active request on error
+        activeRequests.delete(thisChatId);
+        updateBackgroundIndicator();
+
         if (error.name === 'AbortError') {
             console.log(`[API] Request #${thisRequestId} aborted by user`);
-            // Only cleanup if this is still the current request
-            if (thisRequestId === currentRequestId) {
+            // Only cleanup UI if this is the current chat
+            if (thisChatId === currentChatId) {
                 hideTypingIndicator();
-                // DON'T finalize - just remove any partial streaming message
-                // This prevents old content from appearing when aborting for edit/retry
                 if (streamingMessageDiv) {
                     console.log('[API] Removing partial streaming message due to abort');
                     streamingMessageDiv.remove();
@@ -705,21 +1015,22 @@ async function sendMessage() {
                     streamingContent = '';
                     streamingFinalized = true;
                 }
-            } else {
-                console.log(`[API] Request #${thisRequestId} was stale, skipping cleanup`);
             }
         } else {
             console.error('Error:', error);
-            hideTypingIndicator();
-            addMessage('assistant', '❌ Connection error. Make sure the server is running.');
+            if (thisChatId === currentChatId) {
+                hideTypingIndicator();
+                addMessage('assistant', '❌ Connection error. Make sure the server is running.');
+            }
         }
     } finally {
-        console.log(`[API] Request #${thisRequestId} finally block, currentRequestId=${currentRequestId}, streamingFinalized=`, streamingFinalized);
+        console.log(`[API] Request #${thisRequestId} finally block for chat ${thisChatId}`);
 
-        // CRITICAL: Only do cleanup if this is still the current request
-        // Stale requests should not touch any state
-        if (thisRequestId !== currentRequestId) {
-            console.log(`[API] Request #${thisRequestId} is stale, skipping finally cleanup`);
+        const isBackgroundFinal = thisChatId !== currentChatId;
+
+        // Only do UI cleanup if this is the current chat
+        if (isBackgroundFinal) {
+            console.log(`[API] Request was for background chat ${thisChatId}, skipping UI cleanup`);
             return;
         }
 
@@ -3082,7 +3393,8 @@ function renderChatHistory(chats) {
 
     chats.forEach(chat => {
         const item = document.createElement('div');
-        item.className = `chat-history-item ${chat.id === currentChatId ? 'active' : ''}`;
+        const hasBgRequest = hasActiveRequest(chat.id);
+        item.className = `chat-history-item ${chat.id === currentChatId ? 'active' : ''} ${hasBgRequest ? 'has-background-request' : ''}`;
         item.onclick = (e) => {
             if (!e.target.closest('.delete-chat-btn')) {
                 loadChatFromServer(chat.id);
@@ -3107,20 +3419,30 @@ function renderChatHistory(chats) {
 // Create new chat
 async function createNewChat() {
     try {
-        // Save the OLD chat before switching (including any streaming content)
-        if (currentChatId && chatHistory.length > 0) {
+        const oldChatId = currentChatId;
+
+        // If there's an active request for the old chat, let it continue in background
+        if (oldChatId && hasActiveRequest(oldChatId)) {
+            console.log('[NEW CHAT] Letting request continue in background for:', oldChatId);
+            // Update the background request with current streaming content
+            const request = getActiveRequest(oldChatId);
+            if (request && streamingContent) {
+                request.streamingContent = streamingContent;
+            }
+            // Remove the streaming div from DOM (will be recreated when switching back)
+            if (streamingMessageDiv) {
+                streamingMessageDiv.remove();
+            }
+        } else if (currentChatId && chatHistory.length > 0) {
+            // No active request - save any content before switching
             console.log('[NEW CHAT] Saving old chat before switching:', currentChatId);
-            const oldChatId = currentChatId;
             const oldChatHistory = [...chatHistory];
 
-            // If there's active streaming content, add it to the old chat history
+            // If there's streaming content (shouldn't happen if no active request, but just in case)
             if (streamingMessageDiv && streamingContent) {
-                console.log('[NEW CHAT] Including streaming content in old chat');
                 const index = oldChatHistory.length;
                 const messageId = generateMessageId(oldChatId, index, streamingContent);
                 oldChatHistory.push({ role: 'assistant', content: streamingContent, messageId });
-
-                // Remove the streaming message div from DOM
                 streamingMessageDiv.remove();
             }
 
@@ -3136,19 +3458,16 @@ async function createNewChat() {
               .catch(err => console.error('[NEW CHAT] Failed to save old chat to server (cached locally):', err));
         }
 
-        // Reset streaming state
+        // Reset streaming state for new chat
         streamingMessageDiv = null;
         streamingContent = '';
         streamingFinalized = true;
 
-        // Abort any ongoing request
-        if (currentAbortController) {
-            console.log('[NEW CHAT] Aborting current request');
-            currentAbortController.abort();
-            currentAbortController = null;
-        }
+        // DON'T abort the request - let it continue in background
+        // Just clear the current abort controller reference
+        currentAbortController = null;
 
-        // Reset processing state
+        // Reset processing state for UI
         isProcessing = false;
         hideTypingIndicator();
         hideStopButton();
@@ -3220,52 +3539,105 @@ async function saveCurrentChatToServer(allowEmpty = false) {
 async function loadChatFromServer(chatId) {
     console.log('[LOAD] Loading chat:', chatId);
 
+    const oldChatId = currentChatId;
+
     // Save the OLD chat before switching (if switching to a different chat)
-    if (currentChatId && currentChatId !== chatId && chatHistory.length > 0) {
-        console.log('[LOAD] Saving old chat before switching:', currentChatId);
-        const oldChatId = currentChatId;
-        const oldChatHistory = [...chatHistory];
+    if (oldChatId && oldChatId !== chatId) {
+        // If there's an active request for the old chat, let it continue in background
+        if (hasActiveRequest(oldChatId)) {
+            console.log('[LOAD] Letting request continue in background for:', oldChatId);
+            const request = getActiveRequest(oldChatId);
+            if (request && streamingContent) {
+                request.streamingContent = streamingContent;
+            }
+            if (streamingMessageDiv) {
+                streamingMessageDiv.remove();
+            }
+        } else if (chatHistory.length > 0) {
+            // No active request - save any content before switching
+            console.log('[LOAD] Saving old chat before switching:', oldChatId);
+            const oldChatHistory = [...chatHistory];
 
-        // If there's active streaming content, add it to the old chat history
-        if (streamingMessageDiv && streamingContent) {
-            console.log('[LOAD] Including streaming content in old chat');
-            const index = oldChatHistory.length;
-            const messageId = generateMessageId(oldChatId, index, streamingContent);
-            oldChatHistory.push({ role: 'assistant', content: streamingContent, messageId });
+            if (streamingMessageDiv && streamingContent) {
+                console.log('[LOAD] Including streaming content in old chat');
+                const index = oldChatHistory.length;
+                const messageId = generateMessageId(oldChatId, index, streamingContent);
+                oldChatHistory.push({ role: 'assistant', content: streamingContent, messageId });
+                streamingMessageDiv.remove();
+            }
 
-            // Remove the streaming message div from DOM
-            streamingMessageDiv.remove();
+            saveChatToCache(oldChatId, oldChatHistory);
+            fetch(`/api/chats/${oldChatId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages: oldChatHistory })
+            }).then(() => markCacheSynced(oldChatId))
+              .catch(err => console.error('[LOAD] Failed to save old chat:', err));
         }
 
-        // Save to local cache immediately (reliable)
-        saveChatToCache(oldChatId, oldChatHistory);
-
-        // Save old chat to server in background (don't await)
-        fetch(`/api/chats/${oldChatId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages: oldChatHistory })
-        }).then(() => markCacheSynced(oldChatId))
-          .catch(err => console.error('[LOAD] Failed to save old chat to server (cached locally):', err));
-
-        // Reset streaming state
+        // Reset streaming state for UI
         streamingMessageDiv = null;
         streamingContent = '';
         streamingFinalized = true;
 
-        // Abort any ongoing request
-        if (currentAbortController) {
-            console.log('[LOAD] Aborting current request');
-            currentAbortController.abort();
-            currentAbortController = null;
-        }
+        // DON'T abort - let background request continue
+        currentAbortController = null;
 
-        // Reset processing state
+        // Reset processing state for UI
         isProcessing = false;
         hideTypingIndicator();
         hideStopButton();
         document.getElementById('sendBtn').disabled = false;
         document.getElementById('messageInput').disabled = false;
+    }
+
+    // Check if the target chat has an active background request
+    const activeRequest = getActiveRequest(chatId);
+    if (activeRequest) {
+        console.log('[LOAD] Target chat has active background request, restoring state');
+        currentChatId = chatId;
+        chatHistory = activeRequest.chatHistory;
+        streamingContent = activeRequest.streamingContent;
+        localStorage.setItem('currentChatId', currentChatId);
+
+        // Render the chat with current state
+        const container = document.getElementById('chatMessages');
+        container.innerHTML = '';
+        chatHistory.forEach((msg, idx) => {
+            if (!msg.messageId) {
+                msg.messageId = generateMessageId(currentChatId, idx, msg.content);
+            }
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${msg.role}`;
+            messageDiv.dataset.messageId = msg.messageId;
+            messageDiv.innerHTML = createMessageHTML(msg.role, msg.content, idx, msg.messageId);
+            container.appendChild(messageDiv);
+            addCodeCopyButtons(messageDiv);
+        });
+
+        // Create streaming message div for ongoing response
+        if (streamingContent) {
+            streamingMessageDiv = document.createElement('div');
+            streamingMessageDiv.className = 'message assistant streaming';
+            streamingMessageDiv.innerHTML = createMessageHTML('assistant', streamingContent, chatHistory.length, 'streaming');
+            container.appendChild(streamingMessageDiv);
+            addCodeCopyButtons(streamingMessageDiv);
+        }
+
+        // Restore UI state for active request
+        isProcessing = true;
+        currentAbortController = activeRequest.abortController;
+        showTypingIndicator();
+        showStopButton();
+        if (activeRequest.statusMessage) {
+            updateTypingStatus(activeRequest.statusMessage);
+        }
+        document.getElementById('sendBtn').disabled = true;
+        document.getElementById('messageInput').disabled = true;
+
+        setTimeout(() => container.scrollTop = container.scrollHeight, 50);
+        loadChatsFromServer();
+        return;
     }
 
     // Add cache-busting timestamp to prevent browser caching

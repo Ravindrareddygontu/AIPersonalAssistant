@@ -32,9 +32,18 @@ class StreamProcessor:
 
     def __init__(self, user_message: str):
         self.user_message = user_message
+        self._update_pattern(user_message)
+
+    def _update_pattern(self, message: str):
+        """Update the message pattern used for echo detection."""
         # Use shorter prefix for matching (terminal may wrap long messages)
-        self.message_short = user_message[:20] if len(user_message) > 20 else user_message
+        self.message_short = message[:20] if len(message) > 20 else message
         self.message_pattern = re.compile(r'›\s*' + re.escape(self.message_short))
+
+    def update_search_message(self, message: str):
+        """Update the message to search for (used for image commands where question differs from original message)."""
+        log.info(f"[PROCESSOR] Updating search message to: {message[:30]}...")
+        self._update_pattern(message)
 
     def process_chunk(self, clean_output: str, state: StreamState) -> str | None:
         """

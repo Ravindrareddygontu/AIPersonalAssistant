@@ -147,13 +147,20 @@ class SessionHandler:
         session.initialized = True
         return True
 
-    def send_message(self, session, message: str) -> bool:
-        """Send a message to the session."""
+    def send_message(self, session, message: str):
+        """Send a message to the session.
+
+        Returns: (success: bool, echo_message: str) - echo_message is for echo detection
+        """
         try:
             # Drain leftover output (quick drain)
             drained = session.drain_output(timeout=0.1)
             if drained > 0:
                 log.info(f"Drained {drained} bytes before sending")
+
+            # Check if this is an image command (format: /images <path1> <path2> ... <question>)
+            if message.startswith('/images '):
+                return self._send_image_message(session, message)
 
             # Sanitize message for terminal (newlines → spaces, special chars → ASCII)
             sanitized_message = _sanitize_message(message)
@@ -164,11 +171,98 @@ class SessionHandler:
             os.write(session.master_fd, b'\r')
             time.sleep(0.05)  # Reduced from 0.3s
             log.info(f"Message sent: {sanitized_message[:30]}...")
-            return True
+            return (True, message)
         except (BrokenPipeError, OSError) as e:
             log.error(f"Write error: {e}")
             session.cleanup()
-            return False
+            return (False, message)
+
+    def _send_image_message(self, session, message: str):
+        """Send an image message with multi-step interaction.
+
+        Auggie expects:
+        1. /image + Enter → shows clip icon (image input mode)
+        2. file path + Enter → accepts the image
+        3. question + Enter → processes and responds
+
+        Format received: /images <path>|||<question>
+        Using ||| as separator because paths can contain spaces.
+
+        Returns: (success: bool, question: str) - question is for echo detection
+        """
+        log.info(f"[IMAGE] ========== _send_image_message CALLED ==========")
+        log.info(f"[IMAGE] Full message: {message[:100]}...")
+        try:
+            # Parse the message: /images <path>|||<question>
+            parts = message[8:].strip()  # Remove '/images '
+
+            # Split by ||| delimiter
+            if '|||' in parts:
+                image_path, question = parts.split('|||', 1)
+                image_path = image_path.strip()
+                question = question.strip()
+            else:
+                # Fallback: no delimiter, assume entire thing is path
+                image_path = parts
+                question = ''
+
+            if not image_path:
+                log.warning("No image path found in /images command, sending as regular message")
+                success = self._send_regular_message(session, message)
+                return (success, message)
+
+            log.info(f"[IMAGE] Sending image: {image_path}")
+            log.info(f"[IMAGE] Question: {question[:50] if question else '(none)'}...")
+
+            # Step 1: Send /image command to enter image input mode
+            # First type /image
+            os.write(session.master_fd, b'/image')
+            time.sleep(0.5)  # Wait for autocomplete to show
+            # Press Enter to select the /image command
+            os.write(session.master_fd, b'\r')
+            time.sleep(2.0)  # Wait longer for auggie to switch to image mode (shows clip icon)
+            # Drain output (just to clear buffer)
+            drained1 = session.drain_output(timeout=0.5)
+            log.info(f"[IMAGE] After /image command, drained {drained1} bytes")
+
+            # Step 2: Send the image path
+            log.info(f"[IMAGE] Now sending path: {image_path}")
+            os.write(session.master_fd, image_path.encode('utf-8'))
+            time.sleep(0.3)  # Small delay before Enter
+            os.write(session.master_fd, b'\r')
+            time.sleep(2.0)  # Wait longer for auggie to process and accept the image path
+            # Drain output
+            drained2 = session.drain_output(timeout=0.5)
+            log.info(f"[IMAGE] After path, drained {drained2} bytes")
+
+            # Step 3: Send the question
+            if question:
+                sanitized_question = _sanitize_message(question)
+                os.write(session.master_fd, sanitized_question.encode('utf-8'))
+                time.sleep(0.1)
+                os.write(session.master_fd, b'\r')
+                time.sleep(0.1)
+                log.info(f"[IMAGE] Sent question: {sanitized_question[:50]}...")
+            else:
+                log.warning("[IMAGE] No question provided with image")
+
+            # Return the question for echo detection (last thing sent to terminal)
+            return (True, question if question else image_path)
+
+        except (BrokenPipeError, OSError) as e:
+            log.error(f"Write error during image send: {e}")
+            session.cleanup()
+            return (False, message)
+
+    def _send_regular_message(self, session, message: str) -> bool:
+        """Send a regular message (fallback from image parsing)."""
+        sanitized_message = _sanitize_message(message)
+        os.write(session.master_fd, sanitized_message.encode('utf-8'))
+        time.sleep(0.1)
+        os.write(session.master_fd, b'\r')
+        time.sleep(0.05)
+        log.info(f"Message sent: {sanitized_message[:30]}...")
+        return True
 
 
 class StreamGenerator:
@@ -190,6 +284,8 @@ class StreamGenerator:
         self.chat_id = chat_id
         self.message_id = None
         self.start_time = time.time()  # Track execution time for Slack
+        # For image messages, store the last command sent (question) for echo detection
+        self.echo_search_message = message
 
         # Initialize components - only create repository if history is enabled
         self.repository = ChatRepository(chat_id) if (chat_id and settings.history_enabled) else None
@@ -261,10 +357,15 @@ class StreamGenerator:
                     return
 
                 # Send message
-                if not self.session_handler.send_message(session, self.message):
+                success, self.echo_search_message = self.session_handler.send_message(session, self.message)
+                if not success:
                     yield self.sse.send({'type': 'error', 'message': 'Connection lost. Please try again.'})
                     yield self.sse.send({'type': 'done'})
                     return
+
+                # Update processor's search pattern if message changed (for image commands)
+                if self.echo_search_message != self.message:
+                    self.processor.update_search_message(self.echo_search_message)
 
                 # Save question to database
                 if self.repository:
@@ -452,8 +553,9 @@ class StreamGenerator:
 
     def _check_message_echo(self, clean: str, state: StreamState) -> None:
         """Check if we've seen the message echo in output."""
-        # Use sanitized message (same sanitization as send_message) since that's what's sent to terminal
-        sanitized = _sanitize_message(self.message)
+        # Use echo_search_message (for image messages this is the question, not the /images command)
+        # Sanitize it since that's what's actually sent to terminal
+        sanitized = _sanitize_message(self.echo_search_message)
 
         # Try progressively shorter prefixes for more robust matching
         for prefix_len in [50, 30, 20, 15]:
