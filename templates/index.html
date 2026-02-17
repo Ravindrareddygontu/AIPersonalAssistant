@@ -69,7 +69,7 @@
                 </div>
             </header>
 
-            <div class="chat-messages" id="chatMessages">
+            <div class="chat-messages" id="chatMessages" style="visibility: hidden;">
                 <div class="welcome-message">
                     <h2>Hello, what do you want?</h2>
                     <div class="quick-actions">
@@ -238,7 +238,12 @@
                 </button>
             </div>
             <div class="modal-body">
-                <div class="browser-path" id="browserPath"></div>
+                <div class="browser-path-row">
+                    <button class="browser-home-btn" onclick="navigateToHome()" title="Go to Home">
+                        <i class="fas fa-home"></i>
+                    </button>
+                    <div class="browser-path" id="browserPath"></div>
+                </div>
                 <div class="browser-list" id="browserList"></div>
                 <button class="save-settings-btn" onclick="selectCurrentDir()">Select This Folder</button>
             </div>

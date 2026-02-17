@@ -98,7 +98,7 @@ class ChatRepository:
             log.error(f"Failed to save answer: {e}")
             return False
 
-    def _update_chat(self, messages: list, title: str = None) -> None:
+    def _update_chat(self, messages: list, title: str = None, streaming_status: str = None) -> None:
         """Update chat document in database."""
         update_data = {
             'messages': messages,
@@ -106,11 +106,44 @@ class ChatRepository:
         }
         if title:
             update_data['title'] = title
+        if streaming_status is not None:
+            update_data['streaming_status'] = streaming_status
 
         self.collection.update_one(
             {'id': self.chat_id},
             {'$set': update_data}
         )
+
+    def set_streaming_status(self, status: str) -> None:
+        """Set streaming status for the chat (None, 'streaming', 'pending')."""
+        if not self.chat_id:
+            return
+        self.collection.update_one(
+            {'id': self.chat_id},
+            {'$set': {'streaming_status': status, 'updated_at': datetime.utcnow().isoformat()}}
+        )
+        log.info(f"Set streaming_status={status} for chat {self.chat_id}")
+
+    def save_partial_answer(self, message_id: str, partial_content: str) -> bool:
+        """Save partial streaming content to the database."""
+        if not self.chat_id or not message_id:
+            return False
+        try:
+            chat = self.get_chat()
+            if not chat:
+                return False
+            messages = chat.get('messages', [])
+            # Update the answer in the message pair
+            for msg in messages:
+                if msg.get('id') == message_id:
+                    msg['answer'] = partial_content
+                    msg['partial'] = True  # Mark as incomplete
+                    break
+            self._update_chat(messages, streaming_status='streaming')
+            return True
+        except Exception as e:
+            log.error(f"Failed to save partial answer: {e}")
+            return False
 
     @staticmethod
     def _generate_title(question: str, max_length: int = 50) -> str:

@@ -74,7 +74,8 @@ def db_to_api_format(chat_id, db_messages):
                 'role': 'assistant',
                 'content': qa_pair['answer'],
                 'messageId': msg_id,  # Same ID links Q&A together
-                'timestamp': qa_pair.get('answerTime')
+                'timestamp': qa_pair.get('answerTime'),
+                'partial': qa_pair.get('partial', False)  # True if streaming was interrupted
             })
     
     return api_messages

@@ -122,6 +122,7 @@ settings = Settings()
 # Slack tokens (set via environment variables for security)
 SLACK_BOT_TOKEN = os.environ.get('SLACK_BOT_TOKEN')  # xoxb-...
 SLACK_APP_TOKEN = os.environ.get('SLACK_APP_TOKEN')  # xapp-... (only for Socket Mode)
+SLACK_SIGNING_SECRET = os.environ.get('SLACK_SIGNING_SECRET')  # For verifying webhook requests
 SLACK_CHANNEL_ID = os.environ.get('SLACK_CHANNEL_ID')  # Channel/DM ID to poll
 
 # Default workspace for Slack commands (can be overridden)
@@ -132,3 +133,9 @@ SLACK_MODEL = os.environ.get('SLACK_MODEL', DEFAULT_MODEL)
 
 # Enable/disable Slack bot on startup
 SLACK_ENABLED = os.environ.get('SLACK_ENABLED', 'false').lower() == 'true'
+
+# Slack integration mode: 'socket', 'poller', or 'http'
+# - socket: Uses Bolt Socket Mode (WebSocket, good for development)
+# - poller: Simple polling (no webhooks needed)
+# - http: Uses webhook URLs (requires public HTTPS endpoint)
+SLACK_MODE = os.environ.get('SLACK_MODE', 'socket')

@@ -163,7 +163,8 @@ async def create_chat(request: Request):
         'created_at': now,
         'updated_at': now,
         'messages': [],
-        'workspace': settings.workspace
+        'workspace': settings.workspace,
+        'streaming_status': None  # None = idle, 'streaming' = active stream, 'pending' = needs resume
     }
     chats_collection.insert_one(chat_data)
     chat_data.pop('_id', None)
@@ -209,6 +210,20 @@ async def get_chat(request: Request, chat_id: str):
             'Expires': '0'
         }
     )
+
+
+@settings_router.post('/api/chats/{chat_id}/clear-streaming')
+async def clear_streaming_status(chat_id: str):
+    """Clear the streaming status for a chat (used after interrupted streams)."""
+    chats_collection = get_chats_collection()
+    result = chats_collection.update_one(
+        {'id': chat_id},
+        {'$set': {'streaming_status': None}}
+    )
+    if result.matched_count == 0:
+        return JSONResponse(content={'error': 'Chat not found'}, status_code=404)
+    log.info(f"[CLEAR] Cleared streaming_status for chat {chat_id}")
+    return {'status': 'ok'}
 
 
 @settings_router.put('/api/chats/{chat_id}')

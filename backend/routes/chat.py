@@ -318,27 +318,38 @@ class StreamGenerator:
     def generate(self):
         """Main generator for SSE stream."""
         log.info(f"Starting generate for: {self.message[:50]}...")
+
+        # Mark chat as streaming
+        if self.repository:
+            self.repository.set_streaming_status('streaming')
+
         try:
             yield self.sse.padding()
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
             log.warning(f"Client disconnected early (padding): {type(e).__name__}")
+            self._continue_in_background()
             return
 
         try:
             yield from self._handle_session()
         except (BrokenPipeError, ConnectionResetError) as e:
-            # Client disconnected - this is normal, just log and exit gracefully
+            # Client disconnected - continue processing in background
             log.warning(f"Client disconnected during streaming: {type(e).__name__}")
+            self._continue_in_background()
             return
         except OSError as e:
             # Check if it's a broken pipe variant
             if e.errno == 32:  # EPIPE - Broken pipe
                 log.warning(f"Client disconnected (EPIPE): {e}")
+                self._continue_in_background()
                 return
             # Re-raise other OSErrors
             raise
         except Exception as e:
             log.error(f"Exception: {e}")
+            # Mark streaming as failed
+            if self.repository:
+                self.repository.set_streaming_status(None)
             # Send Slack notification for error
             execution_time = time.time() - self.start_time
             notify_completion(
@@ -356,6 +367,12 @@ class StreamGenerator:
                 # Client already disconnected, can't send error
                 log.warning("Could not send error to client - already disconnected")
                 return
+
+    def _continue_in_background(self):
+        """Continue processing in a background thread when client disconnects."""
+        if self.repository:
+            self.repository.set_streaming_status('pending')
+            log.info(f"[BACKGROUND] Marked chat {self.chat_id} as pending for resume")
 
     def _handle_session(self):
         """Handle session setup and message sending."""
@@ -640,6 +657,12 @@ class StreamGenerator:
             if delta:
                 yield self.sse.send({'type': 'stream', 'content': delta})
 
+                # Save partial content periodically (every 5 seconds or significant content)
+                if self.repository and self.message_id:
+                    if not hasattr(state, '_last_partial_save') or time.time() - state._last_partial_save > 5:
+                        self.repository.save_partial_answer(self.message_id, content)
+                        state._last_partial_save = time.time()
+
         # Check for end pattern (uses state.current_full_content for content_looks_complete)
         if self.processor.check_end_pattern(clean, state):
             state.end_pattern_seen = True
@@ -770,9 +793,11 @@ class StreamGenerator:
         session.last_response = final_content or ""
         SessionManager.cleanup_old()
 
-        # Save to database
-        if final_content and self.repository and self.message_id:
-            self.repository.save_answer(self.message_id, final_content)
+        # Save to database and clear streaming status
+        if self.repository:
+            if final_content and self.message_id:
+                self.repository.save_answer(self.message_id, final_content)
+            self.repository.set_streaming_status(None)  # Clear streaming status
 
         # Send Slack notification for completed request
         execution_time = time.time() - self.start_time
@@ -801,7 +826,7 @@ class StreamGenerator:
 # =============================================================================
 
 @chat_router.post('/api/chat/stream')
-async def chat_stream(data: ChatStreamRequest):
+async def chat_stream(request: Request, data: ChatStreamRequest):
     """Stream chat response endpoint."""
     _abort_flag.clear()
 
@@ -813,10 +838,27 @@ async def chat_stream(data: ChatStreamRequest):
 
     generator = StreamGenerator(message, os.path.expanduser(workspace), chat_id=chat_id)
 
-    def stream_generator():
-        """Wrap the sync generator for async streaming."""
-        for chunk in generator.generate():
-            yield chunk
+    async def stream_generator():
+        """Wrap the sync generator for async streaming with disconnect detection."""
+        gen = generator.generate()
+        try:
+            for chunk in gen:
+                # Check if client disconnected
+                if await request.is_disconnected():
+                    log.warning("[STREAM] Client disconnected, calling cleanup")
+                    generator._continue_in_background()
+                    return
+                yield chunk
+        except GeneratorExit:
+            # Generator was closed (client disconnected)
+            log.warning("[STREAM] GeneratorExit caught, client disconnected")
+            generator._continue_in_background()
+        finally:
+            # Ensure cleanup on any exit
+            try:
+                gen.close()
+            except:
+                pass
 
     log.info("[RESPONSE] POST /api/chat/stream | Status: 200 | SSE stream initiated")
 

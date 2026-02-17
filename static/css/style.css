@@ -289,9 +289,9 @@ body {
 .chat-history-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    border-radius: 6px;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 5px;
     cursor: pointer;
     margin-bottom: 1px;
     transition: all 0.2s ease;
@@ -304,25 +304,35 @@ body {
 }
 
 .chat-history-item.active {
-    background: var(--bg-tertiary);
-    border-color: var(--border);
+    background: transparent;
+    border-color: transparent;
 }
 
-.chat-history-item i.fa-message {
+.chat-history-item.active:hover {
+    background: var(--bg-hover);
+}
+
+/* Chat history cleared message */
+.chat-history-cleared {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px 16px;
     color: var(--text-muted);
-    font-size: 0.8rem;
-    flex-shrink: 0;
-    opacity: 0.6;
-    transition: all 0.2s ease;
+    text-align: center;
+    transition: opacity 0.3s ease;
 }
 
-.chat-history-item:hover i.fa-message {
-    opacity: 0.9;
+.chat-history-cleared i {
+    font-size: 1.5rem;
+    color: var(--success, #4caf50);
 }
 
-.chat-history-item.active i.fa-message {
-    color: var(--primary);
-    opacity: 1;
+.chat-history-cleared span {
+    font-size: 0.85rem;
+    font-weight: 500;
 }
 
 .chat-history-item .chat-title {
@@ -2668,6 +2678,12 @@ body {
     right: 20px;
 }
 
+/* Browser modal should appear on the left (below workspace badge) */
+#browserModal {
+    left: 300px;
+    right: auto;
+}
+
 /* Adjust modal position when sidebar is collapsed */
 body:has(.sidebar.collapsed) .modal {
     left: 60px;
@@ -2677,6 +2693,11 @@ body:has(.sidebar.collapsed) #settingsModal,
 body:has(.sidebar.collapsed) #devToolsModal {
     left: auto;
     right: 20px;
+}
+
+body:has(.sidebar.collapsed) #browserModal {
+    left: 60px;
+    right: auto;
 }
 
 .modal-content {
@@ -2704,31 +2725,142 @@ body:has(.sidebar.collapsed) #devToolsModal {
     gap: 8px;
 }
 
-/* Settings modal header icon */
+/* Settings modal - compact header */
+#settingsModal .modal-header {
+    padding: 9px 15px;
+}
+
+#settingsModal .modal-header h2 {
+    font-size: 0.85rem;
+    gap: 8px;
+}
+
 #settingsModal .modal-header h2::before {
     content: '\f013';
     font-family: 'Font Awesome 6 Free';
     font-weight: 900;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
 }
 
-/* Developer Tools modal header icon */
+#settingsModal .close-btn {
+    font-size: 0.85rem;
+    padding: 3px 6px;
+}
+
+/* Developer Tools modal - compact size (same as settings) */
+#devToolsModal .modal-content {
+    width: 280px;
+}
+
+#devToolsModal .modal-header {
+    padding: 6px 10px;
+}
+
+#devToolsModal .modal-header h2 {
+    font-size: 0.75rem;
+    gap: 6px;
+}
+
 #devToolsModal .modal-header h2::before {
     content: '\f120';
     font-family: 'Font Awesome 6 Free';
     font-weight: 900;
-    font-size: 0.8rem;
+    font-size: 0.65rem;
     color: var(--text-muted);
 }
 
-/* Browser modal header icon */
+#devToolsModal .close-btn {
+    font-size: 0.75rem;
+    padding: 2px 4px;
+}
+
+#devToolsModal .modal-body {
+    padding: 8px 10px;
+}
+
+#devToolsModal .dev-tools-buttons {
+    gap: 8px;
+}
+
+#devToolsModal .dev-tool-btn {
+    padding: 6px 10px;
+    font-size: 0.7rem;
+    border-radius: 6px;
+    gap: 4px;
+}
+
+#devToolsModal .dev-tool-btn i {
+    font-size: 0.65rem;
+}
+
+/* Browser modal - compact size */
+#browserModal .modal-content {
+    width: 280px;
+}
+
+#browserModal .modal-header {
+    padding: 6px 10px;
+}
+
+#browserModal .modal-header h2 {
+    font-size: 0.75rem;
+    gap: 6px;
+}
+
 #browserModal .modal-header h2::before {
     content: '\f07b';
     font-family: 'Font Awesome 6 Free';
     font-weight: 900;
-    font-size: 0.8rem;
+    font-size: 0.65rem;
     color: var(--text-muted);
+}
+
+#browserModal .close-btn {
+    font-size: 0.75rem;
+    padding: 2px 4px;
+}
+
+#browserModal .modal-body {
+    padding: 8px 10px;
+}
+
+/* Browser path row with home button */
+.browser-path-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.browser-home-btn {
+    padding: 4px 6px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.browser-home-btn:hover {
+    background: var(--bg-hover);
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+.browser-home-btn i {
+    font-size: 0.65rem;
+}
+
+#browserModal .browser-path {
+    flex: 1;
+    padding: 4px 8px;
+    font-size: 0.7rem;
+    margin-bottom: 0;
 }
 
 .close-btn {
@@ -3148,17 +3280,17 @@ body:has(.sidebar.collapsed) #devToolsModal {
 /* Developer tools buttons */
 .dev-tools-buttons {
     display: flex;
-    gap: 10px;
+    gap: 12px;
 }
 
 .dev-tool-btn {
     flex: 1;
-    padding: 10px 14px;
+    padding: 9px 15px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 8px;
     color: var(--text);
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -3175,7 +3307,7 @@ body:has(.sidebar.collapsed) #devToolsModal {
 }
 
 .dev-tool-btn i {
-    font-size: 0.85rem;
+    font-size: 0.8rem;
 }
 
 .save-settings-btn {
@@ -3197,37 +3329,151 @@ body:has(.sidebar.collapsed) #devToolsModal {
     color: var(--primary-light);
 }
 
-/* Directory browser */
-.browser-path {
-    padding: 10px 12px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 14px;
-    font-family: inherit;
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    word-break: break-all;
+/* Smaller button for browser modal */
+#browserModal .save-settings-btn {
+    padding: 4px 12px;
+    font-size: 0.7rem;
 }
 
+/* Browser directory list */
 .browser-list {
-    max-height: 260px;
+    max-height: 200px;
     overflow-y: auto;
+    margin-bottom: 8px;
+    border-radius: 6px;
+}
+
+.browser-list:not(:empty) {
     border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 14px;
     background: var(--bg);
 }
 
 .browser-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
+    gap: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+}
+
+.browser-item:last-child {
+    border-bottom: none;
+}
+
+.browser-item:hover {
+    background: var(--bg-hover);
+}
+
+.browser-item i {
+    color: var(--primary);
+    font-size: 0.7rem;
+}
+
+.browser-item.browser-parent {
+    background: var(--bg-secondary);
+}
+
+.browser-item.browser-parent i {
+    color: var(--text-muted);
+}
+
+.browser-loading,
+.browser-empty,
+.browser-error {
+    padding: 12px;
+    text-align: center;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.browser-error {
+    color: var(--error);
+}
+
+/* Directory browser */
+.browser-path-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    margin-left: -5px;
+}
+
+.browser-nav-btn {
+    padding: 6px 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.browser-nav-btn:hover {
+    background: var(--bg-hover);
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+.browser-nav-btn i {
+    font-size: 0.75rem;
+}
+
+.browser-path-input {
+    flex: 1;
+    padding: 6px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    color: var(--text);
+    direction: rtl;
+    text-align: left;
+}
+
+.browser-path-input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.browser-path {
+    padding: 4px 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 8px;
+    font-family: inherit;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    word-break: break-all;
+}
+
+.browser-list {
+    max-height: 180px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 8px;
+    background: var(--bg);
+}
+
+.browser-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
     cursor: pointer;
     border-bottom: 1px solid var(--border);
     transition: background 0.15s ease;
-    font-size: 0.85rem;
+    font-size: 0.7rem;
 }
 
 .browser-item:last-child {
@@ -3240,8 +3486,8 @@ body:has(.sidebar.collapsed) #devToolsModal {
 
 .browser-item i {
     color: var(--text-muted);
-    font-size: 0.9rem;
-    width: 18px;
+    font-size: 0.65rem;
+    width: 14px;
     text-align: center;
 }
 

@@ -384,6 +384,146 @@ function abortActiveRequest(chatId) {
     }
 }
 
+// ============ PENDING STREAM POLLING ============
+// When user refreshes during streaming, poll server for updates
+let pendingStreamPolls = new Map();  // chatId -> intervalId
+
+function startPendingStreamPoll(chatId) {
+    // Don't start multiple polls for the same chat
+    if (pendingStreamPolls.has(chatId)) {
+        console.log('[POLL] Already polling for chat:', chatId);
+        return;
+    }
+
+    console.log('[POLL] Starting poll for pending stream:', chatId);
+
+    // Show a reconnecting indicator
+    showTypingIndicator('Reconnecting to stream...');
+    isProcessing = true;
+    document.getElementById('sendBtn').disabled = true;
+    document.getElementById('messageInput').disabled = true;
+    showStopButton();
+
+    let pollCount = 0;
+    const maxPolls = 120;  // Max 2 minutes of polling (1 second intervals)
+
+    const pollInterval = setInterval(async () => {
+        pollCount++;
+
+        // Stop if we've exceeded max polls
+        if (pollCount > maxPolls) {
+            console.log('[POLL] Max polls reached, stopping');
+            stopPendingStreamPoll(chatId);
+            hideTypingIndicator();
+            isProcessing = false;
+            document.getElementById('sendBtn').disabled = false;
+            document.getElementById('messageInput').disabled = false;
+            hideStopButton();
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/chats/${chatId}?_t=${Date.now()}`, { cache: 'no-store' });
+            const chat = await response.json();
+
+            if (chat.error) {
+                console.log('[POLL] Chat not found, stopping poll');
+                stopPendingStreamPoll(chatId);
+                return;
+            }
+
+            // Update chat history with latest from server
+            const newMessages = chat.messages || [];
+            if (newMessages.length > chatHistory.length) {
+                console.log('[POLL] Got new messages:', newMessages.length - chatHistory.length);
+                chatHistory = newMessages;
+                renderChatMessages(chatHistory);
+            }
+
+            // Check if streaming is complete
+            if (!chat.streaming_status || chat.streaming_status === null) {
+                console.log('[POLL] Streaming complete, stopping poll');
+                stopPendingStreamPoll(chatId);
+                hideTypingIndicator();
+                isProcessing = false;
+                document.getElementById('sendBtn').disabled = false;
+                document.getElementById('messageInput').disabled = false;
+                hideStopButton();
+
+                // Final render with complete messages
+                chatHistory = chat.messages || [];
+                renderChatMessages(chatHistory);
+                saveChatToCache(chatId, chatHistory);
+                loadChatsFromServer();
+            } else if (chat.streaming_status === 'pending' && pollCount > 3) {
+                // Pending for too long - backend stopped but didn't clean up
+                // Show partial content and let user know
+                console.log('[POLL] Pending timeout - showing partial content');
+                stopPendingStreamPoll(chatId);
+                hideTypingIndicator();
+                isProcessing = false;
+                document.getElementById('sendBtn').disabled = false;
+                document.getElementById('messageInput').disabled = false;
+                hideStopButton();
+
+                // Render what we have
+                chatHistory = chat.messages || [];
+                renderChatMessages(chatHistory);
+
+                // Check if we have partial content (answer was interrupted mid-stream)
+                const lastMsg = chatHistory.length > 0 ? chatHistory[chatHistory.length - 1] : null;
+                const hasPartialAnswer = lastMsg && lastMsg.role === 'assistant' && lastMsg.partial === true;
+                const hasAnswer = chatHistory.some(m => m.role === 'assistant');
+
+                if (!hasAnswer) {
+                    // No answer at all - show full interrupted message
+                    addMessage('assistant', '⚠️ Response was interrupted. Please try asking again.', true);
+                } else if (hasPartialAnswer) {
+                    // Has partial answer - append interrupted note to existing message
+                    const assistantMsgs = document.querySelectorAll('.message.assistant');
+                    if (assistantMsgs.length > 0) {
+                        const lastAssistantMsg = assistantMsgs[assistantMsgs.length - 1];
+                        const contentDiv = lastAssistantMsg.querySelector('.content');
+                        if (contentDiv && !contentDiv.innerHTML.includes('interrupted')) {
+                            contentDiv.innerHTML += '<p class="interrupted-note" style="color: var(--warning-color); margin-top: 1em; font-style: italic;">⚠️ Response was interrupted</p>';
+                        }
+                    }
+                }
+
+                // Clear the pending status on server
+                fetch(`/api/chats/${chatId}/clear-streaming`, { method: 'POST' }).catch(() => {});
+                loadChatsFromServer();
+            } else {
+                // Still streaming, update status
+                updateTypingIndicatorText(`Waiting for response... (${pollCount}s)`);
+            }
+        } catch (error) {
+            console.error('[POLL] Error polling:', error);
+        }
+    }, 1000);
+
+    pendingStreamPolls.set(chatId, pollInterval);
+}
+
+function stopPendingStreamPoll(chatId) {
+    const intervalId = pendingStreamPolls.get(chatId);
+    if (intervalId) {
+        clearInterval(intervalId);
+        pendingStreamPolls.delete(chatId);
+        console.log('[POLL] Stopped poll for chat:', chatId);
+    }
+}
+
+function updateTypingIndicatorText(text) {
+    const indicator = document.getElementById('typingIndicator');
+    if (indicator) {
+        const textSpan = indicator.querySelector('span');
+        if (textSpan) {
+            textSpan.textContent = text;
+        }
+    }
+}
+
 // Update the background processing indicator in UI
 function updateBackgroundIndicator() {
     let indicator = document.getElementById('backgroundIndicator');
@@ -681,14 +821,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Render cached messages for saved chat immediately
     const savedChatId = localStorage.getItem('currentChatId');
+    const chatMessagesContainer = document.getElementById('chatMessages');
     if (savedChatId) {
         const cachedData = loadChatFromCache(savedChatId);
-        if (cachedData && cachedData.messages) {
+        if (cachedData && cachedData.messages && cachedData.messages.length > 0) {
             console.log('[INIT] Rendering cached messages for:', savedChatId);
             currentChatId = savedChatId;
             chatHistory = cachedData.messages;
             renderChatMessages(chatHistory);
         }
+    }
+    // Make container visible after rendering correct content
+    if (chatMessagesContainer) {
+        chatMessagesContainer.style.visibility = 'visible';
     }
 
     // Start cache auto-save for reliability
@@ -1015,6 +1160,29 @@ async function sendMessage() {
         return;
     }
 
+    // Create a chat first if we don't have one
+    if (!currentChatId) {
+        console.log('[API] No current chat, creating one first...');
+        try {
+            const createUrl = '/api/chats';
+            const createResponse = await fetch(createUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspace: currentWorkspace })
+            });
+            const newChat = await createResponse.json();
+            currentChatId = newChat.id;
+            localStorage.setItem('currentChatId', currentChatId);
+            console.log('[API] Created new chat:', currentChatId);
+            // Refresh sidebar to show new chat
+            loadChatsFromServer();
+        } catch (error) {
+            console.error('[API] Failed to create chat:', error);
+            showNotification('Failed to create chat. Please try again.');
+            return;
+        }
+    }
+
     // Increment request ID - this invalidates any previous request
     currentRequestId++;
     const thisRequestId = currentRequestId;
@@ -1175,7 +1343,8 @@ async function sendMessage() {
                             updateBackgroundIndicator();
                             if (!isBackground) {
                                 hideTypingIndicator();
-                                addMessage('assistant', `❌ Error: ${data.message}`);
+                                // Don't save error messages to database - use skipSave=true
+                                addMessage('assistant', `❌ Error: ${data.message}`, true);
                             }
                             break;
                         case 'aborted':
@@ -1254,7 +1423,8 @@ async function sendMessage() {
             console.error('Error:', error);
             if (thisChatId === currentChatId) {
                 hideTypingIndicator();
-                addMessage('assistant', '❌ Connection error. Make sure the server is running.');
+                // Don't save error messages to database - use skipSave=true
+                addMessage('assistant', '❌ Connection error. Make sure the server is running.', true);
             }
         }
     } finally {
@@ -3387,66 +3557,102 @@ function saveWorkspace() {
     return saveSettings();
 }
 
-// Browse workspace directories
-async function browseWorkspace() {
+// Browse workspace directories (toggle)
+function browseWorkspace() {
+    console.log('browseWorkspace called');
+    const modal = document.getElementById('browserModal');
+    if (!modal) {
+        console.error('browserModal not found');
+        return;
+    }
+    // Toggle: if already open, close it
+    if (modal.classList.contains('active')) {
+        modal.classList.remove('active');
+        return;
+    }
     browserCurrentPath = currentWorkspace || '~';
-    await loadBrowserDirectory(browserCurrentPath);
-    document.getElementById('browserModal').classList.add('active');
+    const pathEl = document.getElementById('browserPath');
+    const listEl = document.getElementById('browserList');
+    if (pathEl) pathEl.textContent = browserCurrentPath;
+    if (listEl) listEl.innerHTML = '';  // Clear folder list on open
+    modal.classList.add('active');
+    console.log('browserModal activated');
 }
 
-// Load directory contents
+// Load directory contents from server
 async function loadBrowserDirectory(path) {
-    const url = `/api/browse?path=${encodeURIComponent(path)}`;
-    logRequest('GET', url);
+    console.log('loadBrowserDirectory called with path:', path);
+    const pathEl = document.getElementById('browserPath');
+    const listEl = document.getElementById('browserList');
+    console.log('listEl:', listEl);
+
+    if (pathEl) pathEl.textContent = path;
+    if (listEl) listEl.innerHTML = '<div class="browser-loading"><i class="fas fa-spinner fa-spin"></i></div>';
+
     try {
-        const response = await fetch(url);
+        const response = await fetch(`/api/browse?path=${encodeURIComponent(path)}`);
         const data = await response.json();
-        logResponse('GET', url, response.status, data);
 
         if (data.error) {
-            showNotification('Error: ' + data.error);
+            if (listEl) listEl.innerHTML = `<div class="browser-error">${data.error}</div>`;
             return;
         }
 
         browserCurrentPath = data.current;
-        document.getElementById('browserPath').textContent = data.current;
+        if (pathEl) pathEl.textContent = data.current;
 
-        const list = document.getElementById('browserList');
-        list.innerHTML = '';
+        if (!listEl) return;
 
-        // Add parent directory option
+        let html = '';
+
+        // Add parent directory link if not at root
         if (data.parent && data.parent !== data.current) {
-            const parentItem = document.createElement('div');
-            parentItem.className = 'browser-item parent';
-            parentItem.innerHTML = '<i class="fas fa-level-up-alt"></i> <span>.. (Parent Directory)</span>';
-            parentItem.onclick = () => loadBrowserDirectory(data.parent);
-            list.appendChild(parentItem);
+            html += `<div class="browser-item browser-parent" data-path="${encodeURIComponent(data.parent)}">
+                <i class="fas fa-level-up-alt"></i>
+                <span>..</span>
+            </div>`;
         }
 
-        // Add directories
-        data.items.forEach(item => {
-            const div = document.createElement('div');
-            div.className = 'browser-item';
-            div.innerHTML = `<i class="fas fa-folder"></i> <span>${item.name}</span>`;
-            div.onclick = () => loadBrowserDirectory(item.path);
-            list.appendChild(div);
+        if (data.items.length === 0 && !html) {
+            listEl.innerHTML = '<div class="browser-empty">No subdirectories</div>';
+            return;
+        }
+
+        html += data.items.map(item => `
+            <div class="browser-item" data-path="${encodeURIComponent(item.path)}">
+                <i class="fas fa-folder"></i>
+                <span>${item.name}</span>
+            </div>
+        `).join('');
+
+        listEl.innerHTML = html;
+        console.log('Rendered', data.items.length, 'items');
+
+        // Add click handlers using event delegation
+        listEl.querySelectorAll('.browser-item').forEach(el => {
+            el.onclick = function(e) {
+                e.stopPropagation();
+                const itemPath = decodeURIComponent(this.getAttribute('data-path'));
+                console.log('Clicked folder:', itemPath);
+                navigateToDir(itemPath);
+            };
         });
-
-        if (data.items.length === 0) {
-            const empty = document.createElement('div');
-            empty.className = 'browser-item';
-            empty.innerHTML = '<i class="fas fa-info-circle"></i> <span>No subdirectories</span>';
-            list.appendChild(empty);
-        }
-
     } catch (error) {
-        showNotification('Error loading directory');
+        console.error('Error loading directory:', error);
+        if (listEl) listEl.innerHTML = '<div class="browser-error">Failed to load directory</div>';
     }
+}
+
+// Navigate to a specific directory
+function navigateToDir(path) {
+    browserCurrentPath = path;
+    loadBrowserDirectory(path);
 }
 
 // Select current directory from browser
 async function selectCurrentDir() {
-    document.getElementById('workspaceInput').value = browserCurrentPath;
+    const workspaceInput = document.getElementById('workspaceInput');
+    if (workspaceInput) workspaceInput.value = browserCurrentPath;
     currentWorkspace = browserCurrentPath;
     closeBrowser();
     updateWorkspaceDisplay();
@@ -3461,11 +3667,51 @@ async function selectCurrentDir() {
         const data = await response.json();
         if (data.status === 'success') {
             localStorage.setItem('workspace', currentWorkspace);
-            showNotification('Workspace changed!');
+            showWorkspaceToast('Workspace changed');
         }
     } catch (error) {
         console.error('Error saving workspace:', error);
     }
+}
+
+// Show simple toast below workspace badge
+function showWorkspaceToast(message) {
+    // Remove any existing toast
+    const existing = document.getElementById('workspaceToast');
+    if (existing) existing.remove();
+
+    const badge = document.getElementById('workspaceBadge');
+    if (!badge) return;
+
+    const toast = document.createElement('div');
+    toast.id = 'workspaceToast';
+    toast.textContent = message;
+    toast.style.cssText = `
+        position: absolute;
+        top: 100%;
+        left: 0;
+        margin-top: 4px;
+        padding: 4px 10px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--primary);
+        border-radius: 4px;
+        font-size: 0.7rem;
+        color: var(--primary);
+        white-space: nowrap;
+        z-index: 1001;
+        animation: fadeIn 0.2s ease;
+    `;
+
+    badge.style.position = 'relative';
+    badge.appendChild(toast);
+
+    setTimeout(() => toast.remove(), 2000);
+}
+
+// Navigate to home directory and show folder structure
+function navigateToHome() {
+    console.log('navigateToHome called');
+    loadBrowserDirectory('~');
 }
 
 // Close browser modal
@@ -3672,7 +3918,6 @@ function renderChatHistory(chats) {
         const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
         item.innerHTML = `
-            <i class="fas fa-message"></i>
             <span class="chat-title">${escapeHtml(chat.title)}</span>
             <button class="delete-chat-btn" onclick="deleteChat('${chat.id}', event)" title="Delete chat">
                 <i class="fas fa-trash"></i>
@@ -3685,6 +3930,12 @@ function renderChatHistory(chats) {
 // Create new chat
 async function createNewChat() {
     try {
+        // If already in an empty new chat, don't create another one
+        if (chatHistory.length === 0 && currentChatId) {
+            console.log('[NEW CHAT] Already in empty chat, skipping creation');
+            return;
+        }
+
         const oldChatId = currentChatId;
 
         // If there's an active request for the old chat, let it continue in background
@@ -3925,6 +4176,12 @@ async function loadChatFromServer(chatId) {
         localStorage.setItem('currentChatId', currentChatId);
         console.log('[LOAD] Successfully loaded chat, currentChatId set to:', currentChatId);
 
+        // Check if there's a pending stream (user refreshed during streaming)
+        if (chat.streaming_status === 'pending' || chat.streaming_status === 'streaming') {
+            console.log('[LOAD] Chat has pending stream, starting poll for updates');
+            startPendingStreamPoll(chatId);
+        }
+
         // Debug: log what we received from server
         console.log('[LOAD] Received from server:', chatHistory.length, 'messages');
         chatHistory.forEach((msg, i) => {
@@ -3945,25 +4202,34 @@ async function loadChatFromServer(chatId) {
             }
         }
 
+        // Only re-render if content has changed (avoid flash on refresh)
         const container = document.getElementById('chatMessages');
-        container.innerHTML = '';
+        const existingMsgCount = container.querySelectorAll('.message').length;
+        const newMsgCount = chatHistory.length;
 
-        if (chatHistory.length === 0) {
-            container.innerHTML = WELCOME_HTML;
+        // Skip re-render if same message count and same chat (content likely unchanged)
+        if (existingMsgCount === newMsgCount && existingMsgCount > 0) {
+            console.log('[LOAD] Skipping re-render, content unchanged');
         } else {
-            chatHistory.forEach((msg, idx) => {
-                // Generate messageId if not present (for backward compatibility)
-                if (!msg.messageId) {
-                    msg.messageId = generateMessageId(currentChatId, idx, msg.content);
-                }
-                const messageDiv = document.createElement('div');
-                messageDiv.className = `message ${msg.role}`;
-                messageDiv.dataset.messageId = msg.messageId;
-                messageDiv.innerHTML = createMessageHTML(msg.role, msg.content, idx, msg.messageId);
-                container.appendChild(messageDiv);
-                addCodeCopyButtons(messageDiv);
-            });
-            setTimeout(() => container.scrollTop = container.scrollHeight, 50);
+            container.innerHTML = '';
+
+            if (chatHistory.length === 0) {
+                container.innerHTML = WELCOME_HTML;
+            } else {
+                chatHistory.forEach((msg, idx) => {
+                    // Generate messageId if not present (for backward compatibility)
+                    if (!msg.messageId) {
+                        msg.messageId = generateMessageId(currentChatId, idx, msg.content);
+                    }
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = `message ${msg.role}`;
+                    messageDiv.dataset.messageId = msg.messageId;
+                    messageDiv.innerHTML = createMessageHTML(msg.role, msg.content, idx, msg.messageId);
+                    container.appendChild(messageDiv);
+                    addCodeCopyButtons(messageDiv);
+                });
+                setTimeout(() => container.scrollTop = container.scrollHeight, 50);
+            }
         }
 
         // Save to cache after successful load
@@ -4076,19 +4342,50 @@ async function clearAllChats() {
     const confirmed = await showConfirmDialog('Delete all chat history? This cannot be undone.');
     if (!confirmed) return;
 
+    // Clear localStorage immediately
+    localStorage.removeItem('currentChatId');
+    localStorage.removeItem('cachedChatList');
+    chatHistory = [];
+
+    // Clear main chat area immediately
+    const chatMessages = document.getElementById('chatMessages');
+    if (chatMessages) {
+        chatMessages.innerHTML = WELCOME_HTML;
+    }
+
+    // Show cleared message immediately (before server response)
+    const historyContainer = document.getElementById('chatHistory');
+    if (historyContainer) {
+        historyContainer.innerHTML = `
+            <div class="chat-history-cleared">
+                <i class="fas fa-check-circle"></i>
+                <span>All chats cleared</span>
+            </div>
+        `;
+    }
+
+    // Delete from server and create new chat in background
     const url = '/api/chats/clear';
     logRequest('DELETE', url);
-
-    try {
-        const response = await fetch(url, { method: 'DELETE' });
-        const data = await response.json();
-        logResponse('DELETE', url, response.status, data);
-        createNewChat();
-        showNotification('All chats cleared');
-    } catch (error) {
-        console.error('Failed to clear chats:', error);
-        showNotification('Failed to clear chats');
-    }
+    fetch(url, { method: 'DELETE' })
+        .then(response => response.json())
+        .then(async data => {
+            logResponse('DELETE', url, 200, data);
+            // Create new chat immediately after server clears
+            await createNewChat();
+            // Then fade out the cleared message
+            if (historyContainer) {
+                const clearedMsg = historyContainer.querySelector('.chat-history-cleared');
+                if (clearedMsg) {
+                    clearedMsg.style.opacity = '0';
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Failed to clear chats on server:', error);
+            // Still create new chat even if server fails
+            createNewChat();
+        });
 }
 
 // Show notification
@@ -4105,9 +4402,8 @@ function showNotification(message, type = 'info') {
 
     notification.style.cssText = `
         position: fixed;
-        bottom: 100px;
-        left: 50%;
-        transform: translateX(-50%);
+        bottom: 70px;
+        left: 20px;
         background: ${bgColor};
         color: white;
         padding: 12px 24px;
@@ -4151,7 +4447,7 @@ document.addEventListener('click', function(e) {
     if (browserModal.classList.contains('active')) {
         const browserContent = browserModal.querySelector('.modal-content');
         if (!browserContent.contains(e.target) &&
-            !e.target.closest('.browse-btn')) {
+            !e.target.closest('#workspaceBadge')) {
             browserModal.classList.remove('active');
         }
     }
