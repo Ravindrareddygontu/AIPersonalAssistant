@@ -1,25 +1,62 @@
+"""
+ResponseExtractor - Extracts clean AI responses from auggie terminal output.
+
+Parses terminal output to find and extract the actual AI response content,
+filtering out UI elements, status messages, and terminal artifacts.
+"""
+
 import re
 import logging
+from typing import Optional
+
 from backend.config import SKIP_PATTERNS, BOX_CHARS_PATTERN
 from backend.utils.text import TextCleaner
 
 log = logging.getLogger('response')
 
+# =============================================================================
+# Response Extraction Patterns
+# =============================================================================
+
+# Control characters (except newline, tab, carriage return) to strip
 _CTRL_CHARS_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+
+# Section dividers: horizontal lines of 10+ box-drawing dashes
 _SECTION_RE = re.compile(r'─{10,}')
-_STATUS_PATTERNS = frozenset(['Sending request', 'esc to interrupt', 'Processing response', 'Executing tools'])
+
+# Status messages that indicate processing state, not actual content
+_STATUS_PATTERNS = frozenset([
+    'Sending request',
+    'esc to interrupt',
+    'Processing response',
+    'Executing tools'
+])
 
 
 class ResponseExtractor:
+    """Extracts AI response content from raw auggie terminal output."""
+
+    # Response content markers used by auggie CLI
+    RESPONSE_MARKER = '●'      # Main response line marker
+    THINKING_MARKER = '~'      # Thinking/reasoning text marker
+    CONTINUATION_MARKER = '⎿'  # Continuation/sub-response marker
+
     @staticmethod
-    def extract_full(raw_output, user_message):
+    def extract_full(raw_output: str, user_message: str) -> str:
         """
         Extract the response from auggie terminal output.
 
-        Simple approach:
-        1. Find the user message in the output
+        Algorithm:
+        1. Find the user message in the output (last occurrence)
         2. Find the first ● marker AFTER the message
-        3. Extract content from there until end markers
+        3. Extract content from there until end markers (box UI elements)
+
+        Args:
+            raw_output: Raw terminal output from auggie PTY
+            user_message: The user's question/message to locate
+
+        Returns:
+            Cleaned response content, or empty string if not found
         """
         text = _CTRL_CHARS_RE.sub('', TextCleaner.strip_ansi(raw_output))
 

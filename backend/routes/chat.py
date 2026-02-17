@@ -45,32 +45,57 @@ class ChatResetRequest(BaseModel):
     workspace: Optional[str] = None
 
 
+# =============================================================================
+# Message Sanitization
+# =============================================================================
+
+# Braille spinner characters used by auggie for status indicators
+_SPINNER_CHARS_RE = re.compile(r'[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠛⠓⠚⠖⠲⠳⠞]')
+
+# Mapping of special Unicode chars to ASCII equivalents for terminal safety
+_UNICODE_TO_ASCII_MAP = {
+    '●': '*',   # Response marker → asterisk
+    '•': '-',   # Bullet → dash
+    '⎿': '|',   # Continuation marker → pipe
+    '›': '>',   # Prompt char → greater-than
+    '╭': '+',   # Box corners → plus
+    '╮': '+',
+    '╯': '+',
+    '╰': '+',
+    '│': '|',   # Vertical box → pipe
+    '─': '-',   # Horizontal box → dash
+}
+
+
 def _sanitize_message(message: str) -> str:
     """
     Sanitize a message for terminal input.
 
-    Replaces newlines with spaces and converts special Unicode characters
-    that auggie uses for formatting (●, •, ⎿, etc.) to ASCII equivalents.
-    This prevents confusion in response marker detection.
+    Performs the following transformations:
+    1. Replaces newlines with spaces (terminal expects single-line input)
+    2. Removes braille spinner characters (⠋⠙⠹⠸ etc.) used for status indicators
+    3. Converts special Unicode chars (●•⎿›╭╮╯╰│─) to ASCII equivalents
 
-    Also strips braille spinner characters (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏) that auggie uses
-    for status indicators, to avoid matching user messages against status output.
+    This prevents confusion in response marker detection since auggie uses
+    these characters for formatting its output.
+
+    Args:
+        message: User's input message
+
+    Returns:
+        Sanitized message safe for terminal input
     """
-    import re
+    # Normalize newlines
     sanitized = message.replace('\n', ' ').replace('\r', ' ')
-    # Remove braille spinner characters (U+2800-U+28FF range, specifically the spinners)
-    sanitized = re.sub(r'[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠛⠓⠚⠖⠲⠳⠞]', '', sanitized)
-    return (sanitized
-        .replace('●', '*')
-        .replace('•', '-')
-        .replace('⎿', '|')
-        .replace('›', '>')
-        .replace('╭', '+')
-        .replace('╮', '+')
-        .replace('╯', '+')
-        .replace('╰', '+')
-        .replace('│', '|')
-        .replace('─', '-'))
+
+    # Remove spinner characters that could confuse status detection
+    sanitized = _SPINNER_CHARS_RE.sub('', sanitized)
+
+    # Convert Unicode special chars to ASCII equivalents
+    for unicode_char, ascii_char in _UNICODE_TO_ASCII_MAP.items():
+        sanitized = sanitized.replace(unicode_char, ascii_char)
+
+    return sanitized
 
 
 # Global abort flag for current streaming request
@@ -287,17 +312,34 @@ class SessionHandler:
 
 
 class StreamGenerator:
-    """Generates SSE stream for chat responses."""
+    """
+    Generates SSE stream for chat responses.
 
-    STREAM_TIMEOUT = 300  # 5 minutes max
-    RAW_BUFFER_MAX = 300_000
-    # Performance-tuned timeouts - balance speed vs tool execution
-    CONTENT_SILENCE_TIMEOUT = 5.0  # Base silence timeout for complete content
-    CONTENT_SILENCE_EXTENDED = 60.0  # Extended timeout when tools are executing (increased from 30)
-    CONTENT_SILENCE_INCOMPLETE = 45.0  # Timeout when content doesn't look complete (increased from 15)
-    END_PATTERN_SILENCE = 1.0  # End pattern detected, wait 1s before ending
-    RESPONSE_MARKER_TIMEOUT = 5.0  # Data silence after response started
-    WAIT_FOR_MARKER_TIMEOUT = 45.0  # Max wait for first response marker
+    Handles the complete lifecycle of a chat request:
+    1. Session management (get/create auggie session)
+    2. Message sending and echo detection
+    3. Response streaming with timeout handling
+    4. Response finalization and persistence
+
+    Uses various timeout thresholds to detect when response is complete
+    while allowing enough time for tool execution.
+    """
+
+    # ==========================================================================
+    # Timeout Configuration (in seconds)
+    # Performance-tuned: balance responsiveness vs. allowing tool execution
+    # ==========================================================================
+
+    STREAM_TIMEOUT = 300          # Maximum total stream duration (5 minutes)
+    RAW_BUFFER_MAX = 300_000      # Max bytes to buffer from PTY output
+
+    # Silence detection timeouts (how long to wait with no new content)
+    CONTENT_SILENCE_TIMEOUT = 5.0       # When content looks complete
+    CONTENT_SILENCE_EXTENDED = 60.0     # When tools are executing (file ops, etc.)
+    CONTENT_SILENCE_INCOMPLETE = 45.0   # When content looks truncated/incomplete
+    END_PATTERN_SILENCE = 1.0           # After detecting end pattern (box UI)
+    RESPONSE_MARKER_TIMEOUT = 5.0       # Data silence after response marker (●)
+    WAIT_FOR_MARKER_TIMEOUT = 45.0      # Max wait for first response marker
 
     def __init__(self, message: str, workspace: str, chat_id: str = None):
         self.message = message

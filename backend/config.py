@@ -1,21 +1,56 @@
+"""
+Application Configuration - Central configuration for the AI Chat App.
+
+Contains settings, constants, and configuration for:
+- Database connections (MongoDB)
+- AI model configuration
+- Terminal output filtering patterns
+- Slack integration settings
+"""
+
 import os
 import re
 import signal
+from typing import List, Dict
 
+# Ignore SIGPIPE to prevent broken pipe errors when client disconnects
 signal.signal(signal.SIGPIPE, signal.SIG_IGN)
 
-SKIP_PATTERNS = [
+# =============================================================================
+# Terminal Output Filtering Patterns
+# =============================================================================
+
+# Patterns to skip when parsing auggie terminal output
+# These are UI hints, status messages, and metadata that shouldn't appear in responses
+SKIP_PATTERNS: List[str] = [
+    # UI hints and instructions
     'You can ask questions', 'edit files, or run commands',
     'Use Ctrl + Enter', 'Use vim mode', 'For automation',
-    'Indexing disabled', 'working directory', 'To get the most out',
-    'from a project directory', 'Ctrl+P to enhance', 'Ctrl+S to stash',
-    'Claude Opus', 'Version 0.', '@veefin.com', '@gmail.com', 'ravindrar@',
+    'To get the most out', 'from a project directory',
+    'Ctrl+P to enhance', 'Ctrl+S to stash',
+    '? to show shortcuts', 'Get started',
+    # Status messages
+    'Indexing disabled', 'working directory',
     'Processing response...', 'Sending request...',
     'Receiving response', 'Summarizing conversation history',
-    '▇▇▇▇▇', '? to show shortcuts', 'Get started',
     'Executing tools...',
+    # Model/user info (shouldn't leak into responses)
+    'Claude Opus', 'Version 0.',
+    '@veefin.com', '@gmail.com', 'ravindrar@',
+    # Progress indicators
+    '▇▇▇▇▇',
 ]
 
+# Command/terminal indicators for detecting non-response content
+# Used by SlackNotifier and other components to skip command-like lines
+TERMINAL_COMMAND_INDICATORS: List[str] = [
+    'Terminal -', '2>/dev/null', '||', '&&',
+    'grep ', 'lsof ', 'netstat ', 'ps aux',
+    'cd ', '$ ', '# ', '```'
+]
+
+# Regex pattern matching lines containing only box-drawing and block characters
+# Used to filter out terminal UI borders and decorations
 BOX_CHARS_PATTERN = re.compile(r'^[╭╮╯╰│─╗╔║╚╝═█▇▆▅▄▃▂▁░▒▓\s]+$')
 
 # MongoDB Configuration

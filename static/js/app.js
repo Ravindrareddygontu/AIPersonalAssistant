@@ -1,24 +1,125 @@
-// Chat Application JavaScript - Powered by Augment Code
+/**
+ * Chat Application JavaScript - Powered by Augment Code
+ *
+ * Main frontend application for the AI Chat interface.
+ * Handles chat UI, streaming responses, image attachments, voice input,
+ * and communication with the backend API.
+ *
+ * @file app.js
+ */
 
+// =============================================================================
+// Application State
+// =============================================================================
+
+/** @type {Array<{role: string, content: string, messageId: string}>} Chat message history */
 let chatHistory = [];
+
+/** @type {string|null} Current active chat ID */
 let currentChatId = null;
+
+/** @type {boolean} Whether a request is currently being processed */
 let isProcessing = false;
+
+/** @type {string} Current workspace directory path */
 let currentWorkspace = '~';
+
+/** @type {string} Currently selected AI model */
 let currentModel = 'claude-opus-4.5';
+
+/** @type {string[]} List of available AI models */
 let availableModels = [];
+
+/** @type {string} Current path in file browser */
 let browserCurrentPath = '';
+
+/** @type {boolean} Whether sidebar is open */
 let sidebarOpen = true;
+
+/** @type {AbortController|null} Controller for aborting current request */
 let currentAbortController = null;
-let historyEnabled = true;  // Global toggle for chat history storage
-let slackNotifyEnabled = false;  // Send status to Slack after completion
-let slackWebhookUrl = '';  // Slack webhook URL
-let statusTimerInterval = null;  // Timer for status elapsed time
-let statusStartTime = null;  // When status started
-let selectedImages = [];  // Array of selected image file paths
 
-// ============ IMAGE INPUT HANDLING ============
+/** @type {boolean} Whether chat history persistence is enabled */
+let historyEnabled = true;
 
-// Handle image file selection using Electron's native dialog
+/** @type {boolean} Whether Slack notifications are enabled */
+let slackNotifyEnabled = false;
+
+/** @type {string} Slack webhook URL for notifications */
+let slackWebhookUrl = '';
+
+/** @type {number|null} Interval ID for status timer */
+let statusTimerInterval = null;
+
+/** @type {number|null} Timestamp when status started */
+let statusStartTime = null;
+
+/** @type {Array<{path: string, name: string, previewUrl: string}>} Selected image files */
+let selectedImages = [];
+
+// =============================================================================
+// DOM Element Cache - Cached references to avoid repeated lookups
+// =============================================================================
+
+/** @type {Object} Cached DOM element references */
+const DOM = {
+    _cache: {},
+
+    /**
+     * Get a cached DOM element by ID
+     * @param {string} id - Element ID
+     * @returns {HTMLElement|null}
+     */
+    get(id) {
+        if (!this._cache[id]) {
+            this._cache[id] = document.getElementById(id);
+        }
+        return this._cache[id];
+    },
+
+    /**
+     * Clear the cache (call after major DOM changes)
+     */
+    clear() {
+        this._cache = {};
+    }
+};
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+/** @type {number} Maximum concurrent background requests */
+const MAX_CONCURRENT_REQUESTS = 2;
+
+/** @type {string} LocalStorage prefix for chat cache */
+const CACHE_PREFIX = 'chat_cache_';
+
+/** @type {string} LocalStorage key for cache metadata */
+const CACHE_META_KEY = 'chat_cache_meta';
+
+/** @type {number} Maximum number of chats to keep in cache */
+const MAX_CACHED_CHATS = 50;
+
+/** @type {number} Auto-save interval in milliseconds */
+const CACHE_AUTO_SAVE_INTERVAL = 3000;
+
+/** @type {number} Maximum polling duration in seconds */
+const MAX_POLL_DURATION = 120;
+
+/** @type {number} Streaming DOM update batch interval in milliseconds */
+const STREAMING_UPDATE_INTERVAL = 50;
+
+// =============================================================================
+// IMAGE INPUT HANDLING
+// =============================================================================
+
+/**
+ * Handle image file selection using Electron's native dialog or browser fallback.
+ * Adds selected images to the selectedImages array for attachment.
+ *
+ * @param {Event} event - The file input change event (only used in browser fallback)
+ */
 async function handleImageSelect(event) {
     // Check if we're in Electron and have the API
     if (window.electronAPI && window.electronAPI.selectImages) {
@@ -82,24 +183,26 @@ async function handleImageSelect(event) {
     }
 }
 
-// Update the image preview UI
+/**
+ * Update the image preview UI to show currently selected images.
+ * Uses DOM cache for frequently accessed elements.
+ */
 function updateImagePreview() {
-    const previewArea = document.getElementById('imagePreviewArea');
-    const container = document.getElementById('imagePreviewContainer');
+    const previewArea = DOM.get('imagePreviewArea');
+    const container = DOM.get('imagePreviewContainer');
     const inputWrapper = document.querySelector('.chat-input-wrapper');
-    const imageBtn = document.getElementById('imageBtn');
+    const imageBtn = DOM.get('imageBtn');
 
-    if (selectedImages.length === 0) {
-        previewArea.style.display = 'none';
-        inputWrapper.classList.remove('has-images');
-        imageBtn.classList.remove('has-images');
-        return;
-    }
+    const hasImages = selectedImages.length > 0;
 
-    previewArea.style.display = 'flex';
-    inputWrapper.classList.add('has-images');
-    imageBtn.classList.add('has-images');
+    // Update visibility and classes
+    if (previewArea) previewArea.style.display = hasImages ? 'flex' : 'none';
+    if (inputWrapper) inputWrapper.classList.toggle('has-images', hasImages);
+    if (imageBtn) imageBtn.classList.toggle('has-images', hasImages);
 
+    if (!hasImages || !container) return;
+
+    // Render image previews
     container.innerHTML = selectedImages.map((img, index) => `
         <div class="image-preview-item">
             <img src="${img.previewUrl}" alt="${img.name}">
@@ -111,7 +214,10 @@ function updateImagePreview() {
     `).join('');
 }
 
-// Remove a single image by index
+/**
+ * Remove a single image by index from the selection.
+ * @param {number} index - Index of image to remove
+ */
 function removeImage(index) {
     if (index >= 0 && index < selectedImages.length) {
         // Revoke the object URL to free memory
@@ -122,33 +228,50 @@ function removeImage(index) {
     }
 }
 
-// Clear all selected images
+/**
+ * Clear all selected images and free memory.
+ */
 function clearSelectedImages() {
-    // Revoke all object URLs
     selectedImages.forEach(img => URL.revokeObjectURL(img.previewUrl));
     selectedImages = [];
     updateImagePreview();
     console.log('[IMAGES] Cleared all images');
 }
 
-// Format message for auggie with images
+/**
+ * Format a message with image attachments for the auggie CLI.
+ * Currently only supports single image due to auggie limitation.
+ *
+ * @param {string} message - The user's text message
+ * @param {Array} images - Array of image objects with path property
+ * @returns {string} Formatted message string
+ */
 function formatMessageWithImages(message, images) {
     if (images.length === 0) return message;
 
     // Format: /images <path>|||<question>
     // Using ||| as separator because paths can contain spaces
-    // Currently only supports single image (auggie limitation)
     const imagePath = images[0].path;
     return `/images ${imagePath}|||${message}`;
 }
 
-// ============ SPEECH-TO-TEXT (VOICE INPUT) using OpenAI Whisper API ============
+// =============================================================================
+// SPEECH-TO-TEXT (VOICE INPUT) - Uses OpenAI Whisper API via backend
+// =============================================================================
 
+/** @type {MediaRecorder|null} Active media recorder instance */
 let mediaRecorder = null;
+
+/** @type {Blob[]} Collected audio chunks during recording */
 let audioChunks = [];
+
+/** @type {boolean} Whether voice recording is in progress */
 let isRecording = false;
 
-// Toggle voice recording on/off
+/**
+ * Toggle voice recording on/off.
+ * If recording, stops and transcribes. If not, starts recording.
+ */
 function toggleVoiceRecording() {
     if (isRecording) {
         stopVoiceRecording();
@@ -157,7 +280,10 @@ function toggleVoiceRecording() {
     }
 }
 
-// Start voice recording using MediaRecorder API
+/**
+ * Start voice recording using the MediaRecorder API.
+ * Requests microphone access and begins capturing audio.
+ */
 async function startVoiceRecording() {
     try {
         // Request microphone access
@@ -212,7 +338,9 @@ async function startVoiceRecording() {
     }
 }
 
-// Stop voice recording
+/**
+ * Stop voice recording. Triggers transcription via onstop handler.
+ */
 function stopVoiceRecording() {
     if (mediaRecorder && isRecording) {
         mediaRecorder.stop();
@@ -222,15 +350,22 @@ function stopVoiceRecording() {
     updateVoiceButtonState();
 }
 
-// Send audio to backend for transcription using OpenAI Whisper API
+/**
+ * Send audio blob to backend for transcription using OpenAI Whisper API.
+ * Inserts transcribed text into the message input field.
+ *
+ * @param {Blob} audioBlob - The recorded audio blob to transcribe
+ */
 async function transcribeAudio(audioBlob) {
     const voiceBtn = document.getElementById('voiceBtn');
     const voiceIcon = document.getElementById('voiceIcon');
 
     // Show processing state (spinner in place of mic icon)
-    voiceBtn.classList.add('processing');
-    voiceIcon.classList.remove('fa-microphone');
-    voiceIcon.classList.add('fa-spinner', 'fa-spin');
+    if (voiceBtn) voiceBtn.classList.add('processing');
+    if (voiceIcon) {
+        voiceIcon.classList.remove('fa-microphone');
+        voiceIcon.classList.add('fa-spinner', 'fa-spin');
+    }
 
     try {
         const formData = new FormData();
@@ -246,10 +381,12 @@ async function transcribeAudio(audioBlob) {
         if (result.success && result.text) {
             // Insert transcribed text into input field
             const input = document.getElementById('messageInput');
-            const existingText = input.value.trim();
-            input.value = existingText ? existingText + ' ' + result.text : result.text;
-            autoResize(input);
-            input.focus();
+            if (input) {
+                const existingText = input.value.trim();
+                input.value = existingText ? existingText + ' ' + result.text : result.text;
+                autoResize(input);
+                input.focus();
+            }
             console.log('[VOICE] Transcribed:', result.text);
         } else {
             showNotification(result.error || 'Transcription failed', 'error');
@@ -261,13 +398,18 @@ async function transcribeAudio(audioBlob) {
         showNotification('Error transcribing audio. Please try again.', 'error');
     } finally {
         // Reset button state
-        voiceBtn.classList.remove('processing');
-        voiceIcon.classList.remove('fa-spinner', 'fa-spin');
-        voiceIcon.classList.add('fa-microphone');
+        if (voiceBtn) voiceBtn.classList.remove('processing');
+        if (voiceIcon) {
+            voiceIcon.classList.remove('fa-spinner', 'fa-spin');
+            voiceIcon.classList.add('fa-microphone');
+        }
     }
 }
 
-// Update voice button visual state
+/**
+ * Update voice button visual state based on recording status.
+ * Shows microphone-slash icon when recording, microphone when idle.
+ */
 function updateVoiceButtonState() {
     const voiceBtn = document.getElementById('voiceBtn');
     const voiceIcon = document.getElementById('voiceIcon');
@@ -287,26 +429,57 @@ function updateVoiceButtonState() {
     }
 }
 
-// ============ BACKGROUND PROCESSING WITH MAX 2 CONCURRENT THREADS ============
-const MAX_CONCURRENT_REQUESTS = 2;
-const activeRequests = new Map();  // chatId -> { abortController, streamingContent, status, chatHistory, requestId }
+// =============================================================================
+// BACKGROUND PROCESSING - Allows up to MAX_CONCURRENT_REQUESTS parallel streams
+// =============================================================================
 
-// Get count of active requests
+/**
+ * @typedef {Object} ActiveRequest
+ * @property {AbortController} abortController - Controller to abort the request
+ * @property {string} requestId - Unique request identifier
+ * @property {string} streamingContent - Accumulated streaming content
+ * @property {string} status - Current status (starting|streaming|complete)
+ * @property {string} statusMessage - Human-readable status message
+ * @property {Array} chatHistory - Chat history snapshot at request start
+ * @property {number} startTime - Timestamp when request started
+ */
+
+/** @type {Map<string, ActiveRequest>} Active requests by chat ID */
+const activeRequests = new Map();
+
+/**
+ * Get the count of currently active requests.
+ * @returns {number}
+ */
 function getActiveRequestCount() {
     return activeRequests.size;
 }
 
-// Check if a chat has an active request
+/**
+ * Check if a specific chat has an active request.
+ * @param {string} chatId - The chat ID to check
+ * @returns {boolean}
+ */
 function hasActiveRequest(chatId) {
     return activeRequests.has(chatId);
 }
 
-// Get active request for a chat
+/**
+ * Get the active request for a specific chat.
+ * @param {string} chatId - The chat ID
+ * @returns {ActiveRequest|undefined}
+ */
 function getActiveRequest(chatId) {
     return activeRequests.get(chatId);
 }
 
-// Create a new active request entry
+/**
+ * Create and register a new active request.
+ * @param {string} chatId - The chat ID
+ * @param {AbortController} abortController - Controller to abort the request
+ * @param {string} requestId - Unique request identifier
+ * @returns {ActiveRequest} The created request object
+ */
 function createActiveRequest(chatId, abortController, requestId) {
     const request = {
         abortController,
@@ -323,7 +496,11 @@ function createActiveRequest(chatId, abortController, requestId) {
     return request;
 }
 
-// Update streaming content for a background request
+/**
+ * Update the streaming content for a background request.
+ * @param {string} chatId - The chat ID
+ * @param {string} content - New accumulated content
+ */
 function updateActiveRequestContent(chatId, content) {
     const request = activeRequests.get(chatId);
     if (request) {
@@ -331,7 +508,12 @@ function updateActiveRequestContent(chatId, content) {
     }
 }
 
-// Update status for a background request
+/**
+ * Update the status of a background request.
+ * @param {string} chatId - The chat ID
+ * @param {string} status - New status value
+ * @param {string} [message=''] - Optional status message
+ */
 function updateActiveRequestStatus(chatId, status, message = '') {
     const request = activeRequests.get(chatId);
     if (request) {
@@ -547,34 +729,44 @@ function updateBackgroundIndicator() {
     indicator.querySelector('span').textContent = count;
     indicator.title = `${count} request(s) processing in background`;
 }
-// ============ END BACKGROUND PROCESSING ============
+// =============================================================================
+// LOCAL CACHE - Provides message reliability and offline support
+// Uses constants from top of file: CACHE_PREFIX, CACHE_META_KEY, MAX_CACHED_CHATS
+// =============================================================================
 
-// ============ LOCAL CACHE MECHANISM FOR MESSAGE RELIABILITY ============
-const CACHE_PREFIX = 'chat_cache_';
-const CACHE_META_KEY = 'chat_cache_meta';
+/** @type {number|null} Interval ID for auto-save timer */
 let cacheAutoSaveInterval = null;
 
-// Save chat to local cache immediately
+/**
+ * Save chat messages to local storage cache.
+ * Provides immediate persistence before server sync.
+ *
+ * @param {string} chatId - The chat ID
+ * @param {Array} messages - Array of chat messages
+ * @param {string} [streamingContent=''] - Partial streaming content if active
+ */
 function saveChatToCache(chatId, messages, streamingContent = '') {
     if (!chatId) return;
     try {
         const cacheData = {
-            messages: messages,
-            streamingContent: streamingContent,
+            messages,
+            streamingContent,
             timestamp: Date.now(),
             synced: false
         };
         localStorage.setItem(CACHE_PREFIX + chatId, JSON.stringify(cacheData));
         console.log('[CACHE] Saved chat to cache:', chatId, 'messages:', messages.length);
-
-        // Update cache meta (list of cached chats)
         updateCacheMeta(chatId);
     } catch (e) {
         console.error('[CACHE] Failed to save to cache:', e);
     }
 }
 
-// Load chat from local cache
+/**
+ * Load chat messages from local storage cache.
+ * @param {string} chatId - The chat ID
+ * @returns {{messages: Array, streamingContent: string, timestamp: number, synced: boolean}|null}
+ */
 function loadChatFromCache(chatId) {
     if (!chatId) return null;
     try {
@@ -590,7 +782,10 @@ function loadChatFromCache(chatId) {
     return null;
 }
 
-// Mark cache as synced with server
+/**
+ * Mark a cached chat as synced with the server.
+ * @param {string} chatId - The chat ID
+ */
 function markCacheSynced(chatId) {
     if (!chatId) return;
     try {
@@ -606,16 +801,20 @@ function markCacheSynced(chatId) {
     }
 }
 
-// Update cache metadata (track which chats are cached)
+/**
+ * Update cache metadata and clean up old entries.
+ * Keeps only the most recent MAX_CACHED_CHATS chats.
+ * @param {string} chatId - The chat ID that was just cached
+ */
 function updateCacheMeta(chatId) {
     try {
         let meta = JSON.parse(localStorage.getItem(CACHE_META_KEY) || '{}');
         meta[chatId] = Date.now();
 
-        // Clean up old cache entries (keep last 50 chats)
+        // Clean up old cache entries (keep last MAX_CACHED_CHATS chats)
         const chatIds = Object.keys(meta).sort((a, b) => meta[b] - meta[a]);
-        if (chatIds.length > 50) {
-            chatIds.slice(50).forEach(id => {
+        if (chatIds.length > MAX_CACHED_CHATS) {
+            chatIds.slice(MAX_CACHED_CHATS).forEach(id => {
                 delete meta[id];
                 localStorage.removeItem(CACHE_PREFIX + id);
             });
@@ -1467,7 +1666,10 @@ async function sendMessage() {
     }
 }
 
-// Stop the current streaming request
+/**
+ * Stop the current streaming request.
+ * Aborts the fetch and notifies the backend to terminate the stream.
+ */
 function stopStreaming() {
     if (currentAbortController) {
         const url = '/api/chat/abort';
@@ -1481,26 +1683,37 @@ function stopStreaming() {
     }
 }
 
-// Show stop button
+/**
+ * Show the stop button and hide the send button.
+ * Used during streaming to allow user to cancel.
+ */
 function showStopButton() {
-    const stopBtn = document.getElementById('stopBtn');
-    const sendBtn = document.getElementById('sendBtn');
+    const stopBtn = DOM.get('stopBtn');
+    const sendBtn = DOM.get('sendBtn');
     if (stopBtn) stopBtn.style.display = 'flex';
     if (sendBtn) sendBtn.style.display = 'none';
 }
 
-// Hide stop button
+/**
+ * Hide the stop button and show the send button.
+ * Restores normal input state after streaming completes.
+ */
 function hideStopButton() {
-    const stopBtn = document.getElementById('stopBtn');
-    const sendBtn = document.getElementById('sendBtn');
+    const stopBtn = DOM.get('stopBtn');
+    const sendBtn = DOM.get('sendBtn');
     if (stopBtn) stopBtn.style.display = 'none';
     if (sendBtn) sendBtn.style.display = 'flex';
 }
 
-// Add message to chat
-// skipSave: if true, don't save to server (for streaming where backend handles saving)
+/**
+ * Add a complete message to the chat UI and history.
+ *
+ * @param {string} role - Message role ('user' or 'assistant')
+ * @param {string} content - Message content
+ * @param {boolean} [skipSave=false] - If true, don't save to server
+ */
 function addMessage(role, content, skipSave = false) {
-    const container = document.getElementById('chatMessages');
+    const container = DOM.get('chatMessages');
     const messageDiv = document.createElement('div');
     const index = chatHistory.length;
     const messageId = generateMessageId(currentChatId, index, content);
@@ -1552,16 +1765,31 @@ function createMessageHTML(role, content, index, messageId = null) {
     }
 }
 
-// Streaming message state
+// =============================================================================
+// STREAMING MESSAGE STATE - Tracks live streaming response rendering
+// =============================================================================
+
+/** @type {HTMLElement|null} DOM element for the currently streaming message */
 let streamingMessageDiv = null;
+
+/** @type {string} Accumulated content for the streaming message */
 let streamingContent = '';
+
+/** @type {boolean} Whether a DOM update is scheduled via requestAnimationFrame */
 let streamingUpdatePending = false;
+
+/** @type {number} Timestamp of last DOM update */
 let lastStreamingUpdate = 0;
 
-// Track which request owns the current streaming message
+/** @type {string|null} Request ID that owns the current streaming message */
 let streamingRequestId = null;
 
-// Start a new streaming message
+/**
+ * Start a new streaming message element in the chat.
+ * Creates the message container and resets streaming state.
+ *
+ * @param {string} requestId - The request ID that initiated this stream
+ */
 function startStreamingMessage(requestId) {
     console.log(`[STREAM] startStreamingMessage called for request #${requestId}, currentRequestId=${currentRequestId}`);
 
@@ -1571,7 +1799,7 @@ function startStreamingMessage(requestId) {
         return;
     }
 
-    const container = document.getElementById('chatMessages');
+    const container = DOM.get('chatMessages');
 
     // Create the message container
     streamingMessageDiv = document.createElement('div');
@@ -1590,16 +1818,21 @@ function startStreamingMessage(requestId) {
     streamingContent = '';
     streamingUpdatePending = false;
     lastStreamingUpdate = 0;
-    streamingFinalized = false;  // Reset finalization flag for new stream
-    streamingRequestId = requestId;  // Track which request owns this stream
-    resetIncrementalFormatCache();  // Reset formatting cache for new stream
+    streamingFinalized = false;
+    streamingRequestId = requestId;
+    resetIncrementalFormatCache();
     console.log(`[STREAM] streamingMessageDiv created for request #${requestId}, streamingContent reset, streamingFinalized=false`);
 
-    // Scroll to bottom
     container.scrollTop = container.scrollHeight;
 }
 
-// Append content to streaming message with batched updates for performance
+/**
+ * Append content to the streaming message with batched DOM updates.
+ * Uses requestAnimationFrame for smooth rendering performance.
+ *
+ * @param {string} newContent - New content to append
+ * @param {string} requestId - The request ID this content belongs to
+ */
 function appendStreamingContent(newContent, requestId) {
     // Ignore if this is from a stale request
     if (requestId !== currentRequestId || requestId !== streamingRequestId) {
@@ -1609,17 +1842,14 @@ function appendStreamingContent(newContent, requestId) {
 
     if (!streamingMessageDiv) return;
 
-    // Don't overwrite status here - let backend's dynamic status messages show
-    // (e.g., "Summarizing conversation...", "Executing tool...", etc.)
-
     streamingContent += newContent;
 
-    // Batch updates: only update DOM every 50ms for better performance
+    // Batch updates: only update DOM every STREAMING_UPDATE_INTERVAL ms
     const now = Date.now();
     const timeSinceLastUpdate = now - lastStreamingUpdate;
 
     // Update immediately if it's been a while, or batch small updates
-    if (timeSinceLastUpdate > 50 || newContent.includes('\n') || streamingContent.length < 50) {
+    if (timeSinceLastUpdate > STREAMING_UPDATE_INTERVAL || newContent.includes('\n') || streamingContent.length < 50) {
         updateStreamingDisplay();
         lastStreamingUpdate = now;
     } else if (!streamingUpdatePending) {
@@ -2899,26 +3129,18 @@ function escapeHtml(text) {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Copy tool command to clipboard
+/**
+ * Copy tool command to clipboard.
+ * Uses shared copyToClipboard helper for consistent feedback.
+ *
+ * @param {HTMLElement} btn - Button with data-command attribute (base64 encoded)
+ */
 function copyToolCommand(btn) {
     const encodedCommand = btn.getAttribute('data-command');
     if (!encodedCommand) return;
 
-    // Decode from base64
     const command = decodeURIComponent(escape(atob(encodedCommand)));
-
-    navigator.clipboard.writeText(command).then(() => {
-        // Show success feedback
-        const icon = btn.querySelector('i');
-        icon.className = 'fas fa-check';
-        btn.classList.add('copied');
-        setTimeout(() => {
-            icon.className = 'fas fa-copy';
-            btn.classList.remove('copied');
-        }, 2000);
-    }).catch(err => {
-        console.error('Failed to copy:', err);
-    });
+    copyToClipboard(command, btn, 'Failed to copy command');
 }
 
 // Add event delegation for copy and edit buttons (tool commands and user messages)
@@ -2967,48 +3189,66 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// Copy user message to clipboard
+// =============================================================================
+// CLIPBOARD UTILITIES
+// =============================================================================
+
+/** @type {number} Duration in ms to show copy success feedback */
+const COPY_FEEDBACK_DURATION = 2000;
+
+/**
+ * Show success feedback on a copy button.
+ * Changes icon to checkmark temporarily.
+ *
+ * @param {HTMLElement} btn - The button element
+ */
+function showCopyFeedback(btn) {
+    const icon = btn.querySelector('i');
+    if (icon) {
+        icon.className = 'fas fa-check';
+        btn.classList.add('copied');
+        setTimeout(() => {
+            icon.className = 'fas fa-copy';
+            btn.classList.remove('copied');
+        }, COPY_FEEDBACK_DURATION);
+    }
+}
+
+/**
+ * Copy text to clipboard and show feedback on button.
+ *
+ * @param {string} text - Text to copy
+ * @param {HTMLElement} btn - Button to show feedback on
+ * @param {string} [errorMsg='Failed to copy'] - Error message for console
+ */
+function copyToClipboard(text, btn, errorMsg = 'Failed to copy') {
+    navigator.clipboard.writeText(text)
+        .then(() => showCopyFeedback(btn))
+        .catch(err => console.error(errorMsg + ':', err));
+}
+
+/**
+ * Copy user message to clipboard.
+ * @param {HTMLElement} btn - Button with data-content attribute (base64 encoded)
+ */
 function copyUserMessage(btn) {
     const encodedContent = btn.getAttribute('data-content');
     if (!encodedContent) return;
 
-    // Decode from base64
     const content = decodeURIComponent(escape(atob(encodedContent)));
-
-    navigator.clipboard.writeText(content).then(() => {
-        // Show success feedback
-        const icon = btn.querySelector('i');
-        icon.className = 'fas fa-check';
-        btn.classList.add('copied');
-        setTimeout(() => {
-            icon.className = 'fas fa-copy';
-            btn.classList.remove('copied');
-        }, 2000);
-    }).catch(err => {
-        console.error('Failed to copy:', err);
-    });
+    copyToClipboard(content, btn, 'Failed to copy message');
 }
 
-// Copy table to clipboard
+/**
+ * Copy table markdown to clipboard.
+ * @param {HTMLElement} btn - Button with data-table attribute (base64 encoded)
+ */
 function copyTable(btn) {
     const encodedTable = btn.getAttribute('data-table');
     if (!encodedTable) return;
 
-    // Decode from base64
     const tableMarkdown = decodeURIComponent(escape(atob(encodedTable)));
-
-    navigator.clipboard.writeText(tableMarkdown).then(() => {
-        // Show success feedback
-        const icon = btn.querySelector('i');
-        icon.className = 'fas fa-check';
-        btn.classList.add('copied');
-        setTimeout(() => {
-            icon.className = 'fas fa-copy';
-            btn.classList.remove('copied');
-        }, 2000);
-    }).catch(err => {
-        console.error('Failed to copy table:', err);
-    });
+    copyToClipboard(tableMarkdown, btn, 'Failed to copy table');
 }
 
 // Clean garbage characters from terminal output

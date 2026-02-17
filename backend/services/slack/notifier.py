@@ -113,39 +113,56 @@ class SlackNotifier:
 def _extract_summary(content: str) -> str:
     """
     Extract a short summary from the already-cleaned chat content.
+
     The content is already cleaned by the frontend pipeline, so we just
-    need to get the first meaningful sentence.
+    need to find the first meaningful sentence that isn't a command or
+    terminal output.
+
+    Args:
+        content: Cleaned chat response content
+
+    Returns:
+        A short summary string (max 200 chars)
     """
     if not content:
         return "Task completed"
 
-    # Skip patterns that indicate commands/terminal output
-    skip_indicators = [
-        'Terminal -', '2>/dev/null', '||', '&&', 'grep ', 'lsof ',
-        'netstat ', 'ps aux', 'cd ', '$ ', '# ', '```'
-    ]
+    # Import shared constant for command indicators (reduces duplication)
+    from backend.config import TERMINAL_COMMAND_INDICATORS
+
+    # Special characters that indicate non-summary lines
+    SPECIAL_LINE_PREFIXES = '↳>$#│─╭╰●⎿'
+    MIN_LINE_LENGTH = 10
+    MIN_ALPHA_RATIO = 0.6  # At least 60% letters/spaces for English text
+    MAX_SUMMARY_LENGTH = 200
 
     lines = content.split('\n')
     for line in lines:
         line = line.strip()
-        if not line or len(line) < 10:
+
+        # Skip empty or very short lines
+        if not line or len(line) < MIN_LINE_LENGTH:
             continue
-        # Skip command-like lines
-        if any(indicator in line for indicator in skip_indicators):
+
+        # Skip command-like lines using shared constant
+        if any(indicator in line for indicator in TERMINAL_COMMAND_INDICATORS):
             continue
-        # Skip lines starting with special chars
-        if line[0] in '↳>$#│─╭╰●⎿':
+
+        # Skip lines starting with special chars (terminal markers)
+        if line[0] in SPECIAL_LINE_PREFIXES:
             continue
-        # Check if it's mostly English (at least 60% letters/spaces)
+
+        # Check if it's mostly English text (letters and spaces)
         alpha_count = sum(1 for c in line if c.isalpha() or c.isspace())
-        if alpha_count < len(line) * 0.6:
+        if alpha_count < len(line) * MIN_ALPHA_RATIO:
             continue
-        # Found a good line
-        return line[:200]
+
+        # Found a good summary line
+        return line[:MAX_SUMMARY_LENGTH]
 
     # Fallback: use pattern-based summarizer
     from backend.services.auggie import ResponseSummarizer
-    return ResponseSummarizer.summarize(content, max_length=200)
+    return ResponseSummarizer.summarize(content, max_length=MAX_SUMMARY_LENGTH)
 
 
 def _send_notification_thread(
