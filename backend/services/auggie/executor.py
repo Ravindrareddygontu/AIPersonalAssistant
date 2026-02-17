@@ -121,8 +121,14 @@ class AuggieExecutor:
             )
     
     def _sanitize_message(self, message: str) -> str:
-        """Sanitize message for terminal input."""
+        """Sanitize message for terminal input.
+
+        Also strips braille spinner characters that auggie uses for status indicators.
+        """
+        import re
         sanitized = message.replace('\n', ' ').replace('\r', ' ')
+        # Remove braille spinner characters
+        sanitized = re.sub(r'[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠛⠓⠚⠖⠲⠳⠞]', '', sanitized)
         return (sanitized
             .replace('●', '*')
             .replace('•', '-')
@@ -149,8 +155,8 @@ class AuggieExecutor:
         except (BrokenPipeError, OSError) as e:
             return AuggieResponse(success=False, content="", error=f"Write error: {e}")
 
-        # Initialize processor and state
-        self.processor = StreamProcessor(message)
+        # Initialize processor and state with sanitized message (what's actually sent to terminal)
+        self.processor = StreamProcessor(sanitized)
         state = StreamState(prev_response=session.last_response or "")
 
         fd = session.master_fd
@@ -222,7 +228,8 @@ class AuggieExecutor:
         clean_all = TextCleaner.strip_ansi(state.all_output)
         relevant = clean_all[state.output_start_pos:] if state.output_start_pos > 0 else clean_all
 
-        response_text = ResponseExtractor.extract_full(relevant, message)
+        # Use sanitized message for extraction since that's what was sent to terminal
+        response_text = ResponseExtractor.extract_full(relevant, sanitized)
 
         # Debug logging
         log.debug(f"[EXECUTOR] state.current_full_content: {repr(state.current_full_content[:200] if state.current_full_content else None)}")

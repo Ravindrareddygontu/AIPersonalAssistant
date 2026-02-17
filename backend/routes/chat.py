@@ -52,8 +52,14 @@ def _sanitize_message(message: str) -> str:
     Replaces newlines with spaces and converts special Unicode characters
     that auggie uses for formatting (●, •, ⎿, etc.) to ASCII equivalents.
     This prevents confusion in response marker detection.
+
+    Also strips braille spinner characters (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏) that auggie uses
+    for status indicators, to avoid matching user messages against status output.
     """
+    import re
     sanitized = message.replace('\n', ' ').replace('\r', ' ')
+    # Remove braille spinner characters (U+2800-U+28FF range, specifically the spinners)
+    sanitized = re.sub(r'[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠛⠓⠚⠖⠲⠳⠞]', '', sanitized)
     return (sanitized
         .replace('●', '*')
         .replace('•', '-')
@@ -305,7 +311,8 @@ class StreamGenerator:
         # Initialize components - only create repository if history is enabled
         self.repository = ChatRepository(chat_id) if (chat_id and settings.history_enabled) else None
         self.session_handler = SessionHandler(workspace, settings.model)
-        self.processor = StreamProcessor(message)
+        # Initialize processor with sanitized message since that's what's actually sent to terminal
+        self.processor = StreamProcessor(_sanitize_message(message))
         self.sse = SSEFormatter()
 
     def generate(self):
@@ -379,8 +386,9 @@ class StreamGenerator:
                     return
 
                 # Update processor's search pattern if message changed (for image commands)
+                # Always use sanitized version since that's what's actually sent to terminal
                 if self.echo_search_message != self.message:
-                    self.processor.update_search_message(self.echo_search_message)
+                    self.processor.update_search_message(_sanitize_message(self.echo_search_message))
 
                 # Save question to database
                 if self.repository:
@@ -542,6 +550,13 @@ class StreamGenerator:
                     clean_line = re.sub(r'\x1b\[[0-9;]*m', '', line)
                     # Remove box drawing characters
                     clean_line = re.sub(r'[│╭╮╯╰─┌┐└┘├┤┬┴┼]', '', clean_line)
+                    # Remove "esc to interrupt" text but keep elapsed time
+                    # Handle formats like "(5s • esc to interrupt)" -> "(5s)"
+                    clean_line = re.sub(r'\s*[•·\-–—]\s*esc to interrupt', '', clean_line, flags=re.IGNORECASE)
+                    # Clean up any double parentheses
+                    clean_line = re.sub(r'\(\)', '', clean_line)
+                    # Transform "(5s)", "(5s.)", "(5s •)" to "5s" - remove parentheses, dot, and bullet
+                    clean_line = re.sub(r'\((\d+)s\.?\s*[•·\-–—]?\s*\)', r'\1s', clean_line)
                     clean_line = clean_line.strip()
                     if clean_line:
                         return clean_line
@@ -714,7 +729,9 @@ class StreamGenerator:
         log.info(f"[DEBUG_FINAL] relevant_output length: {len(relevant_output)}")
         log.info(f"[DEBUG_FINAL] Last 500 chars: {repr(relevant_output[-500:])}")
 
-        response_text = ResponseExtractor.extract_full(relevant_output, self.message)
+        # Use sanitized message for extraction since that's what was actually sent to terminal
+        sanitized_message = _sanitize_message(self.message)
+        response_text = ResponseExtractor.extract_full(relevant_output, sanitized_message)
         log.info(f"[DEBUG_FINAL] Extracted response_text: {repr(response_text[:200] if response_text else 'None')}")
 
         # Use current_full_content (includes partial last line) over last_streamed_content

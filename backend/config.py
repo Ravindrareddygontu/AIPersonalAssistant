@@ -10,7 +10,7 @@ SKIP_PATTERNS = [
     'Indexing disabled', 'working directory', 'To get the most out',
     'from a project directory', 'Ctrl+P to enhance', 'Ctrl+S to stash',
     'Claude Opus', 'Version 0.', '@veefin.com', '@gmail.com', 'ravindrar@',
-    'Processing response...', 'esc to interrupt', 'Sending request...',
+    'Processing response...', 'Sending request...',
     'Receiving response', 'Summarizing conversation history',
     '▇▇▇▇▇', '? to show shortcuts', 'Get started',
     'Executing tools...',

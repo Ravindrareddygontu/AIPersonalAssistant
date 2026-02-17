@@ -11,6 +11,9 @@ from backend.models.stream_state import StreamState
 
 log = logging.getLogger('chat.stream')
 
+# Pattern to match auggie status lines ending with "(Xs • esc to interrupt)"
+_STATUS_LINE_RE = re.compile(r'\(\d+s\s*[•·]\s*esc to interrupt\)')
+
 
 class StreamProcessor:
     """Processes streaming output from the Augment terminal."""
@@ -49,6 +52,9 @@ class StreamProcessor:
         """
         Process a chunk of cleaned output and extract response content.
 
+        Simple approach: Look for ● markers in NEW output (after output_start_pos).
+        No need to find message echo - we already know where we started.
+
         Args:
             clean_output: ANSI-stripped terminal output
             state: Current stream state
@@ -59,39 +65,38 @@ class StreamProcessor:
         # Only search in NEW output (after output_start_pos)
         search_output = clean_output[state.output_start_pos:]
 
-        # Find message echo matches
-        matches = list(self.message_pattern.finditer(search_output))
-        if not matches:
-            if not state._logged_no_match:
-                log.debug(f"No match for pattern in search_output. Pattern: {repr(self.message_short[:20])}")
-                state._logged_no_match = True
-            return None
-
-        # Use the LAST match (most recent echo of our message)
-        last_match = self._find_best_match(matches, search_output)
-        if not last_match:
-            return None
-
-        # Extract content after the message
-        after_msg = search_output[last_match.end():]
-        return self._extract_response_content(after_msg, state)
+        # Simple: just extract response content from new output
+        # The ● marker indicates actual response content
+        return self._extract_response_content(search_output, state)
 
     def _find_best_match(self, matches: list, search_output: str):
-        """Find the best match from message echo matches."""
-        last_match = None
+        """Find the best match from message echo matches.
+
+        Strategy: Prefer matches that have response markers (● or ~) nearby,
+        but fall back to the last match if none have markers nearby.
+        This handles cases where the response comes much later than 200 chars.
+        """
+        best_match = None
+        fallback_match = None
+
         for match in matches:
-            lookahead = search_output[match.end():match.end() + 200]
+            lookahead = search_output[match.end():match.end() + 500]  # Increased lookahead
             nl = lookahead.find('\n')
             first_line = lookahead[:nl] if nl > 0 else lookahead
-            rest = lookahead[nl + 1:] if nl > 0 else ""
 
+            # Skip matches that look like they're in the middle of UI elements
+            if first_line.strip().startswith('│') or first_line.strip().startswith('╰'):
+                continue
+
+            # Track this as a potential fallback
+            fallback_match = match
+
+            # Prefer matches with response markers nearby
             if '~' in lookahead or '●' in lookahead:
-                last_match = match
-            elif '│' not in first_line and '╰' not in first_line:
-                if rest.strip() and '│ ›' not in rest[:100]:
-                    last_match = match
+                best_match = match
 
-        return last_match
+        # Return best match if found, otherwise fallback to last valid match
+        return best_match if best_match else fallback_match
 
     def _extract_response_content(self, after_msg: str, state: StreamState) -> str | None:
         """Extract response content from text after message echo."""
@@ -129,29 +134,31 @@ class StreamProcessor:
             if BOX_CHARS_PATTERN.match(stripped):
                 continue
 
-            # STOP CONDITIONS - marks end of AI response
-            if self._is_stop_condition(stripped, in_response):
+            # STOP CONDITIONS - ONLY check if we've already started seeing response
+            # Don't stop before finding ● marker!
+            if in_response and self._is_stop_condition(stripped, in_response):
                 break
 
             # Skip patterns we want to filter out
             if any(skip in stripped for skip in SKIP_PATTERNS):
                 continue
 
+            # Skip status lines containing "(Xs • esc to interrupt)"
+            if _STATUS_LINE_RE.search(stripped):
+                continue
+
             # Process response markers
-            # ~ is "thinking" text (auggie's internal reasoning) - NOT the actual response
             # ● is the actual response content to be streamed
             if stripped.startswith('●'):
                 in_response = True
                 state.mark_response_marker_seen()
-                log.debug(f"[MARKER] Found response marker (●): {repr(stripped[:50])}")
+                log.info(f"[MARKER] Response marker found: {repr(stripped[:50])}")
                 c = stripped[1:].strip()
                 if c:
                     content.append(c)
             elif stripped.startswith('~'):
-                # Thinking marker - don't add to content but note that auggie is working
-                # This is internal reasoning, not the response to stream
-                log.debug(f"[MARKER] Found thinking marker (~): {repr(stripped[:50])}")
-                # Don't set in_response=True for thinking markers
+                # Thinking marker - auggie is working but this is internal reasoning
+                # Don't set in_response=True, don't add to content
                 continue
             elif stripped.startswith('⎿') and in_response:
                 c = stripped[1:].strip()
