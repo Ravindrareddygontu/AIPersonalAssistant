@@ -57,6 +57,12 @@ let statusStartTime = null;
 /** @type {Array<{path: string, name: string, previewUrl: string}>} Selected image files */
 let selectedImages = [];
 
+/** @type {boolean} Whether MongoDB database is available - trust cached value, default true to avoid flash */
+let dbAvailable = localStorage.getItem('dbAvailable') !== 'false';
+
+/** @type {number|null} Interval for checking DB status */
+let dbCheckInterval = null;
+
 // =============================================================================
 // DOM Element Cache - Cached references to avoid repeated lookups
 // =============================================================================
@@ -959,6 +965,12 @@ const WELCOME_HTML = `
 // Initialize the app
 // Render chat messages in the container
 function renderChatMessages(messages) {
+    // Don't reset UI while a message is being processed
+    if (isProcessing) {
+        console.log('[RENDER] Skipping render, message is being processed');
+        return;
+    }
+
     const container = document.getElementById('chatMessages');
     container.innerHTML = '';
 
@@ -1003,13 +1015,34 @@ async function waitForServer(maxRetries = 5, delayMs = 500) {
 document.addEventListener('DOMContentLoaded', async () => {
     // Apply cached settings immediately for instant UI
     loadSettings();
-    checkAuthStatus();
 
     // Restore sidebar state
     const savedSidebarState = localStorage.getItem('sidebarOpen');
     if (savedSidebarState === 'false') {
         toggleSidebar();
     }
+
+    // Make chat container visible
+    const chatMessagesContainer = document.getElementById('chatMessages');
+    if (chatMessagesContainer) {
+        chatMessagesContainer.style.visibility = 'visible';
+    }
+
+    // If history is disabled, skip ALL server calls for instant load
+    if (!historyEnabled) {
+        console.log('[INIT] History disabled - instant load, no server calls');
+        // Load settings in background (non-blocking) to stay in sync
+        loadSettingsFromServer().catch(e => console.log('[INIT] Settings load failed:', e));
+        return;
+    }
+
+    // History is enabled - do full initialization
+    // Only show banner from cache if DB was previously unavailable
+    if (!dbAvailable) {
+        updateDbStatusBanner();
+    }
+    checkAuthStatus();
+    startDbStatusCheck();
 
     // Render cached chat list immediately (instant UI)
     const cachedChats = loadCachedChatList();
@@ -1020,7 +1053,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Render cached messages for saved chat immediately
     const savedChatId = localStorage.getItem('currentChatId');
-    const chatMessagesContainer = document.getElementById('chatMessages');
     if (savedChatId) {
         const cachedData = loadChatFromCache(savedChatId);
         if (cachedData && cachedData.messages && cachedData.messages.length > 0) {
@@ -1030,10 +1062,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderChatMessages(chatHistory);
         }
     }
-    // Make container visible after rendering correct content
-    if (chatMessagesContainer) {
-        chatMessagesContainer.style.visibility = 'visible';
-    }
 
     // Start cache auto-save for reliability
     startCacheAutoSave();
@@ -1041,11 +1069,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Sync any unsynced chats from previous sessions
     syncUnsyncedChats();
 
-    // Load settings and chats from server in background
+    // Load settings and chats from server in parallel
     const [settingsResult, chats] = await Promise.all([
         loadSettingsFromServer().catch(e => { console.log('[INIT] Settings load failed:', e); return null; }),
         waitForServer()
     ]);
+
+    // Check again after settings load - history might have been disabled on server
+    if (!historyEnabled) {
+        console.log('[INIT] History disabled (from server), skipping chat list render');
+        return;
+    }
 
     if (chats === null) {
         // Server not responding - we already rendered from cache above
@@ -1123,6 +1157,7 @@ async function loadSettingsFromServer() {
         // Handle history_enabled setting
         if (typeof data.history_enabled !== 'undefined') {
             historyEnabled = data.history_enabled;
+            localStorage.setItem('historyEnabled', String(historyEnabled));
             updateHistoryToggle();
             updateSidebarVisibility();
         }
@@ -1145,7 +1180,9 @@ function updateHistoryToggle() {
         // Add change listener for auto-save
         toggle.onchange = async function() {
             historyEnabled = this.checked;
+            localStorage.setItem('historyEnabled', String(historyEnabled));
             updateSidebarVisibility();
+            updateDbStatusBanner();
             // Save to server immediately
             const url = '/api/settings';
             const requestBody = { workspace: currentWorkspace, model: currentModel, history_enabled: historyEnabled };
@@ -3720,6 +3757,7 @@ function loadSettings() {
     const savedWorkspace = localStorage.getItem('workspace');
     const savedModel = localStorage.getItem('currentModel');
     const savedModels = localStorage.getItem('availableModels');
+    const savedHistoryEnabled = localStorage.getItem('historyEnabled');
 
     if (theme) {
         applyTheme(theme);
@@ -3742,6 +3780,12 @@ function loadSettings() {
         } catch (e) {
             console.log('[INIT] Failed to parse cached models');
         }
+    }
+
+    // Restore history enabled setting from cache for instant UI
+    if (savedHistoryEnabled !== null) {
+        historyEnabled = savedHistoryEnabled === 'true';
+        updateSidebarVisibility();
     }
 }
 
@@ -3974,7 +4018,7 @@ async function openLogsTerminal() {
         }
     } else {
         // Fallback for browser - show instructions
-        showNotification('Run: journalctl --user -f | grep Flask');
+        showNotification('Run: journalctl --user -f | grep -E "Flask:|CHAT|SESSION|RENDERER"');
     }
 }
 
@@ -4101,10 +4145,24 @@ async function loadChatsFromServer() {
     logRequest('GET', url);
     try {
         const response = await fetch(url);
+
+        // Check if DB is available from response header
+        const dbHeader = response.headers.get('X-DB-Available');
+        if (dbHeader === 'false') {
+            console.log('[CHATS] Database not available');
+            dbAvailable = false;
+            updateDbStatusBanner();
+        } else {
+            dbAvailable = true;
+            updateDbStatusBanner();
+        }
+
         const chats = await response.json();
         logResponse('GET', url, response.status, { chats_count: chats.length });
-        // Cache chat list for instant reload
-        localStorage.setItem('cachedChatList', JSON.stringify(chats));
+        // Cache chat list for instant reload (only if DB is available)
+        if (dbAvailable) {
+            localStorage.setItem('cachedChatList', JSON.stringify(chats));
+        }
         renderChatHistory(chats);
         return chats;  // Return chats array for caller to use
     } catch (error) {
@@ -4254,6 +4312,8 @@ async function createNewChat() {
         localStorage.setItem('currentChatId', currentChatId);
         document.getElementById('chatMessages').innerHTML = WELCOME_HTML;
         loadChatsFromServer();
+        // Reset DB banner dismissed state so user sees warning again
+        resetDbBannerDismissed();
         console.log('[NEW CHAT] New chat created:', currentChatId);
     } catch (error) {
         console.error('Failed to create chat:', error);
@@ -4450,6 +4510,9 @@ async function loadChatFromServer(chatId) {
         // Skip re-render if same message count and same chat (content likely unchanged)
         if (existingMsgCount === newMsgCount && existingMsgCount > 0) {
             console.log('[LOAD] Skipping re-render, content unchanged');
+        } else if (isProcessing) {
+            // Don't reset UI while a message is being processed
+            console.log('[LOAD] Skipping re-render, message is being processed');
         } else {
             container.innerHTML = '';
 
@@ -4582,18 +4645,23 @@ async function clearAllChats() {
     const confirmed = await showConfirmDialog('Delete all chat history? This cannot be undone.');
     if (!confirmed) return;
 
-    // Clear localStorage immediately
+    // Clear both localStorage AND memory variable immediately
     localStorage.removeItem('currentChatId');
     localStorage.removeItem('cachedChatList');
+    currentChatId = null;  // IMPORTANT: Clear memory variable to prevent race condition
     chatHistory = [];
 
-    // Clear main chat area immediately
+    // Show loading state in chat area (not welcome yet - wait for new chat)
     const chatMessages = document.getElementById('chatMessages');
     if (chatMessages) {
-        chatMessages.innerHTML = WELCOME_HTML;
+        chatMessages.innerHTML = `
+            <div class="loading-state" style="display: flex; justify-content: center; align-items: center; height: 100%; opacity: 0.6;">
+                <i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: var(--text-secondary);"></i>
+            </div>
+        `;
     }
 
-    // Show cleared message immediately (before server response)
+    // Show cleared message in sidebar
     const historyContainer = document.getElementById('chatHistory');
     if (historyContainer) {
         historyContainer.innerHTML = `
@@ -4604,28 +4672,38 @@ async function clearAllChats() {
         `;
     }
 
-    // Delete from server and create new chat in background
-    const url = '/api/chats/clear';
-    logRequest('DELETE', url);
-    fetch(url, { method: 'DELETE' })
-        .then(response => response.json())
-        .then(async data => {
-            logResponse('DELETE', url, 200, data);
-            // Create new chat immediately after server clears
-            await createNewChat();
-            // Then fade out the cleared message
-            if (historyContainer) {
-                const clearedMsg = historyContainer.querySelector('.chat-history-cleared');
-                if (clearedMsg) {
-                    clearedMsg.style.opacity = '0';
-                }
+    // Delete from server and create new chat - AWAIT to ensure new chat exists before user can send messages
+    try {
+        const url = '/api/chats/clear';
+        logRequest('DELETE', url);
+        const response = await fetch(url, { method: 'DELETE' });
+        const data = await response.json();
+        logResponse('DELETE', url, 200, data);
+
+        // Create new chat immediately after server clears
+        await createNewChat();
+
+        // Now show welcome screen after new chat is ready
+        if (chatMessages) {
+            chatMessages.innerHTML = WELCOME_HTML;
+        }
+
+        // Then fade out the cleared message
+        if (historyContainer) {
+            const clearedMsg = historyContainer.querySelector('.chat-history-cleared');
+            if (clearedMsg) {
+                clearedMsg.style.opacity = '0';
             }
-        })
-        .catch(error => {
-            console.error('Failed to clear chats on server:', error);
-            // Still create new chat even if server fails
-            createNewChat();
-        });
+        }
+    } catch (error) {
+        console.error('Failed to clear chats on server:', error);
+        // Still create new chat even if server fails
+        await createNewChat();
+        // Show welcome screen after new chat is ready
+        if (chatMessages) {
+            chatMessages.innerHTML = WELCOME_HTML;
+        }
+    }
 }
 
 // Show notification
@@ -4656,6 +4734,168 @@ function showNotification(message, type = 'info') {
     document.body.appendChild(notification);
 
     setTimeout(() => notification.remove(), 3000);
+}
+
+// =============================================================================
+// Database Status Functions
+// =============================================================================
+
+/**
+ * Check MongoDB database status
+ * @returns {Promise<boolean>} True if DB is available
+ */
+async function checkDbStatus() {
+    // Skip DB check if history is disabled - no need to check DB
+    if (!historyEnabled) {
+        dbAvailable = false;  // Assume not available when history disabled
+        localStorage.setItem('dbAvailable', 'false');
+        updateDbStatusBanner();
+        return false;
+    }
+
+    try {
+        // Use AbortController for 2 second timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+        const response = await fetch('/api/db-status', { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        const data = await response.json();
+        const wasAvailable = dbAvailable;
+        dbAvailable = data.connected === true;
+        localStorage.setItem('dbAvailable', String(dbAvailable));
+
+        // Update banner visibility
+        updateDbStatusBanner();
+
+        // If DB just came back online, refresh chats
+        if (!wasAvailable && dbAvailable) {
+            console.log('[DB] Database connection restored, refreshing chats...');
+            showNotification('Database connection restored', 'success');
+            loadChatsFromServer();
+        }
+
+        return dbAvailable;
+    } catch (error) {
+        console.error('[DB] Failed to check database status:', error);
+        dbAvailable = false;
+        localStorage.setItem('dbAvailable', 'false');
+        updateDbStatusBanner();
+        return false;
+    }
+}
+
+/** @type {boolean} Track if user dismissed the DB status banner */
+let dbBannerDismissed = false;
+
+/**
+ * Update the DB status banner visibility
+ */
+function updateDbStatusBanner() {
+    let banner = document.getElementById('dbStatusBanner');
+
+    // Only show banner if history is enabled and DB is not available
+    if (!dbAvailable && !dbBannerDismissed && historyEnabled) {
+        // Create banner if it doesn't exist
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'dbStatusBanner';
+            banner.className = 'db-status-banner';
+            banner.innerHTML = `
+                <i class="fas fa-exclamation-triangle"></i>
+                <span>MongoDB connection issue - Chat history will not be saved</span>
+                <button onclick="retryDbConnection()" title="Retry connection">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+                <button onclick="dismissDbBanner()" title="Dismiss">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+            // Insert at the top of the chat main area
+            const chatMain = document.querySelector('.chat-main');
+            if (chatMain) {
+                chatMain.insertBefore(banner, chatMain.firstChild);
+            }
+        }
+        banner.style.display = 'flex';
+    } else {
+        // Hide banner if DB is available or dismissed
+        if (banner) {
+            banner.style.display = 'none';
+        }
+    }
+}
+
+/**
+ * Dismiss the DB status banner until new chat is created
+ */
+function dismissDbBanner() {
+    dbBannerDismissed = true;
+    const banner = document.getElementById('dbStatusBanner');
+    if (banner) {
+        banner.style.display = 'none';
+    }
+}
+
+/**
+ * Reset the DB banner dismissed state (called when creating new chat)
+ */
+function resetDbBannerDismissed() {
+    dbBannerDismissed = false;
+    updateDbStatusBanner();
+}
+
+/**
+ * Retry database connection
+ */
+async function retryDbConnection() {
+    const banner = document.getElementById('dbStatusBanner');
+    if (banner) {
+        const btn = banner.querySelector('button');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        }
+    }
+
+    const connected = await checkDbStatus();
+
+    if (banner) {
+        const btn = banner.querySelector('button');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-sync-alt"></i>';
+        }
+    }
+
+    if (!connected) {
+        showNotification('Database still not available', 'error');
+    }
+}
+
+/**
+ * Start periodic DB status check
+ */
+function startDbStatusCheck() {
+    // Check immediately
+    checkDbStatus();
+
+    // Check every 30 seconds
+    if (dbCheckInterval) {
+        clearInterval(dbCheckInterval);
+    }
+    dbCheckInterval = setInterval(checkDbStatus, 30000);
+}
+
+/**
+ * Stop periodic DB status check
+ */
+function stopDbStatusCheck() {
+    if (dbCheckInterval) {
+        clearInterval(dbCheckInterval);
+        dbCheckInterval = null;
+    }
 }
 
 // Close modals when clicking outside

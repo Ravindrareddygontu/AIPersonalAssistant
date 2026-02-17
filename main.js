@@ -107,7 +107,7 @@ function openLogsTerminal() {
     }
 
     // Command to tail the journalctl logs for this app
-    const logCommand = `journalctl --user -f -n 100 | grep -E "(Flask:|\\[CHAT\\]|\\[SESSION\\]|\\[RENDERER)"`;
+    const logCommand = `journalctl --user -f -n 100 | grep -E "Flask:|CHAT|SESSION|RENDERER"`;
 
     // Try different terminal emulators (gnome-terminal.real first for Ubuntu systems where gnome-terminal wrapper may be broken)
     const terminals = [

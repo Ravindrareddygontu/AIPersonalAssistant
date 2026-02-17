@@ -6,7 +6,7 @@ Follows Single Responsibility Principle: Only handles DB persistence.
 
 import logging
 from datetime import datetime
-from backend.database import get_chats_collection
+from backend.database import get_chats_collection, is_db_available_cached
 from backend.services import message_service as msg_svc
 
 log = logging.getLogger('chat.repository')
@@ -18,17 +18,42 @@ class ChatRepository:
     def __init__(self, chat_id: str):
         self.chat_id = chat_id
         self._collection = None
+        self._db_available = None
+
+        # Check DB availability upfront using cached status (non-blocking)
+        if not is_db_available_cached():
+            self._db_available = False
+            log.debug(f"ChatRepository for {chat_id}: DB not available (cached)")
 
     @property
     def collection(self):
         """Lazy-load the MongoDB collection."""
+        # If we already know DB is unavailable, don't try again
+        if self._db_available is False:
+            return None
         if self._collection is None:
             self._collection = get_chats_collection()
+            self._db_available = self._collection is not None
         return self._collection
+
+    @property
+    def is_db_available(self) -> bool:
+        """Check if database is available."""
+        if self._db_available is None:
+            # Use cached check first
+            if not is_db_available_cached():
+                self._db_available = False
+                return False
+            # Trigger collection load to check availability
+            _ = self.collection
+        return self._db_available
 
     def get_chat(self) -> dict | None:
         """Retrieve a chat by ID."""
         if not self.chat_id:
+            return None
+        if self.collection is None:
+            log.warning(f"MongoDB not available, cannot get chat {self.chat_id}")
             return None
         return self.collection.find_one({'id': self.chat_id})
 
@@ -100,6 +125,10 @@ class ChatRepository:
 
     def _update_chat(self, messages: list, title: str = None, streaming_status: str = None) -> None:
         """Update chat document in database."""
+        if self.collection is None:
+            log.warning(f"MongoDB not available, skipping chat update for {self.chat_id}")
+            return
+
         update_data = {
             'messages': messages,
             'updated_at': datetime.utcnow().isoformat()
@@ -117,6 +146,9 @@ class ChatRepository:
     def set_streaming_status(self, status: str) -> None:
         """Set streaming status for the chat (None, 'streaming', 'pending')."""
         if not self.chat_id:
+            return
+        if self.collection is None:
+            log.warning(f"MongoDB not available, skipping streaming status update for {self.chat_id}")
             return
         self.collection.update_one(
             {'id': self.chat_id},

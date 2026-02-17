@@ -12,8 +12,13 @@ from pydantic import BaseModel
 
 from backend.config import settings
 from backend.session import SessionManager
-from backend.database import get_chats_collection
+from backend.database import get_chats_collection, check_connection, is_db_available_cached
 from backend.services import message_service as msg_svc
+
+
+def _generate_temp_chat_id():
+    """Generate a temporary chat ID for when DB is unavailable."""
+    return f"temp-{str(uuid.uuid4())[:8]}"
 
 log = logging.getLogger('settings')
 settings_router = APIRouter()
@@ -128,12 +133,34 @@ async def reset_session(request: Request, data: Optional[SessionResetRequest] = 
     return response_data
 
 
+@settings_router.get('/api/db-status')
+async def get_db_status(request: Request):
+    """Check MongoDB connection status."""
+    url = str(request.url)
+    _log_request('GET', url)
+    status = check_connection()
+    _log_response('GET', url, 200, status)
+    return status
+
+
 @settings_router.get('/api/chats')
 async def list_chats(request: Request):
     """List all chats."""
     url = str(request.url)
     _log_request('GET', url)
-    chats_collection = get_chats_collection()
+
+    # Quick check using cached status first (non-blocking)
+    if not is_db_available_cached():
+        chats_collection = None
+    else:
+        chats_collection = get_chats_collection()
+
+    # If MongoDB is not available, return empty list
+    if chats_collection is None:
+        log.warning("[CHATS] MongoDB not available, returning empty chat list")
+        _log_response('GET', url, 200, {'chats_count': 0, 'db_available': False})
+        return JSONResponse(content=[], headers={'X-DB-Available': 'false'})
+
     chats = []
     # Sort by created_at descending (newest first, oldest at bottom)
     for doc in chats_collection.find().sort('created_at', -1):
@@ -154,9 +181,32 @@ async def create_chat(request: Request):
     """Create a new chat."""
     url = str(request.url)
     _log_request('POST', url)
-    chats_collection = get_chats_collection()
-    chat_id = str(uuid.uuid4())[:8]
     now = datetime.now().isoformat()
+
+    # Quick check using cached status first (non-blocking)
+    if not is_db_available_cached():
+        chats_collection = None
+    else:
+        chats_collection = get_chats_collection()
+
+    # If MongoDB is not available, return a temporary chat
+    if chats_collection is None:
+        chat_id = _generate_temp_chat_id()
+        chat_data = {
+            'id': chat_id,
+            'title': 'New Chat',
+            'created_at': now,
+            'updated_at': now,
+            'messages': [],
+            'workspace': settings.workspace,
+            'streaming_status': None,
+            'db_available': False  # Flag to indicate DB is not available
+        }
+        log.warning(f"[CHATS] MongoDB not available, created temp chat: {chat_id}")
+        _log_response('POST', url, 200, {**chat_data, 'db_available': False})
+        return JSONResponse(content=chat_data, headers={'X-DB-Available': 'false'})
+
+    chat_id = str(uuid.uuid4())[:8]
     chat_data = {
         'id': chat_id,
         'title': 'New Chat',
@@ -177,7 +227,20 @@ async def clear_all_chats(request: Request):
     """Clear all chats. Must be defined before {chat_id} routes."""
     url = str(request.url)
     _log_request('DELETE', url)
-    chats_collection = get_chats_collection()
+
+    # Quick check using cached status first (non-blocking)
+    if not is_db_available_cached():
+        chats_collection = None
+    else:
+        chats_collection = get_chats_collection()
+
+    # If MongoDB is not available, just return success
+    if chats_collection is None:
+        log.warning("[CHATS] MongoDB not available, skipping clear")
+        response_data = {'status': 'cleared', 'db_available': False}
+        _log_response('DELETE', url, 200, response_data)
+        return JSONResponse(content=response_data, headers={'X-DB-Available': 'false'})
+
     chats_collection.delete_many({})
     response_data = {'status': 'cleared'}
     _log_response('DELETE', url, 200, response_data)
@@ -189,7 +252,35 @@ async def get_chat(request: Request, chat_id: str):
     """Get a specific chat."""
     url = str(request.url)
     _log_request('GET', url, {'chat_id': chat_id})
-    chats_collection = get_chats_collection()
+
+    # Quick check using cached status first (non-blocking)
+    if not is_db_available_cached():
+        chats_collection = None
+    else:
+        chats_collection = get_chats_collection()
+
+    # If MongoDB is not available, return empty chat with temp ID
+    if chats_collection is None:
+        log.warning(f"[CHATS] MongoDB not available, returning empty chat for {chat_id}")
+        now = datetime.now().isoformat()
+        chat_data = {
+            'id': chat_id,
+            'title': 'New Chat',
+            'created_at': now,
+            'updated_at': now,
+            'messages': [],
+            'db_available': False
+        }
+        return JSONResponse(
+            content=chat_data,
+            headers={
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
+                'X-DB-Available': 'false'
+            }
+        )
+
     chat_data = chats_collection.find_one({'id': chat_id})
     if not chat_data:
         response_data = {'error': 'Chat not found'}
@@ -215,7 +306,17 @@ async def get_chat(request: Request, chat_id: str):
 @settings_router.post('/api/chats/{chat_id}/clear-streaming')
 async def clear_streaming_status(chat_id: str):
     """Clear the streaming status for a chat (used after interrupted streams)."""
-    chats_collection = get_chats_collection()
+    # Quick check using cached status first (non-blocking)
+    if not is_db_available_cached():
+        chats_collection = None
+    else:
+        chats_collection = get_chats_collection()
+
+    # If MongoDB is not available, just return success
+    if chats_collection is None:
+        log.warning(f"[CHATS] MongoDB not available, skipping clear-streaming for {chat_id}")
+        return {'status': 'ok', 'db_available': False}
+
     result = chats_collection.update_one(
         {'id': chat_id},
         {'$set': {'streaming_status': None}}
@@ -230,7 +331,36 @@ async def clear_streaming_status(chat_id: str):
 async def update_chat(request: Request, chat_id: str, data: ChatUpdate):
     """Update a chat."""
     url = str(request.url)
-    chats_collection = get_chats_collection()
+
+    # Quick check using cached status first (non-blocking)
+    if not is_db_available_cached():
+        chats_collection = None
+    else:
+        chats_collection = get_chats_collection()
+
+    # If MongoDB is not available, return success (data stays in frontend cache)
+    if chats_collection is None:
+        log.warning(f"[CHATS] MongoDB not available, skipping save for {chat_id}")
+        _log_request('PUT', url, {'chat_id': chat_id, 'messages_count': len(data.messages or [])})
+        api_messages = data.messages or []
+        now = datetime.now().isoformat()
+        chat_data = {
+            'id': chat_id,
+            'title': data.title or 'New Chat',
+            'created_at': now,
+            'updated_at': now,
+            'messages': api_messages,
+            'db_available': False
+        }
+        # Auto-generate title from first message if still "New Chat"
+        if chat_data['title'] == 'New Chat' and api_messages:
+            first_msg = api_messages[0]
+            if first_msg.get('role') == 'user':
+                content = first_msg.get('content', '')
+                chat_data['title'] = content[:50] + ('...' if len(content) > 50 else '')
+        _log_response('PUT', url, 200, {'chat_id': chat_id, 'messages_count': len(api_messages), 'db_available': False})
+        return JSONResponse(content=chat_data, headers={'X-DB-Available': 'false'})
+
     chat_data = chats_collection.find_one({'id': chat_id})
     if not chat_data:
         response_data = {'error': 'Chat not found'}
@@ -276,7 +406,20 @@ async def delete_chat(request: Request, chat_id: str):
     """Delete a chat."""
     url = str(request.url)
     _log_request('DELETE', url, {'chat_id': chat_id})
-    chats_collection = get_chats_collection()
+
+    # Quick check using cached status first (non-blocking)
+    if not is_db_available_cached():
+        chats_collection = None
+    else:
+        chats_collection = get_chats_collection()
+
+    # If MongoDB is not available, return success
+    if chats_collection is None:
+        log.warning(f"[CHATS] MongoDB not available, skipping delete for {chat_id}")
+        response_data = {'status': 'deleted', 'id': chat_id, 'db_available': False}
+        _log_response('DELETE', url, 200, response_data)
+        return JSONResponse(content=response_data, headers={'X-DB-Available': 'false'})
+
     result = chats_collection.delete_one({'id': chat_id})
     if result.deleted_count == 0:
         response_data = {'error': 'Chat not found'}
