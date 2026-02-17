@@ -435,9 +435,15 @@ async function sendMessage() {
                             break;
                         case 'stream_end':
                             console.log(`[API] Request #${thisRequestId} stream_end - content length:`, data.content?.length, ', streamingContent length:', streamingContent?.length);
-                            // Use data.content if provided and non-empty, otherwise use accumulated streamingContent
-                            const finalContent = (data.content && data.content.trim()) ? data.content : streamingContent;
-                            console.log('[API] Using finalContent length:', finalContent?.length);
+                            // IMPORTANT: Prefer accumulated streamingContent over backend's cleaned content
+                            // Backend cleaning can truncate content if it contains path-like lines
+                            // Only use backend content if streamingContent is empty/short
+                            const backendContent = data.content?.trim() || '';
+                            const streamedContent = streamingContent?.trim() || '';
+                            // Use streamingContent if it's longer (backend may have truncated)
+                            const useStreamed = streamedContent.length >= backendContent.length;
+                            const finalContent = useStreamed ? streamingContent : (backendContent || streamingContent);
+                            console.log(`[API] Using ${useStreamed ? 'STREAMED' : 'BACKEND'} content, length:`, finalContent?.length);
                             finalizeStreamingMessage(finalContent, thisRequestId);
                             hideTypingIndicator();
                             streamingCompleted = true;
@@ -821,12 +827,47 @@ const TOOL_CONFIG = {
 
 // Cached regex for tool parsing - built once for performance
 let _cachedToolStartRegex = null;
+let _cachedToolEndRegex = null;  // For reversed pattern: "filename - read file"
 function getToolStartRegex() {
     if (!_cachedToolStartRegex) {
         const toolNames = TOOL_CONFIG.tools.map(t => t.name).join('|');
-        _cachedToolStartRegex = new RegExp(`^(${toolNames})\\s+-\\s+(.+)$`);
+        _cachedToolStartRegex = new RegExp(`^(${toolNames})\\s+-\\s+(.+)$`, 'i');
     }
     return _cachedToolStartRegex;
+}
+
+// Get regex for reversed pattern: "content - tool name" (e.g., "package.json - read file")
+function getToolEndRegex() {
+    if (!_cachedToolEndRegex) {
+        const toolNames = TOOL_CONFIG.tools.map(t => t.name).join('|');
+        _cachedToolEndRegex = new RegExp(`^(.+?)\\s+-\\s+(${toolNames})$`, 'i');
+    }
+    return _cachedToolEndRegex;
+}
+
+// Match a line against tool patterns (both "Tool - content" and "content - tool")
+function matchToolLine(line) {
+    // Try standard pattern first: "Read File - package.json"
+    const startRegex = getToolStartRegex();
+    let match = line.match(startRegex);
+    if (match) {
+        const toolConfig = TOOL_CONFIG.tools.find(t => t.name.toLowerCase() === match[1].toLowerCase());
+        if (toolConfig) {
+            return { toolConfig, content: match[2] };
+        }
+    }
+
+    // Try reversed pattern: "package.json - read file"
+    const endRegex = getToolEndRegex();
+    match = line.match(endRegex);
+    if (match) {
+        const toolConfig = TOOL_CONFIG.tools.find(t => t.name.toLowerCase() === match[2].toLowerCase());
+        if (toolConfig) {
+            return { toolConfig, content: match[1] };
+        }
+    }
+
+    return null;
 }
 
 // Format only complete markdown structures (tables, code blocks, lists, etc.)
@@ -868,10 +909,13 @@ function formatCompleteStructures(text) {
     // Handle complete tables (header + separator + at least one row)
     result = result.replace(/^(\|.+\|)\n(\|[-:\s|]+\|)\n((?:\|.+\|\n?)+)/gm, (match, header, separator, body) => {
         try {
-            const headerCells = header.split('|').filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join('');
+            // Split and keep empty cells (slice removes leading/trailing empty from | split)
+            const headerParts = header.split('|').slice(1, -1);
+            const headerCells = headerParts.map(c => `<th>${c.trim()}</th>`).join('');
             const bodyRows = body.trim().split('\n').map(row => {
                 if (!row.includes('|')) return null;
-                const cells = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
+                const cellParts = row.split('|').slice(1, -1);
+                const cells = cellParts.map(c => `<td>${c.trim()}</td>`).join('');
                 return cells ? `<tr>${cells}</tr>` : null;
             }).filter(Boolean).join('');
             // Encode original markdown for copy
@@ -958,120 +1002,116 @@ function formatCompleteStructures(text) {
 
 // Format streaming tool blocks - detect and render tool blocks during streaming
 function formatStreamingToolBlocks(text, toolBlocksArray) {
-    const toolStartRegex = getToolStartRegex();
     const lines = text.split('\n');
     const resultLines = [];
     let i = 0;
 
     while (i < lines.length) {
         const line = lines[i];
-        const toolMatch = line.match(toolStartRegex);
+        const toolMatch = matchToolLine(line);
 
         if (toolMatch) {
-            const [, toolName, firstLine] = toolMatch;
-            const toolConfig = TOOL_CONFIG.tools.find(t => t.name === toolName);
+            const { toolConfig, content: firstLine } = toolMatch;
 
-            if (toolConfig) {
-                // Collect command lines
-                let commandLines = [firstLine];
-                let resultLines_tool = [];
-                let codeDiffLines = [];
-                let hasResult = false;
-                let isComplete = false;
-                let hasError = false;
-                let inCodeDiff = false;
-                i++;
+            // Collect command lines
+            let commandLines = [firstLine];
+            let resultLines_tool = [];
+            let codeDiffLines = [];
+            let hasResult = false;
+            let isComplete = false;
+            let hasError = false;
+            let inCodeDiff = false;
+            i++;
 
-                // Look ahead for more content
-                while (i < lines.length) {
-                    const nextLine = lines[i];
-                    const trimmed = nextLine.trim();
+            // Look ahead for more content
+            while (i < lines.length) {
+                const nextLine = lines[i];
+                const trimmed = nextLine.trim();
 
-                    // Check if this is a result line (starts with ↳)
-                    if (trimmed.startsWith(TOOL_CONFIG.resultPrefix)) {
-                        hasResult = true;
-                        const resultContent = trimmed.substring(1).trim();
-                        resultLines_tool.push(resultContent);
+                // Check if this is a result line (starts with ↳)
+                if (trimmed.startsWith(TOOL_CONFIG.resultPrefix)) {
+                    hasResult = true;
+                    const resultContent = trimmed.substring(1).trim();
+                    resultLines_tool.push(resultContent);
 
-                        // Check for error
-                        if (resultContent.toLowerCase().includes('error') ||
-                            resultContent.toLowerCase().includes('traceback')) {
-                            hasError = true;
-                        }
-
-                        // Check if this is an "Edited" result - expect code diff lines to follow
-                        if (resultContent.toLowerCase().includes('edited') &&
-                            resultContent.toLowerCase().includes('additions')) {
-                            inCodeDiff = true;
-                        }
-
-                        // Check if this is a completion keyword (but not if in code diff mode)
-                        const lower = resultContent.toLowerCase();
-                        const isEnd = TOOL_CONFIG.resultEndKeywords.some(kw => lower.includes(kw));
-                        if (isEnd && !inCodeDiff) {
-                            isComplete = true;
-                            i++;
-                            break;
-                        }
-                        i++;
+                    // Check for error
+                    if (resultContent.toLowerCase().includes('error') ||
+                        resultContent.toLowerCase().includes('traceback')) {
+                        hasError = true;
                     }
-                    // Code diff lines (e.g., "589 + // comment" or "590 - old code")
-                    else if (inCodeDiff && isCodeDiffLine(trimmed)) {
-                        codeDiffLines.push(trimmed);
-                        i++;
+
+                    // Check if this is an "Edited" result - expect code diff lines to follow
+                    if (resultContent.toLowerCase().includes('edited') &&
+                        resultContent.toLowerCase().includes('additions')) {
+                        inCodeDiff = true;
                     }
-                    // New tool starting - end current block
-                    else if (toolStartRegex.test(nextLine)) {
-                        isComplete = hasResult; // Complete if we have results
-                        break;
-                    }
-                    // Empty line after results = end of block
-                    else if (trimmed === '' && hasResult) {
-                        if (inCodeDiff && codeDiffLines.length > 0) {
-                            inCodeDiff = false;
-                        }
+
+                    // Check if this is a completion keyword (but not if in code diff mode)
+                    const lower = resultContent.toLowerCase();
+                    const isEnd = TOOL_CONFIG.resultEndKeywords.some(kw => lower.includes(kw));
+                    if (isEnd && !inCodeDiff) {
                         isComplete = true;
                         i++;
                         break;
                     }
-                    // More command content (before results)
-                    else if (!hasResult) {
-                        commandLines.push(nextLine);
-                        i++;
-                    }
-                    // In code diff mode but not a diff line - might be continuation or end
-                    else if (inCodeDiff) {
-                        // Treat as continuation of diff (wrapped lines) or end if it looks like regular text
-                        if (isExplanatoryText && isExplanatoryText(trimmed)) {
-                            isComplete = true;
-                            break;
-                        }
-                        codeDiffLines.push(trimmed);
-                        i++;
-                    }
-                    // Text after results = end of block
-                    else {
-                        isComplete = true;
-                        break;
-                    }
+                    i++;
                 }
-
-                // Render the tool block (streaming or complete)
-                const idx = toolBlocksArray.length;
-                const html = renderStreamingToolBlock({
-                    toolType: toolConfig.type,
-                    name: toolConfig.name,
-                    icon: toolConfig.icon,
-                    command: commandLines.join('\n').trim(),
-                    results: resultLines_tool,
-                    codeDiff: codeDiffLines,
-                    hasError: hasError,
-                    isStreaming: !isComplete
-                });
-                toolBlocksArray.push(html);
-                resultLines.push(`__TOOLBLOCK_${idx}__`);
-                continue;
+                // Code diff lines (e.g., "589 + // comment" or "590 - old code")
+                else if (inCodeDiff && isCodeDiffLine(trimmed)) {
+                    codeDiffLines.push(trimmed);
+                    i++;
+                }
+                // New tool starting - end current block
+                else if (matchToolLine(nextLine)) {
+                    isComplete = hasResult; // Complete if we have results
+                    break;
+                }
+                // Empty line after results = end of block
+                else if (trimmed === '' && hasResult) {
+                    if (inCodeDiff && codeDiffLines.length > 0) {
+                        inCodeDiff = false;
+                    }
+                    isComplete = true;
+                    i++;
+                    break;
+                }
+                // More command content (before results)
+                else if (!hasResult) {
+                    commandLines.push(nextLine);
+                    i++;
+                }
+                // In code diff mode but not a diff line - might be continuation or end
+                else if (inCodeDiff) {
+                    // Treat as continuation of diff (wrapped lines) or end if it looks like regular text
+                    if (isExplanatoryText && isExplanatoryText(trimmed)) {
+                        isComplete = true;
+                        break;
+                    }
+                    codeDiffLines.push(trimmed);
+                    i++;
+                }
+                // Text after results = end of block
+                else {
+                    isComplete = true;
+                    break;
+                }
             }
+
+            // Render the tool block (streaming or complete)
+            const idx = toolBlocksArray.length;
+            const html = renderStreamingToolBlock({
+                toolType: toolConfig.type,
+                name: toolConfig.name,
+                icon: toolConfig.icon,
+                command: commandLines.join('\n').trim(),
+                results: resultLines_tool,
+                codeDiff: codeDiffLines,
+                hasError: hasError,
+                isStreaming: !isComplete
+            });
+            toolBlocksArray.push(html);
+            resultLines.push(`__TOOLBLOCK_${idx}__`);
+            continue;
         }
 
         // Regular line
@@ -1567,16 +1607,12 @@ function parseToolBlocks(text) {
     const result = [];
     let i = 0;
 
-    // Use cached regex for performance
-    const toolStartRegex = getToolStartRegex();
-
     while (i < lines.length) {
         const line = lines[i];
-        const toolMatch = line.match(toolStartRegex);
+        const toolMatch = matchToolLine(line);
 
         if (toolMatch) {
-            const [, toolName, firstLine] = toolMatch;
-            const toolConfig = TOOL_CONFIG.tools.find(t => t.name === toolName);
+            const { toolConfig, content: firstLine } = toolMatch;
 
             // Collect command lines until we hit a result line
             let commandLines = [firstLine];
@@ -1630,7 +1666,7 @@ function parseToolBlocks(text) {
                     i++;
                 }
                 // Check if new tool is starting
-                else if (toolStartRegex.test(nextLine)) {
+                else if (matchToolLine(nextLine)) {
                     break; // New tool starting, end current block
                 }
                 // Empty line
@@ -2073,10 +2109,13 @@ function formatMessage(text) {
     // Tables - detect and convert markdown tables (improved to handle more formats)
     text = text.replace(/^(\|.+\|)\n(\|[-:\s|]+\|)\n((?:\|.+\|\n?)+)/gm, (match, header, separator, body) => {
         try {
-            const headerCells = header.split('|').filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join('');
+            // Split and keep empty cells (slice removes leading/trailing empty from | split)
+            const headerParts = header.split('|').slice(1, -1);
+            const headerCells = headerParts.map(c => `<th>${c.trim()}</th>`).join('');
             const bodyRows = body.trim().split('\n').map(row => {
                 if (!row.includes('|')) return null;
-                const cells = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
+                const cellParts = row.split('|').slice(1, -1);
+                const cells = cellParts.map(c => `<td>${c.trim()}</td>`).join('');
                 return cells ? `<tr>${cells}</tr>` : null;
             }).filter(Boolean).join('');
             // Encode original markdown for copy

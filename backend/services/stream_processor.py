@@ -188,9 +188,15 @@ class StreamProcessor:
         # Previous question being echoed
         if '› ' in stripped and ('?' in stripped or 'files' in stripped.lower() or 'what' in stripped.lower()):
             return True
-        # Path-like lines (terminal prompt)
+        # Path-like lines (terminal prompt) - but NOT valid content with paths
+        # A terminal prompt is a bare path or path with $ % # > at the end
         if stripped.startswith('/') and '/' in stripped[1:] and len(stripped) < 100:
-            return True
+            # If ends with shell prompt char, it's a terminal prompt
+            if stripped.rstrip().endswith(('$', '%', '#', '>')):
+                return True
+            # If bare path (no spaces/content after), it's likely a terminal prompt
+            if len(stripped.split()) == 1:
+                return True
         return False
 
     def _has_activity_indicator(self, text: str) -> bool:

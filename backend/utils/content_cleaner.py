@@ -77,12 +77,36 @@ class ContentCleaner:
 
     @classmethod
     def _is_path_line(cls, stripped: str) -> bool:
-        """Check if line looks like a path prompt."""
-        return (
-            stripped.startswith('/') and 
-            '/' in stripped[1:] and 
-            len(stripped) < 100
-        )
+        """Check if line looks like a terminal prompt showing current directory.
+
+        A real terminal prompt path is typically:
+        - Just the path alone: /home/user/project
+        - Path with shell prompt: /home/user/project$ or /home/user %
+
+        NOT valid content like:
+        - /etc/nginx/nginx.conf is the config file
+        - /usr/bin/python3 script.py
+        """
+        if not stripped.startswith('/'):
+            return False
+        if '/' not in stripped[1:]:
+            return False
+        if len(stripped) >= 100:
+            return False
+
+        # If it ends with shell prompt characters, it's a terminal prompt
+        if stripped.rstrip().endswith(('$', '%', '#', '>')):
+            return True
+
+        # If there's text after the path (space + more content), it's valid content
+        # A bare path has no spaces, or only trailing spaces
+        parts = stripped.split()
+        if len(parts) > 1:
+            # Has content after path - likely valid content, not a prompt
+            return False
+
+        # Bare path only - likely terminal prompt
+        return True
 
     @classmethod
     def _is_empty_box_line(cls, line: str) -> bool:

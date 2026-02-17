@@ -1522,6 +1522,10 @@ body {
     color: var(--jay-blue-bright);
 }
 
+.tool-block.tool-terminal .tool-result .result-success {
+    color: #22c55e;  /* Green for command completed */
+}
+
 /* Tool copy button */
 .tool-copy-btn {
     margin-left: auto;
@@ -1570,10 +1574,9 @@ body {
 }
 
 .tool-block.tool-read .tool-command code {
-    color: var(--primary-light);
-    background: rgba(99, 102, 241, 0.1);
-    padding: 5px 9px;
-    border-radius: 6px;
+    color: #000000;
+    background: none;
+    padding: 0;
     display: block;
     width: 100%;
     font-size: 0.75rem;
@@ -1618,7 +1621,9 @@ body {
 }
 
 .tool-block.tool-action .tool-command code {
-    color: var(--text);
+    color: #000000;
+    background: none;
+    padding: 0;
     font-weight: 500;
     font-size: 0.75rem;
 }
