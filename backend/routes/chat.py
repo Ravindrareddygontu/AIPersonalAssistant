@@ -144,7 +144,6 @@ class SessionHandler:
             return False
 
         session.initialized = True
-        yield SSEFormatter.send({'type': 'status', 'message': 'Ready!'})
         return True
 
     def send_message(self, session, message: str) -> bool:
@@ -261,7 +260,6 @@ class StreamGenerator:
                     return
 
                 # Send message
-                yield self.sse.send({'type': 'status', 'message': 'Sending your message...'})
                 if not self.session_handler.send_message(session, self.message):
                     yield self.sse.send({'type': 'error', 'message': 'Connection lost. Please try again.'})
                     yield self.sse.send({'type': 'done'})
@@ -273,7 +271,7 @@ class StreamGenerator:
 
                 # Stream response
                 state = self._create_initial_state(session)
-                yield self.sse.send({'type': 'status', 'message': 'Waiting for AI response...'})
+                # Don't send hardcoded status - let auggie's actual indicators flow through
                 yield from self._stream_response(session, state)
             finally:
                 # Clear in_use flag when streaming is complete (or on error)
@@ -299,7 +297,6 @@ class StreamGenerator:
                     log.info("Reconnect failed")
                     return False
         else:
-            yield self.sse.send({'type': 'status', 'message': 'Connecting...'})
             session.drain_output()
         return True
 
@@ -370,7 +367,7 @@ class StreamGenerator:
 
             # Send periodic status updates (moved outside else to update during data flow too)
             now = time.time()
-            if now - last_status_time >= 1.0:  # Update every 1s to reduce SSE churn
+            if now - last_status_time >= 0.3:  # Update every 0.3s for responsive activity indicators
                 status_msg = self._get_current_status(state)
                 if status_msg and status_msg != last_status_msg:
                     log.info(f"[STATUS] {status_msg}")
@@ -393,8 +390,9 @@ class StreamGenerator:
 
     def _get_current_status(self, state: StreamState) -> str:
         """Get current status message based on stream state."""
-        # Check for specific activity indicators in terminal output
-        output_tail = state.clean_output[-500:] if len(state.clean_output) > 500 else state.clean_output
+        # Check for specific activity indicators in RAW terminal output (not clean_output)
+        # Activity indicators appear in the terminal UI, not in the cleaned response text
+        output_tail = state.all_output[-3000:] if len(state.all_output) > 3000 else state.all_output
 
         # Detect specific activities from terminal output
         activity_msg = self._detect_activity(output_tail)
@@ -406,24 +404,23 @@ class StreamGenerator:
 
     def _detect_activity(self, output: str) -> str | None:
         """Detect specific activity from terminal output."""
-        # Use exact patterns as they appear in terminal output
+        # Activity patterns with their clean display text
         activities = [
-            'Summarizing conversation history',
-            'Processing response',
-            'Sending request',
-            'Receiving response',
-            'Codebase search',
-            'Executing tools',
-            'Reading file',
-            'Searching',
+            ('Summarizing conversation history', 'Summarizing conversation history...'),
+            ('Processing response', 'Processing response...'),
+            ('Sending request', 'Sending request...'),
+            ('Receiving response', 'Receiving response...'),
+            ('Codebase search', 'Searching codebase...'),
+            ('Executing tools', 'Executing tools...'),
+            ('Reading file', 'Reading file...'),
+            ('Searching', 'Searching...'),
         ]
 
         lines = [line.strip() for line in output.splitlines() if line.strip()]
         for line in reversed(lines):
-            for activity in activities:
-                if activity in line:
-                    # Return the exact line as shown by auggie
-                    return line
+            for pattern, display_text in activities:
+                if pattern in line:
+                    return display_text
 
         return None
 

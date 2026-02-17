@@ -22,11 +22,11 @@ class StreamProcessor:
     # Activity indicators - if present, auggie is still working (don't end yet)
     # These appear in the terminal when auggie is processing/generating
     ACTIVITY_INDICATORS = [
-        'Sending request',
-        'esc to interrupt',
-        'Processing response',
-        'Executing tools',
-        'Summarizing conversation history',
+        'Receiving response...',
+        'Sending request...',
+        'Processing response...',
+        'Executing tools...',
+        'Summarizing conversation history...',
         '▇▇▇',  # Progress bar
     ]
 

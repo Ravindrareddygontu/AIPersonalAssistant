@@ -427,8 +427,7 @@ async function sendMessage() {
                             break;
                         case 'stream_start':
                             console.log(`[API] Request #${thisRequestId} stream_start`);
-                            // Don't hide immediately - transition the status first
-                            updateTypingStatus('Receiving response...');
+                            // Don't set hardcoded status - let backend's dynamic status flow through
                             startStreamingMessage(thisRequestId);
                             break;
                         case 'stream':
