@@ -111,7 +111,7 @@ class StreamProcessor:
                 for i, line in enumerate(lines[:10]):
                     log.info(f"[DEBUG_EXTRACT] Line {i}: {repr(line[:100] if len(line) > 100 else line)}")
                 state._debug_extract_logged = True
-            # Log first occurrence of each marker type
+            # Log first occurrence of each marker type (for debugging)
             for i, line in enumerate(lines):
                 stripped = line.strip()
                 if stripped.startswith('●'):
@@ -123,7 +123,7 @@ class StreamProcessor:
                         log.info(f"[DEBUG_MARKER] Found THINKING marker (~) at line {i}: {repr(stripped[:80])}")
                         state._debug_thinking_marker_logged = True
 
-        for line in lines:
+        for i, line in enumerate(lines):
             stripped = line.strip()
 
             # Skip empty lines before response starts
@@ -134,28 +134,18 @@ class StreamProcessor:
             if BOX_CHARS_PATTERN.match(stripped):
                 continue
 
-            # STOP CONDITIONS - ONLY check if we've already started seeing response
-            # Don't stop before finding ● marker!
-            if in_response and self._is_stop_condition(stripped, in_response):
-                break
-
-            # Skip patterns we want to filter out
-            if any(skip in stripped for skip in SKIP_PATTERNS):
-                continue
-
-            # Skip status lines containing "(Xs • esc to interrupt)"
-            if _STATUS_LINE_RE.search(stripped):
-                continue
-
-            # Process response markers
-            # ● is the actual response content to be streamed
+            # IMPORTANT: Check for response markers FIRST, before skip patterns!
+            # The ● marker line may contain skip patterns (e.g., "Claude Opus")
+            # but we still need to capture it as response content.
             if stripped.startswith('●'):
                 in_response = True
                 state.mark_response_marker_seen()
-                log.info(f"[MARKER] Response marker found: {repr(stripped[:50])}")
+                log.info(f"[MARKER] Response marker found: {repr(stripped[:80])}")
                 c = stripped[1:].strip()
                 if c:
                     content.append(c)
+                    log.info(f"[CONTENT] Added from ●: {repr(c[:50])}")
+                continue
             elif stripped.startswith('~'):
                 # Thinking marker - auggie is working but this is internal reasoning
                 # Don't set in_response=True, don't add to content
@@ -164,12 +154,34 @@ class StreamProcessor:
                 c = stripped[1:].strip()
                 if c:
                     content.append(f"↳ {c}")
-            elif in_response and stripped:
-                # Skip UI messages and model identifiers
+                continue
+
+            # STOP CONDITIONS - ONLY check if we've already started seeing response
+            # Don't stop before finding ● marker!
+            if in_response and self._is_stop_condition(stripped, in_response):
+                log.info(f"[STOP] Breaking at line {i}: {repr(stripped[:60])}")
+                break
+
+            # Skip patterns we want to filter out (only for non-marker lines)
+            if any(skip in stripped for skip in SKIP_PATTERNS):
+                continue
+
+            # Skip status lines containing "(Xs • esc to interrupt)"
+            if _STATUS_LINE_RE.search(stripped):
+                continue
+
+            # Regular content lines (after we've seen ● marker)
+            if in_response and stripped:
+                # Skip UI messages and model identifiers in regular content
                 if not any(skip in stripped for skip in ['Claude Opus', 'Version 0.', 'Message will be queued']):
                     content.append(stripped)
+                    if len(content) <= 3:
+                        log.info(f"[CONTENT] Added line: {repr(stripped[:50])}")
 
-        return '\n'.join(content) if content else None
+        result = '\n'.join(content) if content else None
+        if result:
+            log.info(f"[CONTENT] Final content length: {len(result)}, first 100: {repr(result[:100])}")
+        return result
 
     def _is_stop_condition(self, stripped: str, in_response: bool = False) -> bool:
         """Check if line indicates we should stop extracting.

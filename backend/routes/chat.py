@@ -793,6 +793,8 @@ class StreamGenerator:
         # DEBUG: Log the relevant output to see what we're extracting from
         log.info(f"[DEBUG_FINAL] relevant_output length: {len(relevant_output)}")
         log.info(f"[DEBUG_FINAL] Last 500 chars: {repr(relevant_output[-500:])}")
+        log.info(f"[DEBUG_FINAL] state.current_full_content: {repr(state.current_full_content[:300] if state.current_full_content else 'None')}")
+        log.info(f"[DEBUG_FINAL] state.last_streamed_content: {repr(state.last_streamed_content[:300] if state.last_streamed_content else 'None')}")
 
         # Use sanitized message for extraction since that's what was actually sent to terminal
         sanitized_message = _sanitize_message(self.message)
