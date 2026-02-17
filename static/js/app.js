@@ -57,8 +57,8 @@ let statusStartTime = null;
 /** @type {Array<{path: string, name: string, previewUrl: string}>} Selected image files */
 let selectedImages = [];
 
-/** @type {boolean} Whether MongoDB database is available - trust cached value, default true to avoid flash */
-let dbAvailable = localStorage.getItem('dbAvailable') !== 'false';
+/** @type {boolean} Whether MongoDB database is available - default true, only show banner after API confirms it's down */
+let dbAvailable = true;
 
 /** @type {number|null} Interval for checking DB status */
 let dbCheckInterval = null;
@@ -1037,21 +1037,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // History is enabled - do full initialization
-    // Only show banner from cache if DB was previously unavailable
-    if (!dbAvailable) {
-        updateDbStatusBanner();
-    }
-    checkAuthStatus();
-    startDbStatusCheck();
-
-    // Render cached chat list immediately (instant UI)
+    // Render cached UI FIRST for instant display
     const cachedChats = loadCachedChatList();
     if (cachedChats && cachedChats.length > 0) {
         console.log('[INIT] Rendering cached chat list:', cachedChats.length, 'chats');
         renderChatHistory(cachedChats);
     }
 
-    // Render cached messages for saved chat immediately
     const savedChatId = localStorage.getItem('currentChatId');
     if (savedChatId) {
         const cachedData = loadChatFromCache(savedChatId);
@@ -1068,6 +1060,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Sync any unsynced chats from previous sessions
     syncUnsyncedChats();
+
+    // ASYNC: Start background tasks (non-blocking)
+    checkAuthStatus();  // non-blocking
+
+    // Only check DB status if cache shows it was unavailable
+    if (!dbAvailable) {
+        startDbStatusCheck();  // non-blocking - will show banner if DB still down
+    } else {
+        // DB was available - check in background after a delay
+        setTimeout(() => startDbStatusCheck(), 1000);
+    }
 
     // Load settings and chats from server in parallel
     const [settingsResult, chats] = await Promise.all([
