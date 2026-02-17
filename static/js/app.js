@@ -1958,6 +1958,8 @@ const TOOL_CONFIG = {
         { name: 'Codebase Search', icon: 'fa-code', type: 'action' },
         { name: 'Codebase search', icon: 'fa-code', type: 'action' },
         { name: 'Web Search', icon: 'fa-globe', type: 'action' },
+        { name: 'Web Fetch', icon: 'fa-download', type: 'action' },
+        { name: 'Fetch URL', icon: 'fa-download', type: 'action' },
         { name: 'Add Tasks', icon: 'fa-list-check', type: 'task' },
         { name: 'Update Tasks', icon: 'fa-tasks', type: 'task' },
     ],
