@@ -10,9 +10,6 @@ import re
 class ContentCleaner:
     """Cleans terminal artifacts and formatting from AI responses."""
 
-    # Patterns that indicate end of AI response (start of prompt)
-    PROMPT_INDICATORS = ('›', '│ ›')
-    
     # Box drawing characters (no content)
     BOX_CHARS = '─│╭╮╰╯┌┐└┘├┤┬┴┼'
 

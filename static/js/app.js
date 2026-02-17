@@ -12,6 +12,8 @@ let currentAbortController = null;
 let historyEnabled = true;  // Global toggle for chat history storage
 let slackNotifyEnabled = false;  // Send status to Slack after completion
 let slackWebhookUrl = '';  // Slack webhook URL
+let statusTimerInterval = null;  // Timer for status elapsed time
+let statusStartTime = null;  // When status started
 
 // Network request/response logger
 function logRequest(method, url, body = null) {
@@ -84,9 +86,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Try to restore the last active chat
     const savedChatId = localStorage.getItem('currentChatId');
+    console.log('[INIT] savedChatId from localStorage:', savedChatId);
     if (savedChatId) {
         await loadChatFromServer(savedChatId);
+    } else {
+        // No saved chat ID - create a new chat
+        console.log('[INIT] No saved chat ID, creating new chat');
+        await createNewChat();
     }
+    console.log('[INIT] After restore, currentChatId:', currentChatId);
 });
 
 // Save chat before page unload (refresh/close)
@@ -423,10 +431,20 @@ async function sendMessage() {
 
                     switch (data.type) {
                         case 'status':
-                            updateTypingStatus(data.message);
+                            // Only update status if this is still the current request
+                            if (thisRequestId === currentRequestId) {
+                                updateTypingStatus(data.message);
+                            } else {
+                                console.log(`[API] IGNORING status from stale request #${thisRequestId}`);
+                            }
                             break;
                         case 'stream_start':
                             console.log(`[API] Request #${thisRequestId} stream_start`);
+                            // Only start streaming if this is still the current request
+                            if (thisRequestId !== currentRequestId) {
+                                console.log(`[API] IGNORING stream_start from stale request #${thisRequestId}`);
+                                break;
+                            }
                             // Don't set hardcoded status - let backend's dynamic status flow through
                             startStreamingMessage(thisRequestId);
                             break;
@@ -815,13 +833,16 @@ const TOOL_CONFIG = {
         { name: 'Codebase Search', icon: 'fa-code', type: 'action' },
         { name: 'Codebase search', icon: 'fa-code', type: 'action' },
         { name: 'Web Search', icon: 'fa-globe', type: 'action' },
+        { name: 'Add Tasks', icon: 'fa-list-check', type: 'task' },
+        { name: 'Update Tasks', icon: 'fa-tasks', type: 'task' },
     ],
     // Result line prefix
     resultPrefix: '↳',
     // Result status keywords that END a tool block (case insensitive)
     resultEndKeywords: [
         'command completed', 'command error', 'listed', 'read',
-        'process completed', 'wrote', 'edited', 'found', 'no results'
+        'process completed', 'wrote', 'edited', 'found', 'no results',
+        'added tasks successfully', 'updated tasks'
     ],
 };
 
@@ -864,6 +885,29 @@ function matchToolLine(line) {
         const toolConfig = TOOL_CONFIG.tools.find(t => t.name.toLowerCase() === match[2].toLowerCase());
         if (toolConfig) {
             return { toolConfig, content: match[1] };
+        }
+    }
+
+    // Try line range pattern: "path/file.js - lines 345-420" (Read file with range)
+    const lineRangeMatch = line.match(/^(.+?)\s+-\s+lines\s+(\d+)-(\d+)$/i);
+    if (lineRangeMatch) {
+        const toolConfig = TOOL_CONFIG.tools.find(t => t.name.toLowerCase() === 'read file');
+        if (toolConfig) {
+            const filePath = lineRangeMatch[1];
+            const startLine = lineRangeMatch[2];
+            const endLine = lineRangeMatch[3];
+            return { toolConfig, content: filePath, lineRange: { start: startLine, end: endLine } };
+        }
+    }
+
+    // Try read filesearch pattern: "path/file.py - read filesearch: searchQuery"
+    const fileSearchMatch = line.match(/^(.+?)\s+-\s+read\s+filesearch:\s*(.+)$/i);
+    if (fileSearchMatch) {
+        const toolConfig = TOOL_CONFIG.tools.find(t => t.name.toLowerCase() === 'read file');
+        if (toolConfig) {
+            const filePath = fileSearchMatch[1];
+            const searchQuery = fileSearchMatch[2];
+            return { toolConfig, content: filePath, searchQuery: searchQuery };
         }
     }
 
@@ -1011,10 +1055,12 @@ function formatStreamingToolBlocks(text, toolBlocksArray) {
         const toolMatch = matchToolLine(line);
 
         if (toolMatch) {
-            const { toolConfig, content: firstLine } = toolMatch;
+            const { toolConfig, content: firstLine, lineRange, searchQuery } = toolMatch;
 
             // Collect command lines
             let commandLines = [firstLine];
+            let toolLineRange = lineRange; // Store line range if present
+            let toolSearchQuery = searchQuery; // Store search query if present
             let resultLines_tool = [];
             let codeDiffLines = [];
             let hasResult = false;
@@ -1024,6 +1070,8 @@ function formatStreamingToolBlocks(text, toolBlocksArray) {
             i++;
 
             // Look ahead for more content
+            let expectingResultContent = false; // Track if we just saw standalone ↳
+
             while (i < lines.length) {
                 const nextLine = lines[i];
                 const trimmed = nextLine.trim();
@@ -1032,7 +1080,13 @@ function formatStreamingToolBlocks(text, toolBlocksArray) {
                 if (trimmed.startsWith(TOOL_CONFIG.resultPrefix)) {
                     hasResult = true;
                     const resultContent = trimmed.substring(1).trim();
-                    resultLines_tool.push(resultContent);
+                    if (resultContent) {
+                        resultLines_tool.push(resultContent);
+                        expectingResultContent = false;
+                    } else {
+                        // Standalone ↳ - next line is the content
+                        expectingResultContent = true;
+                    }
 
                     // Check for error
                     if (resultContent.toLowerCase().includes('error') ||
@@ -1042,7 +1096,7 @@ function formatStreamingToolBlocks(text, toolBlocksArray) {
 
                     // Check if this is an "Edited" result - expect code diff lines to follow
                     if (resultContent.toLowerCase().includes('edited') &&
-                        resultContent.toLowerCase().includes('additions')) {
+                        (resultContent.toLowerCase().includes('addition') || resultContent.toLowerCase().includes('removal'))) {
                         inCodeDiff = true;
                     }
 
@@ -1056,9 +1110,26 @@ function formatStreamingToolBlocks(text, toolBlocksArray) {
                     }
                     i++;
                 }
-                // Code diff lines (e.g., "589 + // comment" or "590 - old code")
-                else if (inCodeDiff && isCodeDiffLine(trimmed)) {
-                    codeDiffLines.push(trimmed);
+                // Content following a standalone ↳
+                else if (expectingResultContent && trimmed && !matchToolLine(nextLine)) {
+                    resultLines_tool.push(trimmed);
+                    expectingResultContent = false;
+
+                    // Check for error/completion in continuation line
+                    const lower = trimmed.toLowerCase();
+                    if (lower.includes('error') || lower.includes('traceback')) {
+                        hasError = true;
+                    }
+                    if (lower.includes('edited') &&
+                        (lower.includes('addition') || lower.includes('removal'))) {
+                        inCodeDiff = true;
+                    }
+                    const isEnd = TOOL_CONFIG.resultEndKeywords.some(kw => lower.includes(kw));
+                    if (isEnd && !inCodeDiff) {
+                        isComplete = true;
+                        i++;
+                        break;
+                    }
                     i++;
                 }
                 // New tool starting - end current block
@@ -1066,11 +1137,13 @@ function formatStreamingToolBlocks(text, toolBlocksArray) {
                     isComplete = hasResult; // Complete if we have results
                     break;
                 }
+                // Code diff lines (e.g., "9 - old code" or "37 + new code") - NO ↳ prefix
+                else if (inCodeDiff && isCodeDiffLine(trimmed)) {
+                    codeDiffLines.push(trimmed);
+                    i++;
+                }
                 // Empty line after results = end of block
                 else if (trimmed === '' && hasResult) {
-                    if (inCodeDiff && codeDiffLines.length > 0) {
-                        inCodeDiff = false;
-                    }
                     isComplete = true;
                     i++;
                     break;
@@ -1080,15 +1153,10 @@ function formatStreamingToolBlocks(text, toolBlocksArray) {
                     commandLines.push(nextLine);
                     i++;
                 }
-                // In code diff mode but not a diff line - might be continuation or end
+                // In code diff but not a diff line - end block
                 else if (inCodeDiff) {
-                    // Treat as continuation of diff (wrapped lines) or end if it looks like regular text
-                    if (isExplanatoryText && isExplanatoryText(trimmed)) {
-                        isComplete = true;
-                        break;
-                    }
-                    codeDiffLines.push(trimmed);
-                    i++;
+                    isComplete = true;
+                    break;
                 }
                 // Text after results = end of block
                 else {
@@ -1107,7 +1175,9 @@ function formatStreamingToolBlocks(text, toolBlocksArray) {
                 results: resultLines_tool,
                 codeDiff: codeDiffLines,
                 hasError: hasError,
-                isStreaming: !isComplete
+                isStreaming: !isComplete,
+                lineRange: toolLineRange,
+                searchQuery: toolSearchQuery
             });
             toolBlocksArray.push(html);
             resultLines.push(`__TOOLBLOCK_${idx}__`);
@@ -1130,22 +1200,35 @@ function renderStreamingToolBlock(tool) {
     const streamingClass = tool.isStreaming ? ' streaming' : '';
 
     let html = `<div class="tool-block ${typeClass}${errorClass}${streamingClass}">`;
-    html += `<div class="tool-header"><i class="fas ${tool.icon}"></i> ${tool.name}`;
 
-    // Add copy button for Terminal blocks
-    if (tool.toolType === 'terminal') {
-        const encodedCommand = btoa(unescape(encodeURIComponent(tool.command)));
-        html += `<button class="tool-copy-btn" data-command="${encodedCommand}" title="Copy command"><i class="fas fa-copy"></i></button>`;
+    // For line range reads, show a cleaner header with just filename and range
+    if (tool.lineRange) {
+        const fileName = tool.command.split('/').pop(); // Get just the filename
+        html += `<div class="tool-header"><i class="fas ${tool.icon}"></i> ${tool.name}</div>`;
+        html += `<div class="tool-command"><code>${escapeHtml(fileName)}</code><span class="line-range">lines ${tool.lineRange.start}-${tool.lineRange.end}</span></div>`;
     }
-    html += `</div>`;
-
-    // Command section - wrap in <code> like final version
-    html += `<div class="tool-command"><code>${escapeHtml(tool.command)}</code></div>`;
+    // For file search reads, show filename and search query badge
+    else if (tool.searchQuery) {
+        const fileName = tool.command.split('/').pop(); // Get just the filename
+        html += `<div class="tool-header"><i class="fas ${tool.icon}"></i> ${tool.name}</div>`;
+        html += `<div class="tool-command"><code>${escapeHtml(fileName)}</code><span class="search-query"><i class="fas fa-search"></i> ${escapeHtml(tool.searchQuery)}</span></div>`;
+    } else {
+        html += `<div class="tool-header"><i class="fas ${tool.icon}"></i> ${tool.name}`;
+        // Add copy button for Terminal blocks
+        if (tool.toolType === 'terminal') {
+            const encodedCommand = btoa(unescape(encodeURIComponent(tool.command)));
+            html += `<button class="tool-copy-btn" data-command="${encodedCommand}" title="Copy command"><i class="fas fa-copy"></i></button>`;
+        }
+        html += `</div>`;
+        // Command section - wrap in <code> like final version
+        html += `<div class="tool-command"><code>${escapeHtml(tool.command)}</code></div>`;
+    }
 
     // Results section - use same structure as renderToolBlock (tool-result with result-line)
-    if (tool.results && tool.results.length > 0) {
+    const filteredResults = tool.results ? tool.results.filter(r => r && r.trim()) : [];
+    if (filteredResults.length > 0) {
         html += `<div class="tool-result">`;
-        tool.results.forEach(r => {
+        filteredResults.forEach(r => {
             let resultHtml = escapeHtml(r);
             if (r.toLowerCase().includes('error')) {
                 resultHtml = `<span class="result-error">${resultHtml}</span>`;
@@ -1537,17 +1620,33 @@ function addCodeCopyButtons(container) {
 
 // Check if a result line indicates successful end of tool output
 function isSuccessEndLine(text) {
-    const lower = text.toLowerCase();
-    const successKeywords = ['command completed', 'listed', 'read', 'process completed', 'wrote', 'found'];
-    // Note: 'edited' removed - we want to continue capturing code diff lines after "Edited ... with X additions"
-    return successKeywords.some(kw => lower.includes(kw));
+    const lower = text.toLowerCase().trim();
+
+    // Exact phrase matches - these indicate definitive completion
+    const exactPhrases = [
+        'command completed',
+        'process completed',
+        'added tasks successfully',
+        'updated tasks',
+        'no results'
+    ];
+    if (exactPhrases.some(phrase => lower.includes(phrase))) {
+        return true;
+    }
+
+    // Start-of-line patterns - e.g., "Read 14 lines", "Found 5 matches", "Listed 37 entries"
+    // These only indicate completion when at the START of the line
+    // This prevents matching "found" inside "unused code found"
+    const startPatterns = ['read ', 'listed ', 'wrote ', 'found '];
+    return startPatterns.some(p => lower.startsWith(p));
 }
 
-// Check if a line looks like a code diff line (e.g., "589 + // comment" or "590 - old code")
+// Check if a line looks like a code diff line (e.g., "589 + // comment" or "590 - old code" or "38 -" for empty line removal)
 function isCodeDiffLine(text) {
     const trimmed = text.trim();
-    // Match: number followed by + or - and then content
-    return /^\d+\s*[+-]\s+/.test(trimmed);
+    // Match: number followed by + or - (with optional content after)
+    // Examples: "38 -" (empty line), "9 - old code", "37 + new code"
+    return /^\d+\s*[+-](\s|$)/.test(trimmed);
 }
 
 // Check if a result line indicates error start (we should collect more lines after this)
@@ -1611,8 +1710,13 @@ function parseToolBlocks(text) {
         const line = lines[i];
         const toolMatch = matchToolLine(line);
 
+        // DEBUG: Log tool matching for Add Tasks
+        if (line.includes('Add Tasks') || line.includes('Update Tasks')) {
+            console.log('DEBUG parseToolBlocks:', { line, toolMatch, i });
+        }
+
         if (toolMatch) {
-            const { toolConfig, content: firstLine } = toolMatch;
+            const { toolConfig, content: firstLine, lineRange, searchQuery } = toolMatch;
 
             // Collect command lines until we hit a result line
             let commandLines = [firstLine];
@@ -1620,42 +1724,50 @@ function parseToolBlocks(text) {
             let hasError = false;
             let inStackTrace = false;
             let foundEndResult = false;
+            let toolLineRange = lineRange; // Store line range if present
+            let toolSearchQuery = searchQuery; // Store search query if present
             i++;
 
             // Track if this is an Edit File block with code diffs
             let inCodeDiff = false;
             let codeDiffLines = [];
+            let expectingResultContent = false; // Track if we just saw standalone ↳
 
             while (i < lines.length && !foundEndResult) {
                 const nextLine = lines[i];
                 const trimmed = nextLine.trim();
 
+                // DEBUG: Log result line parsing for task blocks
+                if (toolConfig.type === 'task') {
+                    console.log('DEBUG task parsing:', { i, trimmed, startsWithArrow: trimmed.startsWith(TOOL_CONFIG.resultPrefix), resultLines: [...resultLines] });
+                }
+
                 // Check if this is a result line (starts with ↳)
                 if (trimmed.startsWith(TOOL_CONFIG.resultPrefix)) {
                     const resultContent = trimmed.substring(1).trim();
-                    resultLines.push(resultContent);
+                    if (resultContent) {
+                        resultLines.push(resultContent);
+                        expectingResultContent = false;
+                    } else {
+                        // Standalone ↳ - next line is the content
+                        expectingResultContent = true;
+                    }
 
                     // Track if we have an error/traceback starting
                     if (isErrorStartLine(resultContent)) {
                         hasError = true;
-                        // Only set inStackTrace if this looks like it will have a stack trace
-                        // Simple "Command error" without traceback should end the block
                         const lower = resultContent.toLowerCase();
                         const hasTraceIndicator = lower.includes('traceback') ||
                                                   lower.includes('file "') ||
                                                   lower.includes('exception');
                         inStackTrace = hasTraceIndicator;
-
-                        // If it's just "Command error" without trace indicators,
-                        // end the block here
-                        if (!hasTraceIndicator && lower === 'command error') {
-                            foundEndResult = true;
-                        }
+                        // Don't end block on "command error" - the actual error message follows
+                        // Continue collecting lines until we hit a new tool or empty line
                     }
 
                     // Check if this is an "Edited" result - expect code diff lines to follow
                     if (resultContent.toLowerCase().includes('edited') &&
-                        resultContent.toLowerCase().includes('additions')) {
+                        (resultContent.toLowerCase().includes('addition') || resultContent.toLowerCase().includes('removal'))) {
                         inCodeDiff = true;
                     }
 
@@ -1665,52 +1777,62 @@ function parseToolBlocks(text) {
                     }
                     i++;
                 }
+                // Content following a standalone ↳
+                else if (expectingResultContent && trimmed && !matchToolLine(nextLine)) {
+                    resultLines.push(trimmed);
+                    expectingResultContent = false;
+
+                    // Check for error/completion in continuation line
+                    const lower = trimmed.toLowerCase();
+                    if (isErrorStartLine(trimmed)) {
+                        hasError = true;
+                    }
+                    if (lower.includes('edited') &&
+                        (lower.includes('addition') || lower.includes('removal'))) {
+                        inCodeDiff = true;
+                    }
+                    if (isSuccessEndLine(trimmed) && !hasError && !inCodeDiff) {
+                        foundEndResult = true;
+                    }
+                    i++;
+                }
                 // Check if new tool is starting
                 else if (matchToolLine(nextLine)) {
                     break; // New tool starting, end current block
+                }
+                // Code diff lines (e.g., "9 - old code" or "37 + new code") - NO ↳ prefix
+                else if (inCodeDiff && isCodeDiffLine(trimmed)) {
+                    codeDiffLines.push(trimmed);
+                    i++;
                 }
                 // Empty line
                 else if (trimmed === '') {
                     // In code diff mode, empty line ends the diff section
                     if (inCodeDiff && codeDiffLines.length > 0) {
-                        inCodeDiff = false;
                         break;
                     }
-                    if (resultLines.length > 0 && !inStackTrace && !inCodeDiff) {
+                    if (resultLines.length > 0 && !inStackTrace) {
                         break;
                     }
-                    i++;
-                }
-                // Code diff lines (e.g., "589 + // comment" or "590 - old code")
-                else if (inCodeDiff && isCodeDiffLine(trimmed)) {
-                    codeDiffLines.push(trimmed);
                     i++;
                 }
                 // If we're in a stack trace, collect continuation lines
                 else if (inStackTrace) {
-                    // Check if this looks like explanatory text (end of stack trace)
                     if (isExplanatoryText(trimmed)) {
                         inStackTrace = false;
                         break;
                     }
-                    // Otherwise it's part of the stack trace
                     resultLines.push(trimmed);
                     i++;
                 }
-                // Otherwise it's continuation of command (before any results)
+                // Command continuation (before any results)
                 else if (resultLines.length === 0) {
                     commandLines.push(nextLine);
                     i++;
                 }
-                // In code diff mode but not a diff line - might be explanatory text, end block
+                // In code diff mode but not a diff line - end block
                 else if (inCodeDiff) {
-                    // Check if it looks like explanatory text
-                    if (isExplanatoryText(trimmed)) {
-                        break;
-                    }
-                    // Otherwise treat as continuation of diff (wrapped lines)
-                    codeDiffLines.push(trimmed);
-                    i++;
+                    break;
                 }
                 // Text after results = end of block
                 else {
@@ -1726,7 +1848,9 @@ function parseToolBlocks(text) {
                 command: commandLines.join('\n').trim(),
                 results: resultLines,
                 codeDiff: codeDiffLines,
-                hasError: hasError
+                hasError: hasError,
+                lineRange: toolLineRange,
+                searchQuery: toolSearchQuery
             });
             continue;
         }
@@ -1754,15 +1878,29 @@ function renderToolBlock(tool) {
     const typeClass = `tool-${tool.toolType}`;
     const errorClass = tool.hasError ? ' has-error' : '';
     let html = `<div class="tool-block ${typeClass}${errorClass}">`;
-    html += `<div class="tool-header"><i class="fas ${tool.icon}"></i> ${tool.name}`;
-    // Add copy button for Terminal blocks
-    if (tool.toolType === 'terminal') {
-        // Base64 encode the command to handle special characters
-        const encodedCommand = btoa(unescape(encodeURIComponent(tool.command)));
-        html += `<button class="tool-copy-btn" data-command="${encodedCommand}" title="Copy command"><i class="fas fa-copy"></i></button>`;
+
+    // For line range reads, show a cleaner header with just filename and range
+    if (tool.lineRange) {
+        const fileName = tool.command.split('/').pop(); // Get just the filename
+        html += `<div class="tool-header"><i class="fas ${tool.icon}"></i> ${tool.name}</div>`;
+        html += `<div class="tool-command"><code>${escapeHtml(fileName)}</code><span class="line-range">lines ${tool.lineRange.start}-${tool.lineRange.end}</span></div>`;
     }
-    html += `</div>`;
-    html += `<div class="tool-command"><code>${escapeHtml(tool.command)}</code></div>`;
+    // For file search reads, show filename and search query badge
+    else if (tool.searchQuery) {
+        const fileName = tool.command.split('/').pop(); // Get just the filename
+        html += `<div class="tool-header"><i class="fas ${tool.icon}"></i> ${tool.name}</div>`;
+        html += `<div class="tool-command"><code>${escapeHtml(fileName)}</code><span class="search-query"><i class="fas fa-search"></i> ${escapeHtml(tool.searchQuery)}</span></div>`;
+    } else {
+        html += `<div class="tool-header"><i class="fas ${tool.icon}"></i> ${tool.name}`;
+        // Add copy button for Terminal blocks
+        if (tool.toolType === 'terminal') {
+            // Base64 encode the command to handle special characters
+            const encodedCommand = btoa(unescape(encodeURIComponent(tool.command)));
+            html += `<button class="tool-copy-btn" data-command="${encodedCommand}" title="Copy command"><i class="fas fa-copy"></i></button>`;
+        }
+        html += `</div>`;
+        html += `<div class="tool-command"><code>${escapeHtml(tool.command)}</code></div>`;
+    }
 
     if (tool.results.length > 0) {
         // Check if this is an error with stack trace
@@ -1781,6 +1919,29 @@ function renderToolBlock(tool) {
                 html += escapeHtml(r) + '\n';
             });
             html += `</pre></div>`;
+        } else if (tool.toolType === 'task') {
+            // Task block rendering - show tasks as a clean list
+            html += `<div class="tool-result task-list">`;
+            tool.results.filter(r => r && r.trim()).forEach(r => {
+                let resultHtml = escapeHtml(r);
+                const lower = r.toLowerCase();
+
+                // Style based on content
+                if (lower.includes('added tasks') || lower.includes('updated tasks')) {
+                    resultHtml = `<span class="result-success">${resultHtml}</span>`;
+                } else if (lower.includes('→')) {
+                    // Status change like "Task → In Progress"
+                    resultHtml = `<span class="task-status">${resultHtml}</span>`;
+                } else if (r.includes('(') && r.includes(')')) {
+                    // Task with description like "Task Name (description)"
+                    const parts = r.match(/^([^(]+)\(([^)]+)\)$/);
+                    if (parts) {
+                        resultHtml = `<span class="task-name">${escapeHtml(parts[1].trim())}</span><span class="task-desc">${escapeHtml(parts[2])}</span>`;
+                    }
+                }
+                html += `<div class="result-line"><span class="result-arrow">↳</span> ${resultHtml}</div>`;
+            });
+            html += `</div>`;
         } else {
             // Normal result rendering
             html += `<div class="tool-result">`;
@@ -1788,7 +1949,7 @@ function renderToolBlock(tool) {
                 let resultHtml = escapeHtml(r);
                 if (r.toLowerCase().includes('error')) {
                     resultHtml = `<span class="result-error">${resultHtml}</span>`;
-                } else if (r.toLowerCase().includes('completed')) {
+                } else if (r.toLowerCase().includes('completed') || r.toLowerCase().includes('successfully')) {
                     resultHtml = `<span class="result-success">${resultHtml}</span>`;
                 }
                 html += `<div class="result-line"><span class="result-arrow">↳</span> ${resultHtml}</div>`;
@@ -1818,7 +1979,8 @@ function renderCodeDiffBlock(codeDiffLines, isStreaming = false) {
     });
 
     const streamingClass = isStreaming ? ' streaming' : '';
-    let html = `<div class="tool-code-diff-wrapper${streamingClass}" onclick="toggleCodeDiff(event, this)">`;
+    const collapsedClass = isStreaming ? '' : ' collapsed'; // Collapsed by default when not streaming
+    let html = `<div class="tool-code-diff-wrapper${streamingClass}${collapsedClass}" onclick="toggleCodeDiff(event, this)">`;
 
     // Clickable header
     html += `<div class="tool-code-diff-header">`;
@@ -2785,6 +2947,48 @@ function renderChatHistory(chats) {
 // Create new chat
 async function createNewChat() {
     try {
+        // If there's an active streaming message, finalize it for the OLD chat before switching
+        if (streamingMessageDiv && streamingContent && currentChatId) {
+            console.log('[NEW CHAT] Finalizing streaming message for old chat:', currentChatId);
+            // Save the streaming content to the old chat
+            const oldChatId = currentChatId;
+            const oldChatHistory = [...chatHistory];
+
+            // Add the streaming content to old chat history
+            const index = oldChatHistory.length;
+            const messageId = generateMessageId(oldChatId, index, streamingContent);
+            oldChatHistory.push({ role: 'assistant', content: streamingContent, messageId });
+
+            // Save old chat in background (don't await)
+            fetch(`/api/chats/${oldChatId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages: oldChatHistory })
+            }).catch(err => console.error('[NEW CHAT] Failed to save old chat:', err));
+
+            // Remove the streaming message div from DOM
+            streamingMessageDiv.remove();
+        }
+
+        // Reset streaming state
+        streamingMessageDiv = null;
+        streamingContent = '';
+        streamingFinalized = true;
+
+        // Abort any ongoing request
+        if (currentAbortController) {
+            console.log('[NEW CHAT] Aborting current request');
+            currentAbortController.abort();
+            currentAbortController = null;
+        }
+
+        // Reset processing state
+        isProcessing = false;
+        hideTypingIndicator();
+        hideStopButton();
+        document.getElementById('sendBtn').disabled = false;
+        document.getElementById('messageInput').disabled = false;
+
         // Reset the auggie session to start fresh context
         const resetUrl = '/api/session/reset';
         const resetBody = { workspace: currentWorkspace };
@@ -2808,6 +3012,7 @@ async function createNewChat() {
         localStorage.setItem('currentChatId', currentChatId);
         document.getElementById('chatMessages').innerHTML = WELCOME_HTML;
         loadChatsFromServer();
+        console.log('[NEW CHAT] New chat created:', currentChatId);
     } catch (error) {
         console.error('Failed to create chat:', error);
         showNotification('Failed to create new chat');
@@ -2841,6 +3046,49 @@ async function saveCurrentChatToServer(allowEmpty = false) {
 
 // Load chat from server
 async function loadChatFromServer(chatId) {
+    console.log('[LOAD] Loading chat:', chatId);
+
+    // If there's an active streaming message, finalize it for the OLD chat before switching
+    if (streamingMessageDiv && streamingContent && currentChatId && currentChatId !== chatId) {
+        console.log('[LOAD] Finalizing streaming message for old chat:', currentChatId);
+        const oldChatId = currentChatId;
+        const oldChatHistory = [...chatHistory];
+
+        // Add the streaming content to old chat history
+        const index = oldChatHistory.length;
+        const messageId = generateMessageId(oldChatId, index, streamingContent);
+        oldChatHistory.push({ role: 'assistant', content: streamingContent, messageId });
+
+        // Save old chat in background (don't await)
+        fetch(`/api/chats/${oldChatId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: oldChatHistory })
+        }).catch(err => console.error('[LOAD] Failed to save old chat:', err));
+
+        // Remove the streaming message div from DOM
+        streamingMessageDiv.remove();
+
+        // Reset streaming state
+        streamingMessageDiv = null;
+        streamingContent = '';
+        streamingFinalized = true;
+
+        // Abort any ongoing request
+        if (currentAbortController) {
+            console.log('[LOAD] Aborting current request');
+            currentAbortController.abort();
+            currentAbortController = null;
+        }
+
+        // Reset processing state
+        isProcessing = false;
+        hideTypingIndicator();
+        hideStopButton();
+        document.getElementById('sendBtn').disabled = false;
+        document.getElementById('messageInput').disabled = false;
+    }
+
     // Add cache-busting timestamp to prevent browser caching
     const url = `/api/chats/${chatId}?_t=${Date.now()}`;
     logRequest('GET', url);
@@ -2859,6 +3107,7 @@ async function loadChatFromServer(chatId) {
         currentChatId = chatId;
         chatHistory = chat.messages || [];
         localStorage.setItem('currentChatId', currentChatId);
+        console.log('[LOAD] Successfully loaded chat, currentChatId set to:', currentChatId);
 
         // Debug: log what we received from server
         console.log('[LOAD] Received from server:', chatHistory.length, 'messages');

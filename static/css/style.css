@@ -1412,11 +1412,11 @@ body {
    TOOL BLOCKS - Terminal, Read File, etc.
    ============================================================================ */
 .tool-block {
-    margin: 12px 0;
+    margin: 8px 0;
     border-radius: 8px;
     overflow: hidden;
     font-size: 0.85rem;
-    line-height: 1.5;
+    line-height: 1.4;
     border: 1px solid var(--border);
     background: var(--bg);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
@@ -1439,14 +1439,14 @@ body {
 }
 
 .tool-block .tool-command {
-    padding: 10px 12px;
+    padding: 6px 12px;
     font-family: inherit;
     overflow-x: auto;
-    line-height: 1.4;
+    line-height: 1.3;
 }
 
 .tool-block .tool-command code {
-    display: block;
+    display: inline;
     white-space: pre-wrap;
     word-break: break-word;
     background: none;
@@ -1455,10 +1455,39 @@ body {
     font-size: 0.75rem;
 }
 
+/* Line range indicator for partial file reads - beside filename */
+.tool-block .tool-command .line-range {
+    margin-left: 10px;
+    padding: 2px 8px;
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--primary);
+    font-size: 0.68rem;
+    font-weight: 500;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+/* Search query indicator for file search reads - beside filename */
+.tool-block .tool-command .search-query {
+    margin-left: 10px;
+    padding: 2px 8px;
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--primary);
+    font-size: 0.68rem;
+    font-weight: 500;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.tool-block .tool-command .search-query i {
+    margin-right: 4px;
+    font-size: 0.6rem;
+}
+
 .tool-block .tool-result {
-    padding: 2px 12px;
+    padding: 4px 12px;
     font-size: 0.75rem;
-    line-height: 1.1;
+    line-height: 1.2;
     background: rgba(0, 0, 0, 0.12);
 }
 
@@ -1479,8 +1508,8 @@ body {
 .tool-block.tool-terminal {
     background: transparent;
     border: 1px solid rgba(99, 102, 241, 0.4);
-    margin: 12px 0;
-    line-height: 1.5;
+    margin: 8px 0;
+    line-height: 1.4;
 }
 
 .tool-block.tool-terminal .tool-header {
@@ -1494,8 +1523,8 @@ body {
 .tool-block.tool-terminal .tool-command {
     background: var(--jay-black);
     color: var(--jay-white);
-    padding: 10px 12px;
-    line-height: 1.4;
+    padding: 6px 12px;
+    line-height: 1.3;
 }
 
 .tool-block.tool-terminal .tool-command code {
@@ -1554,8 +1583,8 @@ body {
 .tool-block.tool-read {
     background: transparent;
     border: 1px solid rgba(99, 102, 241, 0.4);
-    margin: 12px 0;
-    line-height: 1.5;
+    margin: 8px 0;
+    line-height: 1.4;
 }
 
 .tool-block.tool-read .tool-header {
@@ -1569,17 +1598,17 @@ body {
 .tool-block.tool-read .tool-command {
     background: rgba(99, 102, 241, 0.05);
     color: var(--text);
-    padding: 10px 12px;
-    line-height: 1.4;
+    padding: 6px 12px;
+    line-height: 1.3;
 }
 
 .tool-block.tool-read .tool-command code {
-    color: #000000;
+    color: var(--text);
     background: none;
     padding: 0;
-    display: block;
-    width: 100%;
+    display: inline;
     font-size: 0.75rem;
+    font-family: inherit !important;
 }
 
 .tool-block.tool-read .tool-result {
@@ -1599,8 +1628,8 @@ body {
 .tool-block.tool-action {
     background: transparent;
     border: 1px solid rgba(99, 102, 241, 0.4);
-    margin: 12px 0;
-    line-height: 1.5;
+    margin: 8px 0;
+    line-height: 1.4;
 }
 
 .tool-block.tool-action .tool-header {
@@ -1616,16 +1645,17 @@ body {
     background: rgba(99, 102, 241, 0.05);
     color: var(--text);
     font-weight: 500;
-    padding: 10px 12px;
-    line-height: 1.4;
+    padding: 6px 12px;
+    line-height: 1.3;
 }
 
 .tool-block.tool-action .tool-command code {
-    color: #000000;
+    color: var(--text);
     background: none;
     padding: 0;
     font-weight: 500;
     font-size: 0.75rem;
+    font-family: inherit !important;
 }
 
 .tool-block.tool-action .tool-result {
@@ -1642,16 +1672,92 @@ body {
     padding: 0;
 }
 
+/* Task blocks (Add Tasks, Update Tasks) - Teal/cyan theme */
+.tool-block.tool-task {
+    background: transparent;
+    border: 1px solid rgba(20, 184, 166, 0.4);
+    margin: 8px 0;
+    line-height: 1.4;
+}
+
+.tool-block.tool-task .tool-header {
+    background: linear-gradient(135deg, rgba(20, 184, 166, 0.12), rgba(6, 182, 212, 0.08));
+    color: var(--text-muted);
+    font-weight: 600;
+    padding: 4px 11px;
+    font-size: 0.65rem;
+    border-bottom: 1px solid rgba(20, 184, 166, 0.25);
+}
+
+.tool-block.tool-task .tool-command {
+    background: rgba(20, 184, 166, 0.05);
+    color: var(--text);
+    padding: 6px 12px;
+    line-height: 1.3;
+}
+
+.tool-block.tool-task .tool-command code {
+    color: var(--text);
+    background: none;
+    padding: 0;
+    font-size: 0.75rem;
+    font-family: inherit !important;
+}
+
+.tool-block.tool-task .tool-result {
+    background: transparent;
+    color: var(--text-muted);
+    padding: 6px 10px;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    border-top: 1px solid rgba(20, 184, 166, 0.25);
+}
+
+.tool-block.tool-task .tool-result .result-line {
+    padding: 2px 0;
+}
+
+.tool-block.tool-task .tool-result .result-arrow {
+    color: #14b8a6;
+}
+
+.tool-block.tool-task .tool-result .result-success {
+    color: #22c55e;
+}
+
+/* Task list styling */
+.tool-block.tool-task .task-list .result-line {
+    border-bottom: 1px solid rgba(20, 184, 166, 0.1);
+}
+
+.tool-block.tool-task .task-list .result-line:last-child {
+    border-bottom: none;
+}
+
+.tool-block.tool-task .task-name {
+    font-weight: 500;
+    color: var(--text);
+}
+
+.tool-block.tool-task .task-desc {
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    margin-left: 6px;
+}
+
+.tool-block.tool-task .task-status {
+    color: #f59e0b;  /* Amber for status changes */
+}
+
 /* Remove bottom margin from tool-block when code diff follows */
 .tool-block:has(+ .tool-code-diff-wrapper) {
     margin-bottom: 0;
 }
 
-/* Code diff wrapper - outside tool-block, touching the border */
+/* Code diff wrapper - outside tool-block, stacked vertically */
 .tool-code-diff-wrapper {
     display: flex;
-    align-items: flex-start;
-    gap: 6px;
+    flex-direction: column;
     padding: 8px 14px;
     padding-top: 2px;
     padding-left: 5px;
@@ -1659,19 +1765,69 @@ body {
     background: transparent;
 }
 
+/* Code diff header - clickable row with arrow, label, stats, toggle */
+.tool-code-diff-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 4px 0;
+}
+
 /* Code diff arrow - aligned with result-line arrows */
-.tool-code-diff-wrapper > .diff-arrow {
+.tool-code-diff-header .diff-arrow {
     color: var(--primary);
     font-weight: 700;
     flex-shrink: 0;
 }
 
+/* Code diff header elements */
+.tool-code-diff-header .diff-label {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.tool-code-diff-header .diff-stats {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.tool-code-diff-header .diff-stat-add {
+    color: #22c55e;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.tool-code-diff-header .diff-stat-remove {
+    color: #ef4444;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.tool-code-diff-header .diff-toggle-icon {
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    transition: transform 0.2s;
+    margin-left: 8px;
+}
+
+/* Collapsed state */
+.tool-code-diff-wrapper.collapsed .diff-toggle-icon {
+    transform: rotate(-90deg);
+}
+
+.tool-code-diff-wrapper.collapsed .tool-code-diff {
+    display: none;
+}
+
 /* Code diff container - scrollable for Edit File blocks */
 .tool-code-diff {
-    flex: 1;
     max-height: 270px;
     overflow: auto;
     padding: 10px 14px;
+    margin-top: 6px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 6px;

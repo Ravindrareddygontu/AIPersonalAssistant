@@ -6,15 +6,12 @@ This is the core abstraction that can be used by:
 - CLI tools
 - Webhooks
 - Any other integration
-
-Follows Interface Segregation Principle - clients only depend on what they need.
 """
 
 import os
 import time
 import select
 import logging
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional
 
@@ -35,22 +32,9 @@ class AuggieResponse:
     content: str
     error: Optional[str] = None
     execution_time: float = 0.0
-    
-    @property
-    def is_error(self) -> bool:
-        return not self.success or self.error is not None
 
 
-class AuggieExecutorBase(ABC):
-    """Abstract base class for Auggie execution strategies."""
-    
-    @abstractmethod
-    def execute(self, message: str, workspace: str, model: str = None) -> AuggieResponse:
-        """Execute a message and return the complete response."""
-        pass
-
-
-class AuggieExecutor(AuggieExecutorBase):
+class AuggieExecutor:
     """
     Concrete implementation that executes commands via PTY session.
     

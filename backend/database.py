@@ -36,14 +36,3 @@ def get_chats_collection():
 def get_reminders_collection():
     """Get the reminders collection for scheduled notifications."""
     return get_db()['reminders']
-
-
-def close_connection():
-    """Close MongoDB connection."""
-    global _client, _db
-    if _client:
-        _client.close()
-        _client = None
-        _db = None
-        log.info("MongoDB connection closed")
-

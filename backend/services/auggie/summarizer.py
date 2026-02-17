@@ -6,7 +6,7 @@ Used by integrations like Slack where full responses are too verbose.
 
 import re
 import logging
-from typing import List, Tuple
+from typing import List
 
 log = logging.getLogger('auggie.summarizer')
 

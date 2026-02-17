@@ -6,7 +6,6 @@ import select
 import subprocess
 import threading
 import logging
-import re
 
 from backend.config import get_auggie_model_id
 
@@ -396,16 +395,6 @@ def start_cleanup_thread():
         log.info("[CLEANUP] Started background cleanup thread")
 
 
-def stop_cleanup_thread():
-    """Stop the background cleanup thread."""
-    global _cleanup_thread
-    if _cleanup_thread and _cleanup_thread.is_alive():
-        _cleanup_stop_event.set()
-        _cleanup_thread.join(timeout=2)
-        _cleanup_thread = None
-        log.info("[CLEANUP] Stopped background cleanup thread")
-
-
 class SessionManager:
     @staticmethod
     def get_or_create(workspace, model=None):
@@ -468,17 +457,3 @@ class SessionManager:
         # Aggressively clean up stale processes on reset
         cleanup_stale_auggie_processes(force_aggressive=True)
         return True
-
-    @staticmethod
-    def get_process_info():
-        """Get information about auggie processes for debugging."""
-        tracked_pids = _get_tracked_pids()
-        all_processes = _get_auggie_processes()
-
-        return {
-            'tracked_pids': list(tracked_pids),
-            'all_processes': all_processes,
-            'stale_count': len([p for p in all_processes if p['pid'] not in tracked_pids]),
-            'total_count': len(all_processes)
-        }
-

@@ -7,7 +7,6 @@ Uses dataclass for clean, type-safe state management.
 
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass

@@ -8,6 +8,7 @@ Refactored following SOLID principles:
 """
 
 import os
+import re
 import json
 import time
 import select
@@ -404,23 +405,30 @@ class StreamGenerator:
 
     def _detect_activity(self, output: str) -> str | None:
         """Detect specific activity from terminal output."""
-        # Activity patterns with their clean display text
-        activities = [
-            ('Summarizing conversation history', 'Summarizing conversation history...'),
-            ('Processing response', 'Processing response...'),
-            ('Sending request', 'Sending request...'),
-            ('Receiving response', 'Receiving response...'),
-            ('Codebase search', 'Searching codebase...'),
-            ('Executing tools', 'Executing tools...'),
-            ('Reading file', 'Reading file...'),
-            ('Searching', 'Searching...'),
+        # Activity patterns to look for
+        activity_patterns = [
+            'Summarizing conversation history',
+            'Processing response',
+            'Sending request',
+            'Receiving response',
+            'Codebase search',
+            'Executing tools',
+            'Reading file',
+            'Searching',
         ]
 
         lines = [line.strip() for line in output.splitlines() if line.strip()]
         for line in reversed(lines):
-            for pattern, display_text in activities:
+            for pattern in activity_patterns:
                 if pattern in line:
-                    return display_text
+                    # Return the actual line (includes elapsed time like "(5s)")
+                    # Remove ANSI escape codes
+                    clean_line = re.sub(r'\x1b\[[0-9;]*m', '', line)
+                    # Remove box drawing characters
+                    clean_line = re.sub(r'[│╭╮╯╰─┌┐└┘├┤┬┴┼]', '', clean_line)
+                    clean_line = clean_line.strip()
+                    if clean_line:
+                        return clean_line
 
         return None
 

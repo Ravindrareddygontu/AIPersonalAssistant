@@ -16,7 +16,6 @@ import sys
 import time
 import json
 import logging
-import threading
 from dataclasses import dataclass, field
 from typing import List, Optional
 from datetime import datetime

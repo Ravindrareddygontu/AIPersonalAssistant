@@ -129,8 +129,3 @@ SLACK_MODEL = os.environ.get('SLACK_MODEL', DEFAULT_MODEL)
 
 # Enable/disable Slack bot on startup
 SLACK_ENABLED = os.environ.get('SLACK_ENABLED', 'false').lower() == 'true'
-
-
-def is_slack_configured() -> bool:
-    """Check if Slack integration is properly configured."""
-    return bool(SLACK_BOT_TOKEN and SLACK_APP_TOKEN)

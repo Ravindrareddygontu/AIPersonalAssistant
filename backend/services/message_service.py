@@ -27,7 +27,6 @@ API Schema (frontend-facing):
 
 """
 
-import hashlib
 import uuid
 from datetime import datetime
 
@@ -127,23 +126,6 @@ def api_to_db_format(chat_id, api_messages):
 def get_message_count(db_messages):
     """Get the count of Q&A pairs (for display purposes)."""
     return len(db_messages)
-
-
-def truncate_after_message_id(db_messages, message_id):
-    """
-    Remove all Q&A pairs after (and including) the one with the given message_id.
-    
-    Args:
-        db_messages: List of Q&A pairs
-        message_id: The ID of the message to truncate from
-    
-    Returns:
-        Truncated list of Q&A pairs
-    """
-    for i, pair in enumerate(db_messages):
-        if pair.get('id') == message_id:
-            return db_messages[:i]
-    return db_messages
 
 
 def add_question(chat_id, db_messages, question_content):
