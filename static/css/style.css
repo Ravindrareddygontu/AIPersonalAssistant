@@ -1978,7 +1978,7 @@ body {
 
 /* Chat Input */
 .chat-input-container {
-    padding: 16px 20px 48px 20px;
+    padding: 16px 20px 64px 20px;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
@@ -2013,11 +2013,11 @@ body {
 .chat-input-wrapper {
     display: flex;
     align-items: flex-end;
-    gap: 10px;
+    gap: 6px;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: 24px;
-    padding: 8px 8px 8px 16px;
+    padding: 8px;
     transition: border-color 0.2s, box-shadow 0.2s;
     width: calc(100% - 15%);
     margin-left: auto;
@@ -2032,7 +2032,7 @@ body {
 /* Quick shortcut buttons below input box */
 .input-quick-shortcuts {
     position: absolute;
-    bottom: 12px;
+    bottom: 28px;
     left: 10%;
     display: flex;
     gap: 8px;
@@ -2094,17 +2094,86 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: color 0.2s, background 0.2s;
+    transition: all 0.2s ease;
     flex-shrink: 0;
 }
 
 .image-btn:hover {
-    color: var(--primary-light);
-    background: var(--bg-hover);
+    color: var(--primary);
+    background: rgba(80, 120, 176, 0.1);
+    transform: scale(1.05);
 }
 
 .image-btn.has-images {
     color: var(--primary);
+    background: rgba(80, 120, 176, 0.15);
+}
+
+/* Input Actions Container (right side buttons) */
+.input-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* Voice Button */
+.voice-btn {
+    width: 36px;
+    height: 36px;
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.voice-btn:hover {
+    color: var(--primary);
+    background: rgba(80, 120, 176, 0.1);
+    transform: scale(1.05);
+}
+
+.voice-btn.recording {
+    color: #fff;
+    background: #ff4444;
+    animation: pulse-recording 1.5s infinite;
+    box-shadow: 0 2px 8px rgba(255, 68, 68, 0.4);
+}
+
+.voice-btn.recording:hover {
+    color: #fff;
+    background: #ff5555;
+    transform: scale(1.05);
+}
+
+@keyframes pulse-recording {
+    0%, 100% {
+        box-shadow: 0 2px 8px rgba(255, 68, 68, 0.4);
+    }
+    50% {
+        box-shadow: 0 2px 16px rgba(255, 68, 68, 0.6);
+    }
+}
+
+.voice-btn.processing {
+    color: var(--primary);
+    cursor: wait;
+    animation: spin 1s linear infinite;
+}
+
+.voice-btn.processing i::before {
+    content: "\f110"; /* spinner icon */
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 /* Image Preview Area */

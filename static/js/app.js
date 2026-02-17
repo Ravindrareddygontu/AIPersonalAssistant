@@ -142,6 +142,151 @@ function formatMessageWithImages(message, images) {
     return `/images ${imagePath}|||${message}`;
 }
 
+// ============ SPEECH-TO-TEXT (VOICE INPUT) using OpenAI Whisper API ============
+
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+
+// Toggle voice recording on/off
+function toggleVoiceRecording() {
+    if (isRecording) {
+        stopVoiceRecording();
+    } else {
+        startVoiceRecording();
+    }
+}
+
+// Start voice recording using MediaRecorder API
+async function startVoiceRecording() {
+    try {
+        // Request microphone access
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+        // Create MediaRecorder
+        mediaRecorder = new MediaRecorder(stream, {
+            mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
+        });
+
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+            }
+        };
+
+        mediaRecorder.onstop = async () => {
+            // Stop all tracks to release microphone
+            stream.getTracks().forEach(track => track.stop());
+
+            if (audioChunks.length === 0) {
+                showNotification('No audio recorded', 'error');
+                return;
+            }
+
+            // Create audio blob
+            const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+            console.log('[VOICE] Recorded audio:', audioBlob.size, 'bytes');
+
+            // Send to backend for transcription
+            await transcribeAudio(audioBlob);
+        };
+
+        // Start recording
+        mediaRecorder.start();
+        isRecording = true;
+        updateVoiceButtonState();
+        console.log('[VOICE] Recording started');
+
+    } catch (error) {
+        console.error('[VOICE] Error starting recording:', error);
+
+        if (error.name === 'NotAllowedError') {
+            showNotification('Microphone access denied. Please allow microphone access.', 'error');
+        } else if (error.name === 'NotFoundError') {
+            showNotification('No microphone found. Please connect a microphone.', 'error');
+        } else {
+            showNotification('Error starting recording: ' + error.message, 'error');
+        }
+    }
+}
+
+// Stop voice recording
+function stopVoiceRecording() {
+    if (mediaRecorder && isRecording) {
+        mediaRecorder.stop();
+        console.log('[VOICE] Recording stopped');
+    }
+    isRecording = false;
+    updateVoiceButtonState();
+}
+
+// Send audio to backend for transcription using OpenAI Whisper API
+async function transcribeAudio(audioBlob) {
+    const voiceBtn = document.getElementById('voiceBtn');
+    const voiceIcon = document.getElementById('voiceIcon');
+
+    // Show processing state (spinner in place of mic icon)
+    voiceBtn.classList.add('processing');
+    voiceIcon.classList.remove('fa-microphone');
+    voiceIcon.classList.add('fa-spinner', 'fa-spin');
+
+    try {
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'recording.webm');
+
+        const response = await fetch('/api/speech-to-text', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.text) {
+            // Insert transcribed text into input field
+            const input = document.getElementById('messageInput');
+            const existingText = input.value.trim();
+            input.value = existingText ? existingText + ' ' + result.text : result.text;
+            autoResize(input);
+            input.focus();
+            console.log('[VOICE] Transcribed:', result.text);
+        } else {
+            showNotification(result.error || 'Transcription failed', 'error');
+            console.error('[VOICE] Transcription failed:', result.error);
+        }
+
+    } catch (error) {
+        console.error('[VOICE] Transcription error:', error);
+        showNotification('Error transcribing audio. Please try again.', 'error');
+    } finally {
+        // Reset button state
+        voiceBtn.classList.remove('processing');
+        voiceIcon.classList.remove('fa-spinner', 'fa-spin');
+        voiceIcon.classList.add('fa-microphone');
+    }
+}
+
+// Update voice button visual state
+function updateVoiceButtonState() {
+    const voiceBtn = document.getElementById('voiceBtn');
+    const voiceIcon = document.getElementById('voiceIcon');
+
+    if (!voiceBtn || !voiceIcon) return;
+
+    if (isRecording) {
+        voiceBtn.classList.add('recording');
+        voiceBtn.title = 'Click to stop recording';
+        voiceIcon.classList.remove('fa-microphone');
+        voiceIcon.classList.add('fa-microphone-slash');
+    } else {
+        voiceBtn.classList.remove('recording');
+        voiceBtn.title = 'Voice input (Speech to Text)';
+        voiceIcon.classList.remove('fa-microphone-slash');
+        voiceIcon.classList.add('fa-microphone');
+    }
+}
+
 // ============ BACKGROUND PROCESSING WITH MAX 2 CONCURRENT THREADS ============
 const MAX_CONCURRENT_REQUESTS = 2;
 const activeRequests = new Map();  // chatId -> { abortController, streamingContent, status, chatHistory, requestId }
@@ -473,15 +618,77 @@ const WELCOME_HTML = `
 `;
 
 // Initialize the app
+// Render chat messages in the container
+function renderChatMessages(messages) {
+    const container = document.getElementById('chatMessages');
+    container.innerHTML = '';
+
+    if (!messages || messages.length === 0) {
+        container.innerHTML = WELCOME_HTML;
+        return;
+    }
+
+    messages.forEach((msg, idx) => {
+        if (!msg.messageId) {
+            msg.messageId = generateMessageId(currentChatId, idx, msg.content);
+        }
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${msg.role}`;
+        messageDiv.dataset.messageId = msg.messageId;
+        messageDiv.innerHTML = createMessageHTML(msg.role, msg.content, idx, msg.messageId);
+        container.appendChild(messageDiv);
+        addCodeCopyButtons(messageDiv);
+    });
+    setTimeout(() => container.scrollTop = container.scrollHeight, 50);
+}
+
+// Wait for server to be ready with retry
+async function waitForServer(maxRetries = 5, delayMs = 500) {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            const response = await fetch('/api/chats', { cache: 'no-store' });
+            if (response.ok) {
+                const chats = await response.json();
+                console.log(`[INIT] Server ready after ${i + 1} attempt(s), found ${chats.length} chats`);
+                return chats;
+            }
+        } catch (e) {
+            console.log(`[INIT] Server not ready, attempt ${i + 1}/${maxRetries}...`);
+        }
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+    console.log('[INIT] Server not responding after retries');
+    return null;
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+    // Apply cached settings immediately for instant UI
     loadSettings();
     checkAuthStatus();
-    loadWorkspaceFromServer();
 
     // Restore sidebar state
     const savedSidebarState = localStorage.getItem('sidebarOpen');
     if (savedSidebarState === 'false') {
         toggleSidebar();
+    }
+
+    // Render cached chat list immediately (instant UI)
+    const cachedChats = loadCachedChatList();
+    if (cachedChats && cachedChats.length > 0) {
+        console.log('[INIT] Rendering cached chat list:', cachedChats.length, 'chats');
+        renderChatHistory(cachedChats);
+    }
+
+    // Render cached messages for saved chat immediately
+    const savedChatId = localStorage.getItem('currentChatId');
+    if (savedChatId) {
+        const cachedData = loadChatFromCache(savedChatId);
+        if (cachedData && cachedData.messages) {
+            console.log('[INIT] Rendering cached messages for:', savedChatId);
+            currentChatId = savedChatId;
+            chatHistory = cachedData.messages;
+            renderChatMessages(chatHistory);
+        }
     }
 
     // Start cache auto-save for reliability
@@ -490,17 +697,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Sync any unsynced chats from previous sessions
     syncUnsyncedChats();
 
-    // Load chats and restore last active chat
-    await loadChatsFromServer();
+    // Load settings and chats from server in background
+    const [settingsResult, chats] = await Promise.all([
+        loadSettingsFromServer().catch(e => { console.log('[INIT] Settings load failed:', e); return null; }),
+        waitForServer()
+    ]);
 
-    // Try to restore the last active chat
-    const savedChatId = localStorage.getItem('currentChatId');
-    console.log('[INIT] savedChatId from localStorage:', savedChatId);
-    if (savedChatId) {
+    if (chats === null) {
+        // Server not responding - we already rendered from cache above
+        if (!currentChatId) {
+            showNotification('Server not responding. Please restart the app.');
+        }
+        return;
+    }
+
+    // Update chat history from server (may have newer data)
+    renderChatHistory(chats);
+    const chatIds = chats.map(c => c.id);
+    console.log('[INIT] Server returned chat IDs:', chatIds);
+
+    // If we already loaded a cached chat, verify it still exists on server
+    if (currentChatId && chatIds.includes(currentChatId)) {
+        // Chat exists, refresh from server in background
+        console.log('[INIT] Refreshing current chat from server:', currentChatId);
+        loadChatFromServer(currentChatId);
+    } else if (savedChatId && chatIds.includes(savedChatId)) {
+        // Saved chat exists, load it
+        console.log('[INIT] Loading saved chat:', savedChatId);
         await loadChatFromServer(savedChatId);
+    } else if (chatIds.length > 0) {
+        // Saved chat doesn't exist but there are other chats - load the most recent one
+        console.log('[INIT] Saved chat not found, loading most recent chat:', chatIds[0]);
+        await loadChatFromServer(chatIds[0]);
     } else {
-        // No saved chat ID - create a new chat
-        console.log('[INIT] No saved chat ID, creating new chat');
+        // No chats exist - create a new chat
+        console.log('[INIT] No chats exist, creating new chat');
         await createNewChat();
     }
     console.log('[INIT] After restore, currentChatId:', currentChatId);
@@ -533,13 +764,16 @@ async function loadSettingsFromServer() {
         logResponse('GET', url, response.status, data);
         if (data.workspace) {
             currentWorkspace = data.workspace;
+            localStorage.setItem('workspace', currentWorkspace);
             updateWorkspaceDisplay();
         }
         if (data.model) {
             currentModel = data.model;
+            localStorage.setItem('currentModel', currentModel);
         }
         if (data.available_models) {
             availableModels = data.available_models;
+            localStorage.setItem('availableModels', JSON.stringify(availableModels));
             populateModelSelect();
         }
         // Handle history_enabled setting
@@ -3069,11 +3303,13 @@ function applyTheme(theme) {
     localStorage.setItem('theme', theme);
 }
 
-// Load settings
+// Load settings from localStorage (instant, no server call)
 function loadSettings() {
     const theme = localStorage.getItem('theme');
     const themeSelect = document.getElementById('themeSelect');
     const savedWorkspace = localStorage.getItem('workspace');
+    const savedModel = localStorage.getItem('currentModel');
+    const savedModels = localStorage.getItem('availableModels');
 
     if (theme) {
         applyTheme(theme);
@@ -3083,6 +3319,19 @@ function loadSettings() {
     if (savedWorkspace) {
         currentWorkspace = savedWorkspace;
         updateWorkspaceDisplay();
+    }
+
+    // Restore model from cache for instant UI
+    if (savedModel) {
+        currentModel = savedModel;
+    }
+    if (savedModels) {
+        try {
+            availableModels = JSON.parse(savedModels);
+            populateModelSelect();
+        } catch (e) {
+            console.log('[INIT] Failed to parse cached models');
+        }
     }
 }
 
@@ -3368,10 +3617,27 @@ async function loadChatsFromServer() {
         const response = await fetch(url);
         const chats = await response.json();
         logResponse('GET', url, response.status, { chats_count: chats.length });
+        // Cache chat list for instant reload
+        localStorage.setItem('cachedChatList', JSON.stringify(chats));
         renderChatHistory(chats);
+        return chats;  // Return chats array for caller to use
     } catch (error) {
         console.error('Failed to load chats:', error);
+        return [];
     }
+}
+
+// Load cached chat list from localStorage (instant, no server call)
+function loadCachedChatList() {
+    try {
+        const cached = localStorage.getItem('cachedChatList');
+        if (cached) {
+            return JSON.parse(cached);
+        }
+    } catch (e) {
+        console.log('[INIT] Failed to parse cached chat list');
+    }
+    return null;
 }
 
 // Render chat history in sidebar
@@ -3648,11 +3914,10 @@ async function loadChatFromServer(chatId) {
         const chat = await response.json();
         logResponse('GET', url, response.status, { messages_count: chat.messages?.length, error: chat.error });
         if (chat.error) {
-            // Chat not found - create a new one
-            console.log('[LOAD] Chat not found, creating new chat');
+            // Chat not found - don't create new chat here, let caller handle it
+            console.log('[LOAD] Chat not found:', chatId);
             localStorage.removeItem('currentChatId');
-            await createNewChat();
-            return;
+            return false;
         }
 
         currentChatId = chatId;
@@ -3734,9 +3999,9 @@ async function loadChatFromServer(chatId) {
             return;
         }
 
-        // No cache available, create new chat
+        // No cache available - don't create new chat, let caller handle it
         localStorage.removeItem('currentChatId');
-        await createNewChat();
+        return false;
     }
 }
 
@@ -3827,19 +4092,29 @@ async function clearAllChats() {
 }
 
 // Show notification
-function showNotification(message) {
+function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
+
+    // Color based on notification type
+    let bgColor = 'var(--primary)';
+    if (type === 'error') {
+        bgColor = 'var(--error)';
+    } else if (type === 'success') {
+        bgColor = 'var(--success)';
+    }
+
     notification.style.cssText = `
         position: fixed;
         bottom: 100px;
         left: 50%;
         transform: translateX(-50%);
-        background: var(--primary-color);
+        background: ${bgColor};
         color: white;
         padding: 12px 24px;
         border-radius: 10px;
         z-index: 1001;
         animation: fadeIn 0.3s ease;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     `;
     notification.textContent = message;
     document.body.appendChild(notification);

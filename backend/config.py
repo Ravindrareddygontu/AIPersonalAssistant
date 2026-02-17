@@ -22,6 +22,9 @@ BOX_CHARS_PATTERN = re.compile(r'^[╭╮╯╰│─╗╔║╚╝═█▇▆
 MONGODB_URI = os.environ.get('MONGODB_URI', 'mongodb://localhost:27017')
 MONGODB_DB_NAME = os.environ.get('MONGODB_DB_NAME', 'ai_chat_app')
 
+# OpenAI API Configuration (for Whisper speech-to-text)
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+
 # Legacy file-based storage (kept for reference, no longer used)
 CHATS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'chats')
 os.makedirs(CHATS_DIR, exist_ok=True)

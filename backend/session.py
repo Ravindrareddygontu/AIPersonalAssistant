@@ -53,7 +53,7 @@ class AuggieSession:
 
         env = os.environ.copy()
 
-        nvm_bin = '/home/dell/.nvm/versions/node/v20.20.0/bin'
+        nvm_bin = '/home/dell/.nvm/versions/node/v22.22.0/bin'
         if nvm_bin not in env.get('PATH', ''):
             env['PATH'] = nvm_bin + ':' + env.get('PATH', '/usr/bin:/bin')
 
@@ -64,8 +64,8 @@ class AuggieSession:
 
         auggie_cmd = 'auggie'
         for path in [
-            '/home/dell/.nvm/versions/node/v20.20.0/bin/auggie',
-            os.path.expanduser('~/.nvm/versions/node/v20.20.0/bin/auggie'),
+            '/home/dell/.nvm/versions/node/v22.22.0/bin/auggie',
+            os.path.expanduser('~/.nvm/versions/node/v22.22.0/bin/auggie'),
             '/usr/local/bin/auggie',
             '/usr/bin/auggie'
         ]:

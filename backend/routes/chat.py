@@ -14,7 +14,11 @@ import time
 import select
 import logging
 import threading
-from flask import Blueprint, request, Response, stream_with_context, jsonify
+from typing import Optional
+
+from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse, JSONResponse
+from pydantic import BaseModel
 
 from backend.config import settings
 from backend.session import SessionManager
@@ -27,7 +31,18 @@ from backend.services.stream_processor import StreamProcessor
 from backend.services.slack.notifier import notify_completion
 
 log = logging.getLogger('chat')
-chat_bp = Blueprint('chat', __name__)
+chat_router = APIRouter()
+
+
+# Pydantic models for request validation
+class ChatStreamRequest(BaseModel):
+    message: str
+    workspace: Optional[str] = None
+    chatId: Optional[str] = None
+
+
+class ChatResetRequest(BaseModel):
+    workspace: Optional[str] = None
 
 
 def _sanitize_message(message: str) -> str:
@@ -765,51 +780,54 @@ class StreamGenerator:
 
 
 # =============================================================================
-# Flask Routes
+# FastAPI Routes
 # =============================================================================
 
-@chat_bp.route('/api/chat/stream', methods=['POST'])
-def chat_stream():
+@chat_router.post('/api/chat/stream')
+async def chat_stream(data: ChatStreamRequest):
     """Stream chat response endpoint."""
     _abort_flag.clear()
 
-    data = request.json
-    message = data.get('message', '')
-    workspace = data.get('workspace', settings.workspace)
-    chat_id = data.get('chatId')
+    message = data.message
+    workspace = data.workspace or settings.workspace
+    chat_id = data.chatId
 
     log.info(f"[REQUEST] POST /api/chat/stream | message: '{message[:100]}...' | workspace: '{workspace}'")
 
     generator = StreamGenerator(message, os.path.expanduser(workspace), chat_id=chat_id)
-    response = Response(
-        stream_with_context(generator.generate()),
-        mimetype='text/event-stream'
-    )
-    response.headers.update({
-        'Cache-Control': 'no-cache',
-        'X-Accel-Buffering': 'no',
-        'Connection': 'keep-alive'
-    })
+
+    def stream_generator():
+        """Wrap the sync generator for async streaming."""
+        for chunk in generator.generate():
+            yield chunk
 
     log.info("[RESPONSE] POST /api/chat/stream | Status: 200 | SSE stream initiated")
-    return response
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive'
+        }
+    )
 
 
-@chat_bp.route('/api/chat/abort', methods=['POST'])
-def chat_abort():
+@chat_router.post('/api/chat/abort')
+async def chat_abort():
     """Abort current streaming request."""
     log.info("[REQUEST] POST /api/chat/abort")
     _abort_flag.set()
     response_data = {'status': 'ok', 'message': 'Abort signal sent'}
     log.info(f"[RESPONSE] POST /api/chat/abort | Status: 200 | {response_data}")
-    return jsonify(response_data)
+    return response_data
 
 
-@chat_bp.route('/api/chat/reset', methods=['POST'])
-def chat_reset():
+@chat_router.post('/api/chat/reset')
+async def chat_reset(data: Optional[ChatResetRequest] = None):
     """Reset the auggie session for the current workspace."""
-    data = request.json or {}
-    workspace = data.get('workspace', settings.workspace)
+    workspace = data.workspace if data and data.workspace else settings.workspace
     workspace = os.path.expanduser(workspace)
 
     log.info(f"[REQUEST] POST /api/chat/reset | workspace: '{workspace}'")
@@ -819,8 +837,8 @@ def chat_reset():
     if not reset_success:
         response_data = {'status': 'error', 'message': 'Cannot reset: terminal is currently in use'}
         log.info(f"[RESPONSE] POST /api/chat/reset | Status: 409 | {response_data}")
-        return jsonify(response_data), 409
+        return JSONResponse(content=response_data, status_code=409)
 
     response_data = {'status': 'ok', 'message': 'Session reset successfully'}
     log.info(f"[RESPONSE] POST /api/chat/reset | Status: 200 | {response_data}")
-    return jsonify(response_data)
+    return response_data
