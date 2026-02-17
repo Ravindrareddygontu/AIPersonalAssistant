@@ -15,6 +15,160 @@ let slackWebhookUrl = '';  // Slack webhook URL
 let statusTimerInterval = null;  // Timer for status elapsed time
 let statusStartTime = null;  // When status started
 
+// ============ LOCAL CACHE MECHANISM FOR MESSAGE RELIABILITY ============
+const CACHE_PREFIX = 'chat_cache_';
+const CACHE_META_KEY = 'chat_cache_meta';
+let cacheAutoSaveInterval = null;
+
+// Save chat to local cache immediately
+function saveChatToCache(chatId, messages, streamingContent = '') {
+    if (!chatId) return;
+    try {
+        const cacheData = {
+            messages: messages,
+            streamingContent: streamingContent,
+            timestamp: Date.now(),
+            synced: false
+        };
+        localStorage.setItem(CACHE_PREFIX + chatId, JSON.stringify(cacheData));
+        console.log('[CACHE] Saved chat to cache:', chatId, 'messages:', messages.length);
+
+        // Update cache meta (list of cached chats)
+        updateCacheMeta(chatId);
+    } catch (e) {
+        console.error('[CACHE] Failed to save to cache:', e);
+    }
+}
+
+// Load chat from local cache
+function loadChatFromCache(chatId) {
+    if (!chatId) return null;
+    try {
+        const cached = localStorage.getItem(CACHE_PREFIX + chatId);
+        if (cached) {
+            const data = JSON.parse(cached);
+            console.log('[CACHE] Loaded chat from cache:', chatId, 'messages:', data.messages?.length);
+            return data;
+        }
+    } catch (e) {
+        console.error('[CACHE] Failed to load from cache:', e);
+    }
+    return null;
+}
+
+// Mark cache as synced with server
+function markCacheSynced(chatId) {
+    if (!chatId) return;
+    try {
+        const cached = localStorage.getItem(CACHE_PREFIX + chatId);
+        if (cached) {
+            const data = JSON.parse(cached);
+            data.synced = true;
+            data.syncedAt = Date.now();
+            localStorage.setItem(CACHE_PREFIX + chatId, JSON.stringify(data));
+        }
+    } catch (e) {
+        console.error('[CACHE] Failed to mark synced:', e);
+    }
+}
+
+// Update cache metadata (track which chats are cached)
+function updateCacheMeta(chatId) {
+    try {
+        let meta = JSON.parse(localStorage.getItem(CACHE_META_KEY) || '{}');
+        meta[chatId] = Date.now();
+
+        // Clean up old cache entries (keep last 50 chats)
+        const chatIds = Object.keys(meta).sort((a, b) => meta[b] - meta[a]);
+        if (chatIds.length > 50) {
+            chatIds.slice(50).forEach(id => {
+                delete meta[id];
+                localStorage.removeItem(CACHE_PREFIX + id);
+            });
+        }
+
+        localStorage.setItem(CACHE_META_KEY, JSON.stringify(meta));
+    } catch (e) {
+        console.error('[CACHE] Failed to update meta:', e);
+    }
+}
+
+// Get unsynced chats from cache
+function getUnsyncedChats() {
+    const unsynced = [];
+    try {
+        const meta = JSON.parse(localStorage.getItem(CACHE_META_KEY) || '{}');
+        Object.keys(meta).forEach(chatId => {
+            const cached = localStorage.getItem(CACHE_PREFIX + chatId);
+            if (cached) {
+                const data = JSON.parse(cached);
+                if (!data.synced && data.messages?.length > 0) {
+                    unsynced.push({ chatId, ...data });
+                }
+            }
+        });
+    } catch (e) {
+        console.error('[CACHE] Failed to get unsynced:', e);
+    }
+    return unsynced;
+}
+
+// Sync unsynced chats to server
+async function syncUnsyncedChats() {
+    const unsynced = getUnsyncedChats();
+    if (unsynced.length === 0) return;
+
+    console.log('[CACHE] Syncing', unsynced.length, 'unsynced chats to server');
+    for (const chat of unsynced) {
+        try {
+            const response = await fetch(`/api/chats/${chat.chatId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages: chat.messages })
+            });
+            if (response.ok) {
+                markCacheSynced(chat.chatId);
+                console.log('[CACHE] Synced chat:', chat.chatId);
+            }
+        } catch (e) {
+            console.error('[CACHE] Failed to sync chat:', chat.chatId, e);
+        }
+    }
+}
+
+// Start auto-save interval for streaming content
+function startCacheAutoSave() {
+    if (cacheAutoSaveInterval) return;
+    cacheAutoSaveInterval = setInterval(() => {
+        if (currentChatId && (chatHistory.length > 0 || streamingContent)) {
+            saveChatToCache(currentChatId, chatHistory, streamingContent);
+        }
+    }, 3000); // Save every 3 seconds during activity
+    console.log('[CACHE] Auto-save started');
+}
+
+// Stop auto-save interval
+function stopCacheAutoSave() {
+    if (cacheAutoSaveInterval) {
+        clearInterval(cacheAutoSaveInterval);
+        cacheAutoSaveInterval = null;
+        console.log('[CACHE] Auto-save stopped');
+    }
+}
+
+// Clear cache for a specific chat
+function clearChatCache(chatId) {
+    try {
+        localStorage.removeItem(CACHE_PREFIX + chatId);
+        let meta = JSON.parse(localStorage.getItem(CACHE_META_KEY) || '{}');
+        delete meta[chatId];
+        localStorage.setItem(CACHE_META_KEY, JSON.stringify(meta));
+    } catch (e) {
+        console.error('[CACHE] Failed to clear cache:', e);
+    }
+}
+// ============ END LOCAL CACHE MECHANISM ============
+
 // Network request/response logger
 function logRequest(method, url, body = null) {
     const fullUrl = new URL(url, window.location.origin).href;
@@ -80,6 +234,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (savedSidebarState === 'false') {
         toggleSidebar();
     }
+
+    // Start cache auto-save for reliability
+    startCacheAutoSave();
+
+    // Sync any unsynced chats from previous sessions
+    syncUnsyncedChats();
 
     // Load chats and restore last active chat
     await loadChatsFromServer();
@@ -2947,27 +3107,33 @@ function renderChatHistory(chats) {
 // Create new chat
 async function createNewChat() {
     try {
-        // If there's an active streaming message, finalize it for the OLD chat before switching
-        if (streamingMessageDiv && streamingContent && currentChatId) {
-            console.log('[NEW CHAT] Finalizing streaming message for old chat:', currentChatId);
-            // Save the streaming content to the old chat
+        // Save the OLD chat before switching (including any streaming content)
+        if (currentChatId && chatHistory.length > 0) {
+            console.log('[NEW CHAT] Saving old chat before switching:', currentChatId);
             const oldChatId = currentChatId;
             const oldChatHistory = [...chatHistory];
 
-            // Add the streaming content to old chat history
-            const index = oldChatHistory.length;
-            const messageId = generateMessageId(oldChatId, index, streamingContent);
-            oldChatHistory.push({ role: 'assistant', content: streamingContent, messageId });
+            // If there's active streaming content, add it to the old chat history
+            if (streamingMessageDiv && streamingContent) {
+                console.log('[NEW CHAT] Including streaming content in old chat');
+                const index = oldChatHistory.length;
+                const messageId = generateMessageId(oldChatId, index, streamingContent);
+                oldChatHistory.push({ role: 'assistant', content: streamingContent, messageId });
 
-            // Save old chat in background (don't await)
+                // Remove the streaming message div from DOM
+                streamingMessageDiv.remove();
+            }
+
+            // Save to local cache immediately (reliable)
+            saveChatToCache(oldChatId, oldChatHistory);
+
+            // Save old chat to server in background (don't await)
             fetch(`/api/chats/${oldChatId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ messages: oldChatHistory })
-            }).catch(err => console.error('[NEW CHAT] Failed to save old chat:', err));
-
-            // Remove the streaming message div from DOM
-            streamingMessageDiv.remove();
+            }).then(() => markCacheSynced(oldChatId))
+              .catch(err => console.error('[NEW CHAT] Failed to save old chat to server (cached locally):', err));
         }
 
         // Reset streaming state
@@ -3019,11 +3185,14 @@ async function createNewChat() {
     }
 }
 
-// Save current chat to server
+// Save current chat to server (with local cache backup)
 async function saveCurrentChatToServer(allowEmpty = false) {
     if (!currentChatId) return;
     // Allow saving empty history when explicitly requested (e.g., during edit/retry)
     if (chatHistory.length === 0 && !allowEmpty) return;
+
+    // Always save to local cache first (immediate, reliable)
+    saveChatToCache(currentChatId, chatHistory, streamingContent);
 
     const url = `/api/chats/${currentChatId}`;
     const requestBody = { messages: chatHistory };
@@ -3038,9 +3207,12 @@ async function saveCurrentChatToServer(allowEmpty = false) {
         const data = await response.json();
         logResponse('PUT', url, response.status, { messages_count: data.messages?.length });
 
+        // Mark cache as synced on successful server save
+        markCacheSynced(currentChatId);
         loadChatsFromServer();
     } catch (error) {
-        console.error('[SAVE] Failed to save chat:', error);
+        console.error('[SAVE] Failed to save chat to server (cached locally):', error);
+        // Data is still safe in local cache - will sync later
     }
 }
 
@@ -3048,26 +3220,33 @@ async function saveCurrentChatToServer(allowEmpty = false) {
 async function loadChatFromServer(chatId) {
     console.log('[LOAD] Loading chat:', chatId);
 
-    // If there's an active streaming message, finalize it for the OLD chat before switching
-    if (streamingMessageDiv && streamingContent && currentChatId && currentChatId !== chatId) {
-        console.log('[LOAD] Finalizing streaming message for old chat:', currentChatId);
+    // Save the OLD chat before switching (if switching to a different chat)
+    if (currentChatId && currentChatId !== chatId && chatHistory.length > 0) {
+        console.log('[LOAD] Saving old chat before switching:', currentChatId);
         const oldChatId = currentChatId;
         const oldChatHistory = [...chatHistory];
 
-        // Add the streaming content to old chat history
-        const index = oldChatHistory.length;
-        const messageId = generateMessageId(oldChatId, index, streamingContent);
-        oldChatHistory.push({ role: 'assistant', content: streamingContent, messageId });
+        // If there's active streaming content, add it to the old chat history
+        if (streamingMessageDiv && streamingContent) {
+            console.log('[LOAD] Including streaming content in old chat');
+            const index = oldChatHistory.length;
+            const messageId = generateMessageId(oldChatId, index, streamingContent);
+            oldChatHistory.push({ role: 'assistant', content: streamingContent, messageId });
 
-        // Save old chat in background (don't await)
+            // Remove the streaming message div from DOM
+            streamingMessageDiv.remove();
+        }
+
+        // Save to local cache immediately (reliable)
+        saveChatToCache(oldChatId, oldChatHistory);
+
+        // Save old chat to server in background (don't await)
         fetch(`/api/chats/${oldChatId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ messages: oldChatHistory })
-        }).catch(err => console.error('[LOAD] Failed to save old chat:', err));
-
-        // Remove the streaming message div from DOM
-        streamingMessageDiv.remove();
+        }).then(() => markCacheSynced(oldChatId))
+          .catch(err => console.error('[LOAD] Failed to save old chat to server (cached locally):', err));
 
         // Reset streaming state
         streamingMessageDiv = null;
@@ -3115,6 +3294,20 @@ async function loadChatFromServer(chatId) {
             console.log(`[LOAD]   [${i}] role=${msg.role}, content_length=${msg.content?.length || 0}, content_preview="${(msg.content || '').substring(0, 50)}..."`);
         });
 
+        // Check local cache for newer data (recovery mechanism)
+        const cachedData = loadChatFromCache(chatId);
+        if (cachedData && cachedData.messages) {
+            // Use cache if it has more messages or newer timestamp
+            const serverMsgCount = chatHistory.length;
+            const cacheMsgCount = cachedData.messages.length;
+            if (cacheMsgCount > serverMsgCount) {
+                console.log('[LOAD] Cache has more messages than server, using cache:', cacheMsgCount, 'vs', serverMsgCount);
+                chatHistory = cachedData.messages;
+                // Sync cache to server in background
+                syncUnsyncedChats();
+            }
+        }
+
         const container = document.getElementById('chatMessages');
         container.innerHTML = '';
 
@@ -3135,10 +3328,41 @@ async function loadChatFromServer(chatId) {
             });
             setTimeout(() => container.scrollTop = container.scrollHeight, 50);
         }
+
+        // Save to cache after successful load
+        saveChatToCache(chatId, chatHistory);
+        markCacheSynced(chatId);
+
         loadChatsFromServer();
     } catch (error) {
-        console.error('Failed to load chat:', error);
-        // On error, create a new chat
+        console.error('Failed to load chat from server:', error);
+
+        // Try to recover from local cache
+        const cachedData = loadChatFromCache(chatId);
+        if (cachedData && cachedData.messages && cachedData.messages.length > 0) {
+            console.log('[LOAD] Server failed, recovering from cache');
+            currentChatId = chatId;
+            chatHistory = cachedData.messages;
+            localStorage.setItem('currentChatId', currentChatId);
+
+            const container = document.getElementById('chatMessages');
+            container.innerHTML = '';
+            chatHistory.forEach((msg, idx) => {
+                if (!msg.messageId) {
+                    msg.messageId = generateMessageId(currentChatId, idx, msg.content);
+                }
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${msg.role}`;
+                messageDiv.dataset.messageId = msg.messageId;
+                messageDiv.innerHTML = createMessageHTML(msg.role, msg.content, idx, msg.messageId);
+                container.appendChild(messageDiv);
+                addCodeCopyButtons(messageDiv);
+            });
+            setTimeout(() => container.scrollTop = container.scrollHeight, 50);
+            return;
+        }
+
+        // No cache available, create new chat
         localStorage.removeItem('currentChatId');
         await createNewChat();
     }
