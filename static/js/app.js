@@ -1012,7 +1012,9 @@ async function waitForServer(maxRetries = 5, delayMs = 500) {
     return null;
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('[INIT] DOMContentLoaded - start');
+
     // Apply cached settings immediately for instant UI
     loadSettings();
 
@@ -1030,17 +1032,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // If history is disabled, skip ALL server calls for instant load
     if (!historyEnabled) {
-        console.log('[INIT] History disabled - instant load, no server calls');
-        // Load settings in background (non-blocking) to stay in sync
-        loadSettingsFromServer().catch(e => console.log('[INIT] Settings load failed:', e));
+        console.log('[INIT] History disabled - instant load complete');
         return;
     }
 
-    // History is enabled - do full initialization
-    // Render cached UI FIRST for instant display
+    // History is enabled - render cached UI instantly
     const cachedChats = loadCachedChatList();
     if (cachedChats && cachedChats.length > 0) {
-        console.log('[INIT] Rendering cached chat list:', cachedChats.length, 'chats');
         renderChatHistory(cachedChats);
     }
 
@@ -1048,74 +1046,56 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (savedChatId) {
         const cachedData = loadChatFromCache(savedChatId);
         if (cachedData && cachedData.messages && cachedData.messages.length > 0) {
-            console.log('[INIT] Rendering cached messages for:', savedChatId);
             currentChatId = savedChatId;
             chatHistory = cachedData.messages;
             renderChatMessages(chatHistory);
         }
     }
 
-    // Start cache auto-save for reliability
-    startCacheAutoSave();
+    console.log('[INIT] Cached UI rendered - starting background tasks');
 
-    // Sync any unsynced chats from previous sessions
-    syncUnsyncedChats();
+    // ALL server calls in background (non-blocking)
+    setTimeout(() => {
+        startDbStatusCheck();
+        checkAuthStatus();
+        startCacheAutoSave();
+        syncUnsyncedChats();
+    }, 0);
 
-    // ASYNC: Start background tasks (non-blocking)
-    checkAuthStatus();  // non-blocking
-
-    // Only check DB status if cache shows it was unavailable
-    if (!dbAvailable) {
-        startDbStatusCheck();  // non-blocking - will show banner if DB still down
-    } else {
-        // DB was available - check in background after a delay
-        setTimeout(() => startDbStatusCheck(), 1000);
-    }
-
-    // Load settings and chats from server in parallel
-    const [settingsResult, chats] = await Promise.all([
+    // Load settings and chats from server in background (non-blocking)
+    Promise.all([
         loadSettingsFromServer().catch(e => { console.log('[INIT] Settings load failed:', e); return null; }),
         waitForServer()
-    ]);
-
-    // Check again after settings load - history might have been disabled on server
-    if (!historyEnabled) {
-        console.log('[INIT] History disabled (from server), skipping chat list render');
-        return;
-    }
-
-    if (chats === null) {
-        // Server not responding - we already rendered from cache above
-        if (!currentChatId) {
-            showNotification('Server not responding. Please restart the app.');
+    ]).then(([settingsResult, chats]) => {
+        // Check again after settings load - history might have been disabled on server
+        if (!historyEnabled) {
+            console.log('[INIT] History disabled (from server), skipping chat list render');
+            return;
         }
-        return;
-    }
 
-    // Update chat history from server (may have newer data)
-    renderChatHistory(chats);
-    const chatIds = chats.map(c => c.id);
-    console.log('[INIT] Server returned chat IDs:', chatIds);
+        if (chats === null) {
+            console.log('[INIT] Server not responding - using cached data');
+            return;
+        }
 
-    // If we already loaded a cached chat, verify it still exists on server
-    if (currentChatId && chatIds.includes(currentChatId)) {
-        // Chat exists, refresh from server in background
-        console.log('[INIT] Refreshing current chat from server:', currentChatId);
-        loadChatFromServer(currentChatId);
-    } else if (savedChatId && chatIds.includes(savedChatId)) {
-        // Saved chat exists, load it
-        console.log('[INIT] Loading saved chat:', savedChatId);
-        await loadChatFromServer(savedChatId);
-    } else if (chatIds.length > 0) {
-        // Saved chat doesn't exist but there are other chats - load the most recent one
-        console.log('[INIT] Saved chat not found, loading most recent chat:', chatIds[0]);
-        await loadChatFromServer(chatIds[0]);
-    } else {
-        // No chats exist - create a new chat
-        console.log('[INIT] No chats exist, creating new chat');
-        await createNewChat();
-    }
-    console.log('[INIT] After restore, currentChatId:', currentChatId);
+        // Update chat history from server (may have newer data)
+        renderChatHistory(chats);
+        const chatIds = chats.map(c => c.id);
+        console.log('[INIT] Server returned chat IDs:', chatIds);
+
+        // Refresh current chat from server if it exists
+        if (currentChatId && chatIds.includes(currentChatId)) {
+            console.log('[INIT] Refreshing current chat from server:', currentChatId);
+            loadChatFromServer(currentChatId);
+        } else if (savedChatId && chatIds.includes(savedChatId)) {
+            console.log('[INIT] Loading saved chat:', savedChatId);
+            loadChatFromServer(savedChatId);
+        } else if (chatIds.length > 0 && !currentChatId) {
+            console.log('[INIT] Loading most recent chat:', chatIds[0]);
+            loadChatFromServer(chatIds[0]);
+        }
+        console.log('[INIT] Background sync complete, currentChatId:', currentChatId);
+    }).catch(e => console.log('[INIT] Background sync failed:', e));
 });
 
 // Save chat before page unload (refresh/close)
@@ -4149,15 +4129,10 @@ async function loadChatsFromServer() {
     try {
         const response = await fetch(url);
 
-        // Check if DB is available from response header
+        // Check if DB is available from response header (for logging only, don't update banner)
         const dbHeader = response.headers.get('X-DB-Available');
         if (dbHeader === 'false') {
-            console.log('[CHATS] Database not available');
-            dbAvailable = false;
-            updateDbStatusBanner();
-        } else {
-            dbAvailable = true;
-            updateDbStatusBanner();
+            console.log('[CHATS] Database not available (from header)');
         }
 
         const chats = await response.json();
@@ -4750,26 +4725,27 @@ function showNotification(message, type = 'info') {
 async function checkDbStatus() {
     // Skip DB check if history is disabled - no need to check DB
     if (!historyEnabled) {
-        dbAvailable = false;  // Assume not available when history disabled
-        localStorage.setItem('dbAvailable', 'false');
-        updateDbStatusBanner();
-        return false;
+        console.log('[DB] History disabled, skipping DB check');
+        return true;  // Don't show banner when history disabled
     }
 
     try {
-        // Use AbortController for 2 second timeout
+        // Use AbortController for 5 second timeout (first request might be slow)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
 
+        console.log('[DB] Checking database status...');
         const response = await fetch('/api/db-status', { signal: controller.signal });
         clearTimeout(timeoutId);
 
         const data = await response.json();
+        console.log('[DB] API response:', data);
+
         const wasAvailable = dbAvailable;
         dbAvailable = data.connected === true;
-        localStorage.setItem('dbAvailable', String(dbAvailable));
+        console.log('[DB] dbAvailable set to:', dbAvailable);
 
-        // Update banner visibility
+        // Update banner visibility based on actual API response
         updateDbStatusBanner();
 
         // If DB just came back online, refresh chats
@@ -4783,7 +4759,6 @@ async function checkDbStatus() {
     } catch (error) {
         console.error('[DB] Failed to check database status:', error);
         dbAvailable = false;
-        localStorage.setItem('dbAvailable', 'false');
         updateDbStatusBanner();
         return false;
     }
@@ -4878,17 +4853,11 @@ async function retryDbConnection() {
 }
 
 /**
- * Start periodic DB status check
+ * Start DB status check (single check, no interval)
  */
 function startDbStatusCheck() {
-    // Check immediately
+    // Just check once - user can click Retry button if needed
     checkDbStatus();
-
-    // Check every 30 seconds
-    if (dbCheckInterval) {
-        clearInterval(dbCheckInterval);
-    }
-    dbCheckInterval = setInterval(checkDbStatus, 30000);
 }
 
 /**
