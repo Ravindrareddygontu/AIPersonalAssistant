@@ -1318,16 +1318,15 @@ function updateWorkspaceDisplay() {
     const input = document.getElementById('workspaceInput');
     const current = document.getElementById('currentWorkspace');
 
-    // Shorten path for display
-    let shortPath = currentWorkspace;
-    if (shortPath.startsWith('/home/')) {
-        shortPath = '~' + shortPath.substring(shortPath.indexOf('/', 6));
-    }
-    if (shortPath.length > 30) {
-        shortPath = '...' + shortPath.substring(shortPath.length - 27);
+    // Show folder name for badge display
+    let displayPath = currentWorkspace;
+    if (displayPath && displayPath !== '~') {
+        // Extract just the folder name from the path
+        const folderName = displayPath.split('/').filter(p => p).pop() || displayPath;
+        displayPath = folderName;
     }
 
-    if (display) display.textContent = shortPath;
+    if (display) display.textContent = displayPath;
     if (input) input.value = currentWorkspace;
     if (current) current.innerHTML = `<i class="fas fa-folder-open"></i> Current: ${currentWorkspace}`;
 }
@@ -3749,10 +3748,14 @@ function loadSettings() {
         if (themeSelect) themeSelect.value = theme;
     }
 
-    if (savedWorkspace) {
+    // Only restore workspace if it's a valid full path (not just ~)
+    if (savedWorkspace && savedWorkspace !== '~' && savedWorkspace.length > 2) {
         currentWorkspace = savedWorkspace;
-        updateWorkspaceDisplay();
+    } else {
+        // Clear invalid workspace from localStorage
+        localStorage.removeItem('workspace');
     }
+    updateWorkspaceDisplay();
 
     // Restore model from cache for instant UI
     if (savedModel) {

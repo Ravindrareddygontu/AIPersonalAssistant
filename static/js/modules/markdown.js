@@ -514,10 +514,15 @@ function formatCompleteStructures(text) {
     });
     const toolBlocks = [];
     result = formatStreamingToolBlocks(result, toolBlocks);
-    result = result.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-    const parts = result.split(/(__CODEBLOCK_\d+__)/);
+    const inlineCodes = [];
+    result = result.replace(/`([^`\n]+)`/g, (match, code) => {
+        const idx = inlineCodes.length;
+        inlineCodes.push(`<code>${escapeHtml(code)}</code>`);
+        return `__INLINECODE_${idx}__`;
+    });
+    const parts = result.split(/(__CODEBLOCK_\d+__|__TOOLBLOCK_\d+__|__INLINECODE_\d+__)/);
     result = parts.map(part => {
-        if (part.match(/__CODEBLOCK_\d+__/)) return part;
+        if (part.match(/__CODEBLOCK_\d+__|__TOOLBLOCK_\d+__|__INLINECODE_\d+__/)) return part;
         return escapeHtml(part);
     }).join('');
     result = result.replace(/^(\|.+\|)\n(\|[-:\s|]+\|)\n((?:\|.+\|\n?)+)/gm, (match, header, separator, body) => {
@@ -552,6 +557,7 @@ function formatCompleteStructures(text) {
     result = result.replace(/(<br>){3,}/g, '<br><br>');
     codeBlocks.forEach((block, idx) => { result = result.replace(`__CODEBLOCK_${idx}__`, block); });
     toolBlocks.forEach((block, idx) => { result = result.replace(new RegExp(`(<br>)*__TOOLBLOCK_${idx}__(<br>)*`, 'g'), block); });
+    inlineCodes.forEach((code, idx) => { result = result.replace(`__INLINECODE_${idx}__`, code); });
     return result;
 }
 
