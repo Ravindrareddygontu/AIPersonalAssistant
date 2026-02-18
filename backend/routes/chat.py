@@ -800,8 +800,28 @@ class OpenAIStreamGenerator:
             self._provider = OpenAIChatProvider(api_key=middleware_settings.openai_api_key)
         return self._provider
 
+    SYSTEM_PROMPT = """You are a helpful AI assistant. Format responses using markdown:
+
+**Structure:**
+- Use ## for section headers (renders as h3)
+- Use bullet points (-) for unordered lists
+- Use numbered lists (1. 2. 3.) for sequential steps
+- Keep paragraphs short with blank lines between them
+
+**Code:**
+- Use ```language for code blocks (python, javascript, bash, etc.)
+- Use `backticks` for inline code, commands, filenames
+
+**Emphasis:**
+- Use **bold** for key terms and important info
+- Use *italic* sparingly for emphasis
+
+**Tables:** Use markdown tables for structured data comparison
+
+Keep responses concise, well-organized, and easy to scan. Do not use more than two consecutive line breaks."""
+
     def _build_messages(self) -> List[ChatMessage]:
-        messages = []
+        messages = [ChatMessage(role=MessageRole.SYSTEM, content=self.SYSTEM_PROMPT)]
         for msg in self.history:
             role_str = msg.get('role', 'user')
             try:
