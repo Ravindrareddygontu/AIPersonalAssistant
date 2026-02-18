@@ -8,8 +8,31 @@ import { loadReminders, addReminder } from './reminders.js';
 import { loadChat, loadChatList, newChat, renderChatMessages, clearAllChats } from './chat.js';
 import { sendMessage, stopCurrentRequest } from './streaming.js';
 
+function applyTheme(theme) {
+    const icon = document.querySelector('#themeToggle i');
+    if (theme === 'light') {
+        document.body.classList.add('light-theme');
+        if (icon) {
+            icon.classList.remove('fa-moon');
+            icon.classList.add('fa-sun');
+        }
+    } else {
+        document.body.classList.remove('light-theme');
+        if (icon) {
+            icon.classList.remove('fa-sun');
+            icon.classList.add('fa-moon');
+        }
+    }
+}
+
 async function initApp() {
     console.log('[APP] Initializing AI Chat App...');
+
+    // Restore theme from localStorage immediately
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+        applyTheme(savedTheme);
+    }
 
     // Make chat container visible (hidden initially to prevent flash)
     const chatMessagesContainer = DOM.get('chatMessages');

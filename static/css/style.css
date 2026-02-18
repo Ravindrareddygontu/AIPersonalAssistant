@@ -1928,13 +1928,13 @@ body {
     color: #ef4444;
 }
 
-/* Error block with stack trace - light red theme */
+/* Error block with stack trace - keep normal header, only error text is red */
 .tool-block.has-error {
-    border-color: rgba(252, 165, 165, 0.3);
+    border-color: rgba(99, 102, 241, 0.4);
 }
 
-.tool-block.has-error .tool-header {
-    background: linear-gradient(135deg, rgba(252, 165, 165, 0.12), rgba(252, 165, 165, 0.06));
+/* Error text styling - only the "command error" text is red */
+.tool-block.has-error .tool-header .error-text {
     color: #fca5a5;
 }
 
