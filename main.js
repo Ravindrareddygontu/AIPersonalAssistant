@@ -29,7 +29,7 @@ function createSplashWindow() {
         resizable: false,
         center: true,
         skipTaskbar: false,
-        icon: path.join(__dirname, 'static', 'icon.png'),
+        icon: path.join(__dirname, 'static', 'icon-round.png'),
         transparent: true,
         backgroundColor: '#00000000',
         webPreferences: { nodeIntegration: false, contextIsolation: true }
@@ -83,7 +83,7 @@ function startFlaskServer() {
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1200, height: 800, minWidth: 600, minHeight: 500,
-        title: 'Digistant', icon: path.join(__dirname, 'static', 'icon.png'),
+        title: 'Digistant', icon: path.join(__dirname, 'static', 'icon-round.png'),
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,

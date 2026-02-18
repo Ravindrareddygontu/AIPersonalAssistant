@@ -88,7 +88,7 @@ if __name__ == '__main__':
     print("\n" + "=" * 60)
     print("🤖 AI Chat Application (Powered by Augment Code)")
     print("=" * 60)
-    print("Starting server at http://localhost:5000")
+    print("Starting server at http://localhost:5001")
     print("=" * 60 + "\n")
 
     # Run the main app with uvicorn
@@ -96,7 +96,7 @@ if __name__ == '__main__':
     uvicorn.run(
         "backend.app:app",
         host='0.0.0.0',
-        port=5000,
+        port=5001,
         reload=not is_production,
         log_level='info'
     )
