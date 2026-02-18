@@ -40,6 +40,7 @@ class SessionResetRequest(BaseModel):
 class ChatUpdate(BaseModel):
     title: Optional[str] = None
     messages: Optional[List[Dict[str, Any]]] = None
+    provider: Optional[str] = None
 
 
 def _log_request(method: str, url: str, body=None):
@@ -206,7 +207,7 @@ async def create_chat(request: Request):
             'messages': [],
             'workspace': settings.workspace,
             'streaming_status': None,
-            'db_available': False  # Flag to indicate DB is not available
+            'db_available': False
         }
         log.warning(f"[CHATS] MongoDB not available, created temp chat: {chat_id}")
         _log_response('POST', url, 200, {**chat_data, 'db_available': False})
@@ -220,7 +221,7 @@ async def create_chat(request: Request):
         'updated_at': now,
         'messages': [],
         'workspace': settings.workspace,
-        'streaming_status': None  # None = idle, 'streaming' = active stream, 'pending' = needs resume
+        'streaming_status': None
     }
     chats_collection.insert_one(chat_data)
     chat_data.pop('_id', None)
@@ -379,6 +380,10 @@ async def update_chat(request: Request, chat_id: str, data: ChatUpdate):
 
     if data.title is not None:
         chat_data['title'] = data.title
+
+    if data.provider is not None:
+        chat_data['provider'] = data.provider
+        log.info(f"[SAVE] Updated provider to {data.provider}")
 
     if data.messages is not None:
         db_messages = msg_svc.api_to_db_format(chat_id, api_messages)

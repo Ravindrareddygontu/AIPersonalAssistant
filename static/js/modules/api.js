@@ -57,6 +57,20 @@ export const api = {
         return data;
     },
 
+    async updateChatProvider(chatId, provider) {
+        const url = `/api/chats/${chatId}`;
+        const body = { provider };
+        logRequest('PUT', url, body);
+        const response = await fetch(url, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await response.json();
+        logResponse('PUT', url, response.status, data);
+        return data;
+    },
+
     async deleteChat(chatId) {
         const url = `/api/chats/${chatId}`;
         logRequest('DELETE', url);

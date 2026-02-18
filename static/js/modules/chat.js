@@ -183,6 +183,18 @@ export async function loadChat(chatId) {
             renderChatMessages(state.chatHistory);
             saveChatToCache(chatId, state.chatHistory);
             updateActiveChat(chatId);
+
+            if (chat.provider) {
+                state.currentAIProvider = chat.provider;
+                localStorage.setItem('currentAIProvider', chat.provider);
+                const providerSelect = document.getElementById('providerSelectHeader');
+                if (providerSelect) {
+                    providerSelect.value = chat.provider;
+                }
+                if (window.updateModelSelectVisibility) {
+                    window.updateModelSelectVisibility();
+                }
+            }
         }
     } catch (error) {
         console.error('Failed to load chat:', error);
@@ -284,6 +296,18 @@ export async function createNewChat() {
         state.currentChatId = newChatData.id;
         state.chatHistory = [];
         localStorage.setItem('currentChatId', state.currentChatId);
+
+        if (newChatData.provider) {
+            state.currentAIProvider = newChatData.provider;
+            localStorage.setItem('currentAIProvider', newChatData.provider);
+            const providerSelect = document.getElementById('providerSelectHeader');
+            if (providerSelect) {
+                providerSelect.value = newChatData.provider;
+            }
+            if (window.updateModelSelectVisibility) {
+                window.updateModelSelectVisibility();
+            }
+        }
 
         const container = DOM.get('chatMessages');
         if (container) {

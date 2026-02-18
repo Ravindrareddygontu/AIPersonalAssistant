@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from backend.config import settings
 from backend.session import SessionManager
+from backend.database import get_chats_collection
 from backend.utils.text import TextCleaner
 from backend.utils.response import ResponseExtractor
 from backend.utils.content_cleaner import ContentCleaner
@@ -910,9 +911,28 @@ async def chat_stream(request: Request, data: ChatStreamRequest):
     workspace = data.workspace or settings.workspace
     chat_id = data.chatId
 
-    log.info(f"[REQUEST] POST /api/chat/stream | provider: {settings.ai_provider} | message: '{message[:100]}...'")
+    provider = settings.ai_provider
+    if chat_id:
+        try:
+            chats_collection = get_chats_collection()
+            if chats_collection is not None:
+                chat_doc = chats_collection.find_one({'id': chat_id})
+                if chat_doc:
+                    if chat_doc.get('provider'):
+                        provider = chat_doc['provider']
+                        log.debug(f"[PROVIDER] Using chat's stored provider: {provider}")
+                    else:
+                        chats_collection.update_one(
+                            {'id': chat_id},
+                            {'$set': {'provider': provider}}
+                        )
+                        log.info(f"[PROVIDER] Stored provider '{provider}' for chat {chat_id}")
+        except Exception as e:
+            log.warning(f"[PROVIDER] Failed to get/set chat provider, using global: {e}")
 
-    if settings.ai_provider == 'openai':
+    log.info(f"[REQUEST] POST /api/chat/stream | provider: {provider} | chat: {chat_id} | message: '{message[:100]}...'")
+
+    if provider == 'openai':
         generator = OpenAIStreamGenerator(message, chat_id=chat_id, history=data.history)
 
         async def openai_stream():
