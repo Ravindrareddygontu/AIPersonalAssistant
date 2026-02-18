@@ -360,6 +360,7 @@ async function updateProviderFromHeader() {
     }
 
     if (state.chatHistory && state.chatHistory.length > 0) {
+        console.log('[APP] Blocking provider switch - chat has messages:', state.chatHistory.length);
         showNotification('Cannot switch provider mid-chat. Start a new chat to change provider.', 'warning');
         headerSelect.value = state.currentAIProvider || 'auggie';
         return;

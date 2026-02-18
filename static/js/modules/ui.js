@@ -2,12 +2,21 @@ import { DOM } from './dom.js';
 import { state } from './state.js';
 
 export function showNotification(message, type = 'info') {
+    console.log('[UI] showNotification:', type, message);
     const existing = document.querySelector('.notification');
     if (existing) existing.remove();
+
+    const icons = {
+        info: 'fa-info-circle',
+        warning: 'fa-exclamation-triangle',
+        error: 'fa-times-circle',
+        success: 'fa-check-circle'
+    };
 
     const notification = document.createElement('div');
     notification.className = `notification notification-${type}`;
     notification.innerHTML = `
+        <i class="fas ${icons[type] || icons.info} notification-icon"></i>
         <span>${message}</span>
         <button onclick="this.parentElement.remove()" class="notification-close">
             <i class="fas fa-times"></i>
@@ -20,7 +29,7 @@ export function showNotification(message, type = 'info') {
             notification.classList.add('fade-out');
             setTimeout(() => notification.remove(), 300);
         }
-    }, 3000);
+    }, 4000);
 }
 
 function getStatusIcon(message) {
