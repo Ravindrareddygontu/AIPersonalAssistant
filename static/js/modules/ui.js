@@ -152,6 +152,41 @@ export async function resetSession() {
     }
 }
 
+export function showConfirmDialog(message) {
+    return new Promise((resolve) => {
+        const dialog = document.getElementById('confirmDialog');
+        const messageEl = document.getElementById('confirmMessage');
+        const cancelBtn = document.getElementById('confirmCancel');
+        const deleteBtn = document.getElementById('confirmDelete');
+
+        messageEl.textContent = message;
+        dialog.classList.add('show');
+
+        const cleanup = () => {
+            dialog.classList.remove('show');
+            cancelBtn.onclick = null;
+            deleteBtn.onclick = null;
+        };
+
+        cancelBtn.onclick = () => {
+            cleanup();
+            resolve(false);
+        };
+
+        deleteBtn.onclick = () => {
+            cleanup();
+            resolve(true);
+        };
+
+        dialog.onclick = (e) => {
+            if (e.target === dialog) {
+                cleanup();
+                resolve(false);
+            }
+        };
+    });
+}
+
 window.toggleSettings = toggleSettings;
 window.toggleSidebar = toggleSidebar;
 window.toggleDevTools = toggleDevTools;

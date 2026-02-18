@@ -12,6 +12,10 @@ class StreamState:
     last_data_time: float = field(default_factory=time.time)
     message_sent_time: float = field(default_factory=time.time)
     last_content_change: float = field(default_factory=time.time)
+    last_activity_time: float = field(default_factory=time.time)
+
+    # Activity tracking (for extended timeouts during processing)
+    current_activity: str = ''
     
     # Processing flags
     saw_message_echo: bool = False
@@ -47,6 +51,19 @@ class StreamState:
 
     def update_content_time(self) -> None:
         self.last_content_change = time.time()
+
+    def update_activity(self, activity: str) -> None:
+        self.current_activity = activity
+        self.last_activity_time = time.time()
+
+    def has_recent_activity(self, timeout: float = 120.0) -> bool:
+        if not self.current_activity:
+            return False
+        return (time.time() - self.last_activity_time) < timeout
+
+    @property
+    def elapsed_since_activity(self) -> float:
+        return time.time() - self.last_activity_time
 
     def mark_message_echo_found(self, position: int) -> None:
         self.saw_message_echo = True

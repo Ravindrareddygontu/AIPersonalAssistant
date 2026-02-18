@@ -475,6 +475,7 @@ class StreamGenerator:
                     log.info(f"[STATUS] {status_msg}")
                     yield self.sse.send({'type': 'status', 'message': status_msg})
                     last_status_msg = status_msg
+                    state.update_activity(status_msg)
                 last_status_time = now
 
             if not ready:
@@ -654,10 +655,16 @@ class StreamGenerator:
         if state.saw_message_echo and not state.saw_response_marker:
             wait_time = int(state.elapsed_since_message)
             if state.should_log_wait(wait_time) and wait_time % 10 == 0:
-                log.info(f"Waiting for response marker... {wait_time}s elapsed")
+                log.info(f"Waiting for response marker... {wait_time}s elapsed, activity: {state.current_activity or 'none'}")
 
-            if state.elapsed_since_message > self.WAIT_FOR_MARKER_TIMEOUT:
-                _log(f"Exit: timeout waiting for response marker")
+            # Extend timeout if there's recent activity (summarizing, processing, etc.)
+            if state.has_recent_activity(timeout=120.0):
+                # Activity detected - use extended timeout (2 minutes from last activity)
+                if state.elapsed_since_activity > 120.0:
+                    _log(f"Exit: timeout waiting for response marker (activity stale: {state.current_activity})")
+                    return True
+            elif state.elapsed_since_message > self.WAIT_FOR_MARKER_TIMEOUT:
+                _log(f"Exit: timeout waiting for response marker (no activity)")
                 return True
 
         return False

@@ -5,7 +5,7 @@ import { getUnsyncedChats, saveChatToCache } from './cache.js';
 import { showNotification, toggleSettings, toggleSidebar } from './ui.js';
 import { handleImageSelect, toggleVoiceRecording } from './media.js';
 import { loadReminders, addReminder } from './reminders.js';
-import { loadChat, loadChatList, newChat, renderChatMessages } from './chat.js';
+import { loadChat, loadChatList, newChat, renderChatMessages, clearAllChats } from './chat.js';
 import { sendMessage, stopCurrentRequest } from './streaming.js';
 
 async function initApp() {
@@ -24,6 +24,15 @@ async function initApp() {
             const workspaceInput = DOM.get('workspacePath');
             if (workspaceInput) {
                 workspaceInput.value = state.currentWorkspace;
+            }
+            updateWorkspaceDisplay();
+
+            if (settings.model) {
+                state.currentModel = settings.model;
+            }
+            if (settings.available_models) {
+                state.availableModels = settings.available_models;
+                populateModelSelect();
             }
         }
     } catch (error) {
@@ -133,6 +142,15 @@ function setupEventListeners() {
             }
         };
     }
+
+    const browserModal = DOM.get('browserModal');
+    if (browserModal) {
+        browserModal.onclick = (e) => {
+            if (e.target === browserModal) {
+                closeBrowser();
+            }
+        };
+    }
 }
 
 async function saveSettings() {
@@ -193,11 +211,28 @@ function navigateToHome() {
     loadBrowserDirectory('~');
 }
 
+function updateWorkspaceDisplay() {
+    const display = DOM.get('workspaceDisplay');
+    const input = DOM.get('workspaceInput');
+    const current = DOM.get('currentWorkspace');
+
+    let displayPath = state.currentWorkspace;
+    if (displayPath && displayPath !== '~') {
+        const folderName = displayPath.split('/').filter(p => p).pop() || displayPath;
+        displayPath = folderName;
+    }
+
+    if (display) display.textContent = displayPath || '~/';
+    if (input) input.value = state.currentWorkspace;
+    if (current) current.innerHTML = `<i class="fas fa-folder-open"></i> Current: ${state.currentWorkspace}`;
+}
+
 async function selectCurrentDir() {
     const workspaceInput = DOM.get('workspaceInput') || DOM.get('workspacePath');
     if (workspaceInput) workspaceInput.value = state.browserCurrentPath;
     state.currentWorkspace = state.browserCurrentPath;
     closeBrowser();
+    updateWorkspaceDisplay();
 
     try {
         await api.saveSettings({ workspace: state.currentWorkspace });
@@ -252,6 +287,45 @@ function browseItem(path, type) {
     }
 }
 
+function populateModelSelect() {
+    const select = DOM.get('modelSelect');
+    const headerSelect = DOM.get('modelSelectHeader');
+
+    [select, headerSelect].forEach(sel => {
+        if (!sel) return;
+        sel.innerHTML = '';
+        state.availableModels.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            if (model === state.currentModel) {
+                option.selected = true;
+            }
+            sel.appendChild(option);
+        });
+    });
+}
+
+async function updateModelFromHeader() {
+    const headerSelect = DOM.get('modelSelectHeader');
+    const modalSelect = DOM.get('modelSelect');
+    if (!headerSelect) return;
+
+    const model = headerSelect.value;
+    state.currentModel = model;
+
+    if (modalSelect) {
+        modalSelect.value = model;
+    }
+
+    try {
+        await api.saveSettings({ model: model });
+        console.log('[APP] Model updated to:', model);
+    } catch (error) {
+        console.error('Failed to update model:', error);
+    }
+}
+
 window.appState = state;
 window.toggleSettings = toggleSettings;
 window.toggleSidebar = toggleSidebar;
@@ -260,6 +334,7 @@ window.closeBrowser = closeBrowser;
 window.navigateToHome = navigateToHome;
 window.selectCurrentDir = selectCurrentDir;
 window.browseItem = browseItem;
+window.updateModelFromHeader = updateModelFromHeader;
 
 document.addEventListener('DOMContentLoaded', initApp);
 

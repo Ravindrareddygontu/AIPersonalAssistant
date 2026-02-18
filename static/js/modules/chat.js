@@ -4,6 +4,47 @@ import { api } from './api.js';
 import { saveChatToCache, loadChatFromCache, markCacheSynced } from './cache.js';
 import { formatMessage, addCodeCopyButtons } from './markdown.js';
 
+function showConfirmDialog(message) {
+    return new Promise((resolve) => {
+        const dialog = document.getElementById('confirmDialog');
+        const messageEl = document.getElementById('confirmMessage');
+        const cancelBtn = document.getElementById('confirmCancel');
+        const deleteBtn = document.getElementById('confirmDelete');
+
+        if (!dialog || !messageEl || !cancelBtn || !deleteBtn) {
+            resolve(confirm(message));
+            return;
+        }
+
+        messageEl.textContent = message;
+        dialog.classList.add('show');
+
+        const cleanup = () => {
+            dialog.classList.remove('show');
+            cancelBtn.onclick = null;
+            deleteBtn.onclick = null;
+            dialog.onclick = null;
+        };
+
+        cancelBtn.onclick = () => {
+            cleanup();
+            resolve(false);
+        };
+
+        deleteBtn.onclick = () => {
+            cleanup();
+            resolve(true);
+        };
+
+        dialog.onclick = (e) => {
+            if (e.target === dialog) {
+                cleanup();
+                resolve(false);
+            }
+        };
+    });
+}
+
 export const WELCOME_HTML = `
     <div class="welcome-message">
         <h2>Hello, what do you want?</h2>
@@ -151,7 +192,8 @@ export async function loadChat(chatId) {
 export async function deleteChat(chatId, event) {
     if (event) event.stopPropagation();
 
-    if (!confirm('Delete this conversation?')) return;
+    const confirmed = await showConfirmDialog('Delete this conversation?');
+    if (!confirmed) return;
 
     try {
         await api.deleteChat(chatId);
@@ -256,22 +298,50 @@ export async function createNewChat() {
 }
 
 export async function clearAllChats() {
-    if (!confirm('Delete all chat history? This cannot be undone.')) return;
+    const confirmed = await showConfirmDialog('Delete all chat history? This cannot be undone.');
+    if (!confirmed) return;
+
+    localStorage.removeItem('currentChatId');
+    localStorage.removeItem('cachedChatList');
+    state.currentChatId = null;
+    state.chatHistory = [];
+
+    const chatMessages = DOM.get('chatMessages');
+    if (chatMessages) {
+        chatMessages.innerHTML = `
+            <div class="loading-state" style="display: flex; justify-content: center; align-items: center; height: 100%; opacity: 0.6;">
+                <i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: var(--text-secondary);"></i>
+            </div>
+        `;
+    }
+
+    const historyContainer = document.getElementById('chatHistory');
+    if (historyContainer) {
+        historyContainer.innerHTML = `
+            <div class="chat-history-cleared" style="display: flex; flex-direction: column; align-items: center; padding: 20px; color: var(--text-muted);">
+                <i class="fas fa-check-circle" style="font-size: 1.5rem; margin-bottom: 8px; color: var(--success);"></i>
+                <span>All chats cleared</span>
+            </div>
+        `;
+    }
 
     try {
         await fetch('/api/chats/clear', { method: 'DELETE' });
-        localStorage.removeItem('currentChatId');
-        state.currentChatId = null;
-        state.chatHistory = [];
+        await createNewChat();
 
-        const container = DOM.get('chatMessages');
-        if (container) {
-            container.innerHTML = WELCOME_HTML;
-        }
-
-        await loadChatList();
+        setTimeout(() => {
+            const clearedMsg = historyContainer?.querySelector('.chat-history-cleared');
+            if (clearedMsg) {
+                clearedMsg.style.transition = 'opacity 0.3s ease';
+                clearedMsg.style.opacity = '0';
+            }
+        }, 1500);
     } catch (error) {
         console.error('Failed to clear chats:', error);
+        await createNewChat();
+        if (chatMessages) {
+            chatMessages.innerHTML = WELCOME_HTML;
+        }
     }
 }
 

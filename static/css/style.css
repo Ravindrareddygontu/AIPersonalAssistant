@@ -812,7 +812,7 @@ body {
 }
 
 .message.user {
-    margin-bottom: 12px;
+    margin-bottom: 4px;
     flex-direction: row-reverse;
     justify-content: flex-start;
     align-items: center;
@@ -858,14 +858,14 @@ body {
 }
 
 .message.assistant {
-    margin-top: 8px;
+    margin-top: 0;
     margin-bottom: 28px;
     justify-content: flex-start;
 }
 
 .message.assistant .message-content {
     background: transparent;
-    padding: 16px 22px;
+    padding: 0 22px 16px 22px;
     border-radius: 0;
     border: none;
     position: relative;
@@ -1183,6 +1183,7 @@ body {
     border-spacing: 0;
     font-family: inherit;
     font-size: 0.88rem;
+    background: var(--bg-secondary);
 }
 
 .table-container th,
@@ -1199,7 +1200,7 @@ body {
     text-align: left;
     font-weight: 600;
     color: var(--text);
-    border-bottom: 2px solid rgba(99, 102, 241, 0.3);
+    border-bottom: 1px solid var(--border);
     border-right: 1px solid var(--border);
     letter-spacing: 0.3px;
     font-size: 0.88rem;
@@ -1211,8 +1212,8 @@ body {
 
 .table-container td {
     padding: 8px 14px;
-    border-bottom: 1px solid rgba(99, 102, 241, 0.2);
-    border-right: 1px solid rgba(99, 102, 241, 0.15);
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
     color: var(--text);
     line-height: 1.4;
     vertical-align: top;
@@ -1224,14 +1225,6 @@ body {
 
 .table-container tbody tr:last-child td {
     border-bottom: none;
-}
-
-.table-container tbody tr:nth-child(even) {
-    background: rgba(99, 102, 241, 0.04);
-}
-
-.table-container tbody tr:hover {
-    background: rgba(99, 102, 241, 0.08);
 }
 
 /* First column styling - often contains labels */
@@ -2630,6 +2623,7 @@ body {
     border: 1px solid var(--border);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     display: table;
+    background: var(--bg-secondary);
 }
 
 .streaming-text .md-table th {
@@ -2638,7 +2632,7 @@ body {
     text-align: left;
     font-weight: 500;
     color: var(--text);
-    border-bottom: 2px solid rgba(99, 102, 241, 0.3);
+    border-bottom: 1px solid var(--border);
     border-right: 1px solid var(--border);
     letter-spacing: 0.3px;
     font-size: 0.88rem;
@@ -2666,14 +2660,6 @@ body {
     border-bottom: none;
 }
 
-.streaming-text .md-table tr:nth-child(even) td {
-    background: rgba(99, 102, 241, 0.02);
-}
-
-.streaming-text .md-table tr:hover td {
-    background: rgba(99, 102, 241, 0.06);
-}
-
 .streaming-text .md-table td:first-child {
     font-weight: 500;
     color: var(--text);
@@ -2682,41 +2668,50 @@ body {
 /* Modal */
 .modal {
     position: fixed;
-    top: 80px;
-    left: 300px;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     display: none;
     z-index: 1000;
+    background: rgba(0, 0, 0, 0.3);
 }
 
 .modal.active {
-    display: block;
+    display: flex;
+}
+
+.modal .modal-content {
+    position: absolute;
+    top: 80px;
+    left: 300px;
 }
 
 /* Settings and Dev Tools modals should appear on the right side */
-#settingsModal,
-#devToolsModal {
+#settingsModal .modal-content,
+#devToolsModal .modal-content {
     left: auto;
     right: 20px;
 }
 
 /* Browser modal should appear on the left (below workspace badge) */
-#browserModal {
+#browserModal .modal-content {
     left: 300px;
     right: auto;
 }
 
 /* Adjust modal position when sidebar is collapsed */
-body:has(.sidebar.collapsed) .modal {
+body:has(.sidebar.collapsed) .modal .modal-content {
     left: 60px;
 }
 
-body:has(.sidebar.collapsed) #settingsModal,
-body:has(.sidebar.collapsed) #devToolsModal {
+body:has(.sidebar.collapsed) #settingsModal .modal-content,
+body:has(.sidebar.collapsed) #devToolsModal .modal-content {
     left: auto;
     right: 20px;
 }
 
-body:has(.sidebar.collapsed) #browserModal {
+body:has(.sidebar.collapsed) #browserModal .modal-content {
     left: 60px;
     right: auto;
 }
