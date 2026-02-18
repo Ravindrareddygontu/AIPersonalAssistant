@@ -5,7 +5,7 @@ import time
 import select
 import logging
 import threading
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -20,6 +20,10 @@ from backend.models.stream_state import StreamState
 from backend.services.chat_repository import ChatRepository
 from backend.services.stream_processor import StreamProcessor
 from backend.services.slack.notifier import notify_completion
+
+from backend.ai_middleware.config import get_settings as get_middleware_settings
+from backend.ai_middleware.providers.openai.chat import OpenAIChatProvider
+from backend.ai_middleware.models.chat import ChatMessage, MessageRole
 
 log = logging.getLogger('chat')
 chat_router = APIRouter()
@@ -472,7 +476,7 @@ class StreamGenerator:
             if now - last_status_time >= 0.3:  # Update every 0.3s for responsive activity indicators
                 status_msg = self._get_current_status(state)
                 if status_msg and status_msg != last_status_msg:
-                    log.info(f"[STATUS] {status_msg}")
+                    log.debug(f"[STATUS] {status_msg}")
                     yield self.sse.send({'type': 'status', 'message': status_msg})
                     last_status_msg = status_msg
                     state.update_activity(status_msg)
@@ -776,6 +780,99 @@ class StreamGenerator:
         yield self.sse.send({'type': 'done'})
 
 
+class OpenAIStreamGenerator:
+
+    def __init__(self, message: str, chat_id: str = None, history: List[dict] = None):
+        self.message = message
+        self.chat_id = chat_id
+        self.history = history or []
+        self.start_time = time.time()
+        self.repository = ChatRepository(chat_id) if (chat_id and settings.history_enabled) else None
+        self.sse = SSEFormatter()
+        self._provider = None
+
+    def _get_provider(self) -> OpenAIChatProvider:
+        if self._provider is None:
+            middleware_settings = get_middleware_settings()
+            if not middleware_settings.openai_api_key:
+                raise ValueError("OpenAI API key not configured. Set OPENAI_API_KEY in environment.")
+            self._provider = OpenAIChatProvider(api_key=middleware_settings.openai_api_key)
+        return self._provider
+
+    def _build_messages(self) -> List[ChatMessage]:
+        messages = []
+        for msg in self.history:
+            role_str = msg.get('role', 'user')
+            try:
+                role = MessageRole(role_str)
+            except ValueError:
+                role = MessageRole.USER if role_str == 'user' else MessageRole.ASSISTANT
+            messages.append(ChatMessage(role=role, content=msg.get('content', '')))
+        messages.append(ChatMessage(role=MessageRole.USER, content=self.message))
+        return messages
+
+    async def generate(self):
+        model = settings.openai_model
+        log.info(f"[OPENAI] Starting stream for model: {model}")
+
+        if self.repository:
+            self.repository.set_streaming_status('streaming')
+
+        yield self.sse.padding()
+        yield self.sse.send({'type': 'status', 'message': f'Connecting to OpenAI ({model})...'})
+        yield self.sse.send({'type': 'stream_start'})
+
+        full_content = ""
+        try:
+            provider = self._get_provider()
+            messages = self._build_messages()
+
+            async for chunk in provider.chat_stream(messages=messages, model=model):
+                for choice in chunk.choices:
+                    if choice.delta.content:
+                        content = choice.delta.content
+                        full_content += content
+                        yield self.sse.send({'type': 'stream', 'content': content})
+                    if choice.finish_reason:
+                        log.info(f"[OPENAI] Stream finished: {choice.finish_reason}")
+
+            if self.repository:
+                message_id = self.repository.save_question(self.message)
+                if message_id:
+                    self.repository.save_answer(message_id, full_content)
+                self.repository.set_streaming_status(None)
+
+            execution_time = time.time() - self.start_time
+            notify_completion(
+                question=self.message,
+                content=full_content,
+                success=True,
+                error=None,
+                stopped=False,
+                execution_time=execution_time
+            )
+
+            yield self.sse.send({'type': 'stream_end', 'content': full_content})
+            yield self.sse.send({'type': 'response', 'message': full_content})
+            yield self.sse.send({'type': 'done'})
+
+        except Exception as e:
+            log.error(f"[OPENAI] Streaming error: {e}")
+            if self.repository:
+                self.repository.set_streaming_status(None)
+            execution_time = time.time() - self.start_time
+            notify_completion(
+                question=self.message,
+                content="",
+                success=False,
+                error=str(e),
+                stopped=False,
+                execution_time=execution_time
+            )
+            yield self.sse.send({'type': 'error', 'message': str(e)})
+            yield self.sse.send({'type': 'done'})
+
+
 @chat_router.post('/api/chat/stream')
 async def chat_stream(request: Request, data: ChatStreamRequest):
     _abort_flag.clear()
@@ -784,7 +881,29 @@ async def chat_stream(request: Request, data: ChatStreamRequest):
     workspace = data.workspace or settings.workspace
     chat_id = data.chatId
 
-    log.info(f"[REQUEST] POST /api/chat/stream | message: '{message[:100]}...' | workspace: '{workspace}'")
+    log.info(f"[REQUEST] POST /api/chat/stream | provider: {settings.ai_provider} | message: '{message[:100]}...'")
+
+    if settings.ai_provider == 'openai':
+        generator = OpenAIStreamGenerator(message, chat_id=chat_id)
+
+        async def openai_stream():
+            async for chunk in generator.generate():
+                if await request.is_disconnected():
+                    log.warning("[OPENAI] Client disconnected")
+                    return
+                yield chunk
+
+        log.info("[RESPONSE] POST /api/chat/stream | Status: 200 | OpenAI SSE stream initiated")
+
+        return StreamingResponse(
+            openai_stream(),
+            media_type='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no',
+                'Connection': 'keep-alive'
+            }
+        )
 
     generator = StreamGenerator(message, os.path.expanduser(workspace), chat_id=chat_id)
 
@@ -792,24 +911,21 @@ async def chat_stream(request: Request, data: ChatStreamRequest):
         gen = generator.generate()
         try:
             for chunk in gen:
-                # Check if client disconnected
                 if await request.is_disconnected():
                     log.warning("[STREAM] Client disconnected, calling cleanup")
                     generator._continue_in_background()
                     return
                 yield chunk
         except GeneratorExit:
-            # Generator was closed (client disconnected)
             log.warning("[STREAM] GeneratorExit caught, client disconnected")
             generator._continue_in_background()
         finally:
-            # Ensure cleanup on any exit
             try:
                 gen.close()
             except:
                 pass
 
-    log.info("[RESPONSE] POST /api/chat/stream | Status: 200 | SSE stream initiated")
+    log.info("[RESPONSE] POST /api/chat/stream | Status: 200 | Auggie SSE stream initiated")
 
     return StreamingResponse(
         stream_generator(),

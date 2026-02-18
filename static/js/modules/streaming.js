@@ -68,6 +68,10 @@ function startStreamingMessage(requestId) {
     `;
     container.appendChild(streamingMessageDiv);
     container.scrollTop = container.scrollHeight;
+
+    state.streamingMessageDiv = streamingMessageDiv;
+    const providerSelect = DOM.get('providerSelectHeader');
+    if (providerSelect) providerSelect.disabled = true;
 }
 
 function appendStreamingContent(content, requestId) {
@@ -111,6 +115,9 @@ function finalizeStreamingMessage(finalContent, requestId) {
 
     streamingMessageDiv = null;
     streamingContent = '';
+    state.streamingMessageDiv = null;
+    const providerSelect = DOM.get('providerSelectHeader');
+    if (providerSelect) providerSelect.disabled = false;
 }
 
 export async function sendMessage() {

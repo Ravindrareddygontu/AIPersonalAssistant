@@ -30,6 +30,18 @@ let currentModel = 'claude-opus-4.5';
 /** @type {string[]} List of available AI models */
 let availableModels = [];
 
+/** @type {string} Currently selected AI provider */
+let currentAIProvider = 'auggie';
+
+/** @type {string[]} List of available AI providers */
+let availableProviders = ['auggie', 'openai'];
+
+/** @type {string} Currently selected OpenAI model */
+let currentOpenAIModel = 'gpt-5.2';
+
+/** @type {string[]} List of available OpenAI models */
+let availableOpenAIModels = ['gpt-5.2', 'gpt-5.2-chat-latest', 'gpt-5.1', 'gpt-5-mini', 'gpt-5-nano'];
+
 /** @type {string} Current path in file browser */
 let browserCurrentPath = '';
 
@@ -1030,9 +1042,10 @@ document.addEventListener('DOMContentLoaded', () => {
         chatMessagesContainer.style.visibility = 'visible';
     }
 
-    // If history is disabled, skip ALL server calls for instant load
+    // If history is disabled, still load settings but skip chat loading
     if (!historyEnabled) {
-        console.log('[INIT] History disabled - instant load complete');
+        console.log('[INIT] History disabled - loading settings only');
+        loadSettingsFromServer().catch(e => console.log('[INIT] Settings load failed:', e));
         return;
     }
 
@@ -1150,6 +1163,24 @@ async function loadSettingsFromServer() {
             slackWebhookUrl = data.slack_webhook_url || '';
             updateSlackToggle();
         }
+        // Handle AI provider settings
+        if (data.ai_provider) {
+            currentAIProvider = data.ai_provider;
+            localStorage.setItem('currentAIProvider', currentAIProvider);
+        }
+        if (data.ai_providers) {
+            availableProviders = data.ai_providers;
+            localStorage.setItem('availableProviders', JSON.stringify(availableProviders));
+        }
+        if (data.openai_model) {
+            currentOpenAIModel = data.openai_model;
+            localStorage.setItem('currentOpenAIModel', currentOpenAIModel);
+        }
+        if (data.openai_models) {
+            availableOpenAIModels = data.openai_models;
+            localStorage.setItem('availableOpenAIModels', JSON.stringify(availableOpenAIModels));
+        }
+        populateProviderSelect();
     } catch (error) {
         console.error('Failed to load settings:', error);
     }
@@ -1285,6 +1316,25 @@ async function updateModelFromHeader() {
     if (!headerSelect) return;
 
     const model = headerSelect.value;
+
+    if (currentAIProvider === 'openai') {
+        currentOpenAIModel = model;
+        localStorage.setItem('currentOpenAIModel', currentOpenAIModel);
+        const url = '/api/settings';
+        const requestBody = { openai_model: model };
+        try {
+            await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+            console.log('[updateModelFromHeader] OpenAI model updated to:', model);
+        } catch (error) {
+            console.error('Failed to update OpenAI model:', error);
+        }
+        return;
+    }
+
     currentModel = model;
 
     // Sync with modal select
@@ -1304,6 +1354,102 @@ async function updateModelFromHeader() {
         console.log('[updateModelFromHeader] Model updated to:', model);
     } catch (error) {
         console.error('Failed to update model:', error);
+    }
+}
+
+function populateProviderSelect() {
+    console.log('[populateProviderSelect] Called, availableProviders:', availableProviders);
+    const headerSelect = document.getElementById('providerSelectHeader');
+    console.log('[populateProviderSelect] headerSelect element:', headerSelect);
+    if (!headerSelect) {
+        console.log('[populateProviderSelect] Element not found, returning');
+        return;
+    }
+
+    headerSelect.innerHTML = '';
+    availableProviders.forEach(provider => {
+        const option = document.createElement('option');
+        option.value = provider;
+        option.textContent = provider === 'auggie' ? 'Auggie' : 'OpenAI';
+        if (provider === currentAIProvider) {
+            option.selected = true;
+        }
+        headerSelect.appendChild(option);
+    });
+    console.log('[populateProviderSelect] Options added:', headerSelect.options.length);
+    updateModelSelectVisibility();
+}
+
+function updateModelSelectVisibility() {
+    const modelSelectHeader = document.getElementById('modelSelectHeader');
+    if (!modelSelectHeader) return;
+
+    if (currentAIProvider === 'openai') {
+        modelSelectHeader.innerHTML = '';
+        availableOpenAIModels.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            if (model === currentOpenAIModel) {
+                option.selected = true;
+            }
+            modelSelectHeader.appendChild(option);
+        });
+    } else {
+        populateModelSelect();
+    }
+}
+
+async function updateProviderFromHeader() {
+    const headerSelect = document.getElementById('providerSelectHeader');
+    if (!headerSelect) return;
+
+    if (streamingMessageDiv) {
+        showNotification('Cannot switch provider while chat is streaming', 'warning');
+        headerSelect.value = currentAIProvider;
+        return;
+    }
+
+    const provider = headerSelect.value;
+    currentAIProvider = provider;
+    localStorage.setItem('currentAIProvider', currentAIProvider);
+
+    updateModelSelectVisibility();
+
+    const url = '/api/settings';
+    const requestBody = { ai_provider: provider };
+    try {
+        await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+        console.log('[updateProviderFromHeader] Provider updated to:', provider);
+        showNotification(`Switched to ${provider === 'auggie' ? 'Auggie' : 'OpenAI'}`);
+    } catch (error) {
+        console.error('Failed to update provider:', error);
+    }
+}
+
+async function updateOpenAIModelFromHeader() {
+    const modelSelectHeader = document.getElementById('modelSelectHeader');
+    if (!modelSelectHeader || currentAIProvider !== 'openai') return;
+
+    const model = modelSelectHeader.value;
+    currentOpenAIModel = model;
+    localStorage.setItem('currentOpenAIModel', currentOpenAIModel);
+
+    const url = '/api/settings';
+    const requestBody = { openai_model: model };
+    try {
+        await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+        console.log('[updateOpenAIModelFromHeader] OpenAI model updated to:', model);
+    } catch (error) {
+        console.error('Failed to update OpenAI model:', error);
     }
 }
 
@@ -1817,6 +1963,9 @@ function startStreamingMessage(requestId) {
         console.log(`[STREAM] IGNORING startStreamingMessage - stale request #${requestId}`);
         return;
     }
+
+    const providerSelect = document.getElementById('providerSelectHeader');
+    if (providerSelect) providerSelect.disabled = true;
 
     const container = DOM.get('chatMessages');
 
@@ -2463,6 +2612,10 @@ function finalizeStreamingMessage(finalContent, requestId) {
     streamingMessageDiv = null;
     streamingContent = '';
     console.log('[STREAM] Streaming state reset complete');
+
+    // Re-enable provider dropdown
+    const providerSelect = document.getElementById('providerSelectHeader');
+    if (providerSelect) providerSelect.disabled = false;
 
     // Final scroll
     container.scrollTop = container.scrollHeight;
@@ -3775,6 +3928,34 @@ function loadSettings() {
         historyEnabled = savedHistoryEnabled === 'true';
         updateSidebarVisibility();
     }
+
+    // Restore AI provider settings from cache
+    const savedProvider = localStorage.getItem('currentAIProvider');
+    const savedProviders = localStorage.getItem('availableProviders');
+    const savedOpenAIModel = localStorage.getItem('currentOpenAIModel');
+    const savedOpenAIModels = localStorage.getItem('availableOpenAIModels');
+
+    if (savedProvider) {
+        currentAIProvider = savedProvider;
+    }
+    if (savedProviders) {
+        try {
+            availableProviders = JSON.parse(savedProviders);
+        } catch (e) {
+            console.log('[INIT] Failed to parse cached providers');
+        }
+    }
+    if (savedOpenAIModel) {
+        currentOpenAIModel = savedOpenAIModel;
+    }
+    if (savedOpenAIModels) {
+        try {
+            availableOpenAIModels = JSON.parse(savedOpenAIModels);
+        } catch (e) {
+            console.log('[INIT] Failed to parse cached OpenAI models');
+        }
+    }
+    populateProviderSelect();
 }
 
 // Save settings (workspace and model)

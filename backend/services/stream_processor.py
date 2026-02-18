@@ -77,20 +77,20 @@ class StreamProcessor:
         # DEBUG: Log lines to understand the output format
         if len(lines) > 5:
             if not hasattr(state, '_debug_extract_logged'):
-                log.info(f"[DEBUG_EXTRACT] First 10 lines after message echo:")
+                log.debug(f"[DEBUG_EXTRACT] First 10 lines after message echo:")
                 for i, line in enumerate(lines[:10]):
-                    log.info(f"[DEBUG_EXTRACT] Line {i}: {repr(line[:100] if len(line) > 100 else line)}")
+                    log.debug(f"[DEBUG_EXTRACT] Line {i}: {repr(line[:100] if len(line) > 100 else line)}")
                 state._debug_extract_logged = True
             # Log first occurrence of each marker type (for debugging)
             for i, line in enumerate(lines):
                 stripped = line.strip()
                 if stripped.startswith('●'):
                     if not hasattr(state, '_debug_response_marker_logged'):
-                        log.info(f"[DEBUG_MARKER] Found RESPONSE marker (●) at line {i}: {repr(stripped[:80])}")
+                        log.debug(f"[DEBUG_MARKER] Found RESPONSE marker (●) at line {i}: {repr(stripped[:80])}")
                         state._debug_response_marker_logged = True
                 elif stripped.startswith('~'):
                     if not hasattr(state, '_debug_thinking_marker_logged'):
-                        log.info(f"[DEBUG_MARKER] Found THINKING marker (~) at line {i}: {repr(stripped[:80])}")
+                        log.debug(f"[DEBUG_MARKER] Found THINKING marker (~) at line {i}: {repr(stripped[:80])}")
                         state._debug_thinking_marker_logged = True
 
         for i, line in enumerate(lines):
@@ -110,11 +110,11 @@ class StreamProcessor:
             if stripped.startswith('●'):
                 in_response = True
                 state.mark_response_marker_seen()
-                log.info(f"[MARKER] Response marker found: {repr(stripped[:80])}")
+                log.debug(f"[MARKER] Response marker found: {repr(stripped[:80])}")
                 c = stripped[1:].strip()
                 if c:
                     content.append(c)
-                    log.info(f"[CONTENT] Added from ●: {repr(c[:50])}")
+                    log.debug(f"[CONTENT] Added from ●: {repr(c[:50])}")
                 continue
             elif stripped.startswith('~'):
                 # Thinking marker - auggie is working but this is internal reasoning
@@ -129,7 +129,7 @@ class StreamProcessor:
             # STOP CONDITIONS - ONLY check if we've already started seeing response
             # Don't stop before finding ● marker!
             if in_response and self._is_stop_condition(stripped, in_response):
-                log.info(f"[STOP] Breaking at line {i}: {repr(stripped[:60])}")
+                log.debug(f"[STOP] Breaking at line {i}: {repr(stripped[:60])}")
                 break
 
             # Skip patterns we want to filter out (only for non-marker lines)
@@ -146,11 +146,11 @@ class StreamProcessor:
                 if not any(skip in stripped for skip in ['Claude Opus', 'Version 0.', 'Message will be queued']):
                     content.append(stripped)
                     if len(content) <= 3:
-                        log.info(f"[CONTENT] Added line: {repr(stripped[:50])}")
+                        log.debug(f"[CONTENT] Added line: {repr(stripped[:50])}")
 
         result = '\n'.join(content) if content else None
         if result:
-            log.info(f"[CONTENT] Final content length: {len(result)}, first 100: {repr(result[:100])}")
+            log.debug(f"[CONTENT] Final content length: {len(result)}, first 100: {repr(result[:100])}")
         return result
 
     def _is_stop_condition(self, stripped: str, in_response: bool = False) -> bool:
@@ -223,7 +223,9 @@ class StreamProcessor:
             # Found empty prompt pattern - this is the definitive signal
             # Trust this signal when we have substantial content
             if state.has_substantial_content(min_length=10, min_time=1.0):
-                log.info("[END_DETECT] Found empty input prompt - response complete")
+                if not getattr(state, '_end_detect_logged', False):
+                    log.info("[END_DETECT] Found empty input prompt - response complete")
+                    state._end_detect_logged = True
                 return True
 
         # Secondary check: Look for the COMPLETE end sequence:
@@ -237,7 +239,9 @@ class StreamProcessor:
 
             if prompt_match and box_match:
                 if box_match.start() >= prompt_match.start() - 50:
-                    log.info("[END_DETECT] Found prompt + box bottom sequence")
+                    if not getattr(state, '_end_detect_logged', False):
+                        log.info("[END_DETECT] Found prompt + box bottom sequence")
+                        state._end_detect_logged = True
                     return True
 
         return False

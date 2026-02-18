@@ -66,8 +66,8 @@ function startFlaskServer() {
 
     const handlePipeError = (stream, name) => {
         if (stream) {
-            stream.on('error', (err) => { if (err.code !== 'EPIPE') log(`Flask ${name} error: ${err}`); });
-            if (name !== 'stdin') stream.on('data', (data) => log(`Flask: ${data}`));
+            stream.on('error', (err) => { if (err.code !== 'EPIPE') log(`Backend ${name} error: ${err}`); });
+            if (name !== 'stdin') stream.on('data', (data) => log(data.toString().trimEnd()));
         }
     };
     handlePipeError(flaskProcess.stdout, 'stdout');
@@ -107,7 +107,7 @@ function openLogsTerminal() {
     }
 
     // Command to tail the journalctl logs for this app
-    const logCommand = `journalctl --user -f -n 100 | grep -E "Flask:|CHAT|SESSION|RENDERER"`;
+    const logCommand = `journalctl --user -f -n 100 | grep -E "CHAT|SESSION|RENDERER|INFO:|ERROR:|WARNING:"`;
 
     // Try different terminal emulators (gnome-terminal.real first for Ubuntu systems where gnome-terminal wrapper may be broken)
     const terminals = [
@@ -195,23 +195,29 @@ function closeSplashAndShowMain() {
 function waitForServer(url, maxAttempts = 50) {
     return new Promise((resolve) => {
         let attempts = 0;
+        let resolved = false;
         const check = () => {
+            if (resolved) return;
             attempts++;
             const req = http.get(url, (res) => {
+                if (resolved) return;
                 if (res.statusCode === 200) {
+                    resolved = true;
                     console.log('Server is ready!');
                     resolve(true);
                 } else {
                     retry();
                 }
             });
-            req.on('error', () => retry());
-            req.setTimeout(500, () => { req.destroy(); retry(); });
+            req.on('error', () => { if (!resolved) retry(); });
+            req.setTimeout(500, () => { req.destroy(); if (!resolved) retry(); });
         };
         const retry = () => {
+            if (resolved) return;
             if (attempts < maxAttempts) {
                 setTimeout(check, 200);
             } else {
+                resolved = true;
                 console.log('Server timeout, proceeding anyway');
                 resolve(false);
             }
@@ -237,11 +243,20 @@ app.whenReady().then(async () => {
     // Load the URL
     mainWindow.loadURL('http://localhost:5001');
 
-    // Forward all renderer console logs to terminal
+    // Forward all renderer console logs to terminal with colors
     mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
         const levelNames = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
         const levelName = levelNames[level] || 'LOG';
-        console.log(`[RENDERER ${levelName}] ${message}`);
+        const RED = '\x1b[91m';
+        const YELLOW = '\x1b[93m';
+        const RESET = '\x1b[0m';
+        let output = `[RENDERER ${levelName}] ${message}`;
+        if (level >= 3) {
+            output = `${RED}${output}${RESET}`;
+        } else if (level >= 2) {
+            output = `${YELLOW}${output}${RESET}`;
+        }
+        console.log(output);
     });
 
     // When page finishes loading, close splash and show main

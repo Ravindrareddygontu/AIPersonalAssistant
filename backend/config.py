@@ -55,6 +55,10 @@ CHATS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'chats')
 os.makedirs(CHATS_DIR, exist_ok=True)
 
 
+# AI Provider options
+AI_PROVIDERS = ['auggie', 'openai']
+DEFAULT_AI_PROVIDER = 'auggie'
+
 # Available AI models - display names mapped to auggie model IDs
 AVAILABLE_MODELS = [
     'claude-opus-4.5',
@@ -63,6 +67,16 @@ AVAILABLE_MODELS = [
     'gpt-4-turbo',
 ]
 DEFAULT_MODEL = 'claude-opus-4.5'
+
+# OpenAI models for direct API access (current as of Feb 2026)
+OPENAI_MODELS = [
+    'gpt-5.2',
+    'gpt-5.2-chat-latest',
+    'gpt-5.1',
+    'gpt-5-mini',
+    'gpt-5-nano',
+]
+DEFAULT_OPENAI_MODEL = 'gpt-5.2'
 
 # Mapping from display model names to auggie CLI model IDs
 MODEL_ID_MAP = {
@@ -83,6 +97,8 @@ class Settings:
         self._history_enabled = True  # Global toggle for chat history storage
         self._slack_notify = False  # Send status to Slack after completion
         self._slack_webhook_url = os.environ.get('SLACK_WEBHOOK_URL', '')
+        self._ai_provider = DEFAULT_AI_PROVIDER  # 'auggie' or 'openai'
+        self._openai_model = DEFAULT_OPENAI_MODEL  # Model for OpenAI provider
 
     @property
     def workspace(self):
@@ -125,6 +141,24 @@ class Settings:
     def slack_webhook_url(self, value):
         self._slack_webhook_url = str(value) if value else ''
 
+    @property
+    def ai_provider(self):
+        return self._ai_provider
+
+    @ai_provider.setter
+    def ai_provider(self, value):
+        if value in AI_PROVIDERS:
+            self._ai_provider = value
+
+    @property
+    def openai_model(self):
+        return self._openai_model
+
+    @openai_model.setter
+    def openai_model(self, value):
+        if value in OPENAI_MODELS:
+            self._openai_model = value
+
     def to_dict(self):
         return {
             'workspace': self._workspace,
@@ -132,7 +166,11 @@ class Settings:
             'available_models': AVAILABLE_MODELS,
             'history_enabled': self._history_enabled,
             'slack_notify': self._slack_notify,
-            'slack_webhook_url': self._slack_webhook_url
+            'slack_webhook_url': self._slack_webhook_url,
+            'ai_provider': self._ai_provider,
+            'ai_providers': AI_PROVIDERS,
+            'openai_model': self._openai_model,
+            'openai_models': OPENAI_MODELS,
         }
 
 

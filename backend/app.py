@@ -19,13 +19,35 @@ from starlette.responses import Response
 
 from backend.routes import register_routes, set_templates
 
-# Configure logging to show in console
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(name)s] %(levelname)s: %(message)s',
-    datefmt='%H:%M:%S',
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+# Configure logging with colored errors for all loggers including uvicorn
+class ColoredFormatter(logging.Formatter):
+    RED = '\033[91m'
+    YELLOW = '\033[93m'
+    RESET = '\033[0m'
+
+    def format(self, record):
+        msg = super().format(record)
+        if record.levelno >= logging.ERROR:
+            return f"{self.RED}{msg}{self.RESET}"
+        elif record.levelno >= logging.WARNING:
+            return f"{self.YELLOW}{msg}{self.RESET}"
+        return msg
+
+colored_formatter = ColoredFormatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s', datefmt='%H:%M:%S')
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(colored_formatter)
+
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+root_logger.handlers = [handler]
+
+for logger_name in ['uvicorn', 'uvicorn.error', 'uvicorn.access']:
+    uv_logger = logging.getLogger(logger_name)
+    uv_logger.handlers = [handler]
+    uv_logger.propagate = False
+
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('httpcore').setLevel(logging.WARNING)
 
 log = logging.getLogger('app')
 

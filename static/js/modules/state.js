@@ -29,7 +29,12 @@ export const state = {
     selectedImages: [],
     mediaRecorder: null,
     audioChunks: [],
-    isRecording: false
+    isRecording: false,
+    currentAIProvider: 'auggie',
+    availableProviders: ['auggie', 'openai'],
+    currentOpenAIModel: 'gpt-5.2',
+    availableOpenAIModels: ['gpt-5.2', 'gpt-5.2-chat-latest', 'gpt-5.1', 'gpt-5-mini', 'gpt-5-nano'],
+    streamingMessageDiv: null
 };
 
 export const activeRequests = new Map();

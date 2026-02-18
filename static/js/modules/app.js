@@ -349,6 +349,65 @@ async function updateModelFromHeader() {
     }
 }
 
+async function updateProviderFromHeader() {
+    const headerSelect = DOM.get('providerSelectHeader');
+    if (!headerSelect) return;
+
+    if (state.streamingMessageDiv) {
+        showNotification('Cannot switch provider while chat is streaming', 'warning');
+        headerSelect.value = state.currentAIProvider || 'auggie';
+        return;
+    }
+
+    if (state.chatHistory && state.chatHistory.length > 0) {
+        showNotification('Cannot switch provider mid-chat. Start a new chat to change provider.', 'warning');
+        headerSelect.value = state.currentAIProvider || 'auggie';
+        return;
+    }
+
+    const provider = headerSelect.value;
+    state.currentAIProvider = provider;
+    localStorage.setItem('currentAIProvider', provider);
+
+    updateModelSelectVisibility();
+
+    try {
+        await api.saveSettings({ ai_provider: provider });
+        console.log('[APP] Provider updated to:', provider);
+        showNotification(`Switched to ${provider === 'auggie' ? 'Auggie' : 'OpenAI'}`);
+    } catch (error) {
+        console.error('Failed to update provider:', error);
+    }
+}
+
+function updateModelSelectVisibility() {
+    const modelSelectHeader = DOM.get('modelSelectHeader');
+    if (!modelSelectHeader) return;
+
+    if (state.currentAIProvider === 'openai') {
+        modelSelectHeader.innerHTML = '';
+        const openaiModels = state.availableOpenAIModels || ['gpt-5.2', 'gpt-5.2-chat-latest', 'gpt-5.1', 'gpt-5-mini', 'gpt-5-nano'];
+        openaiModels.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            if (model === state.currentOpenAIModel) {
+                option.selected = true;
+            }
+            modelSelectHeader.appendChild(option);
+        });
+    } else {
+        populateModelSelect();
+    }
+}
+
+function handleKeyDown(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendMessage();
+    }
+}
+
 window.appState = state;
 window.toggleSettings = toggleSettings;
 window.toggleSidebar = toggleSidebar;
@@ -358,6 +417,9 @@ window.navigateToHome = navigateToHome;
 window.selectCurrentDir = selectCurrentDir;
 window.browseItem = browseItem;
 window.updateModelFromHeader = updateModelFromHeader;
+window.updateProviderFromHeader = updateProviderFromHeader;
+window.handleKeyDown = handleKeyDown;
+window.autoResize = autoResize;
 
 document.addEventListener('DOMContentLoaded', initApp);
 

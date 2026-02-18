@@ -29,6 +29,8 @@ class SettingsUpdate(BaseModel):
     history_enabled: Optional[bool] = None
     slack_notify: Optional[bool] = None
     slack_webhook_url: Optional[str] = None
+    ai_provider: Optional[str] = None
+    openai_model: Optional[str] = None
 
 
 class SessionResetRequest(BaseModel):
@@ -98,13 +100,27 @@ async def save_settings(request: Request, data: SettingsUpdate):
         settings.slack_webhook_url = data.slack_webhook_url
         log.info(f"[SETTINGS] Slack webhook URL updated")
 
+    # Handle ai_provider
+    if data.ai_provider is not None:
+        old_provider = settings.ai_provider
+        settings.ai_provider = data.ai_provider
+        log.info(f"[SETTINGS] AI provider changed: {old_provider} -> {settings.ai_provider}")
+
+    # Handle openai_model
+    if data.openai_model is not None:
+        old_model = settings.openai_model
+        settings.openai_model = data.openai_model
+        log.info(f"[SETTINGS] OpenAI model changed: {old_model} -> {settings.openai_model}")
+
     response_data = {
         'status': 'success',
         'workspace': settings.workspace,
         'model': settings.model,
         'history_enabled': settings.history_enabled,
         'slack_notify': settings.slack_notify,
-        'slack_webhook_url': settings.slack_webhook_url
+        'slack_webhook_url': settings.slack_webhook_url,
+        'ai_provider': settings.ai_provider,
+        'openai_model': settings.openai_model,
     }
     _log_response('POST', url, 200, response_data)
     return response_data

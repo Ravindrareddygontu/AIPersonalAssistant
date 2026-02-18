@@ -159,9 +159,10 @@ class AuggieSession:
 
                     # Check for indexing status
                     if 'Indexing...' in chunk or 'Indexing' in output:
+                        if not indexing_started:
+                            log.info(f"[SESSION] Indexing started")
                         indexing_started = True
                         elapsed = time.time() - start
-                        log.info(f"[SESSION] Indexing in progress...")
                         send_status(f"Indexing codebase... ({elapsed:.0f}s)")
 
                     if 'Indexing complete' in chunk or 'Indexing complete' in output:
