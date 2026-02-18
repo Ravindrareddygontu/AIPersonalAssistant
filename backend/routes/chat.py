@@ -314,8 +314,24 @@ class StreamGenerator:
                 log.warning(f"Client disconnected (EPIPE): {e}")
                 self._continue_in_background()
                 return
-            # Re-raise other OSErrors
-            raise
+            log.error(f"OS error during streaming: {e}")
+            if self.repository:
+                self.repository.set_streaming_status(None)
+            execution_time = time.time() - self.start_time
+            notify_completion(
+                question=self.message,
+                content="",
+                success=False,
+                error=str(e),
+                stopped=False,
+                execution_time=execution_time
+            )
+            try:
+                yield self.sse.send({'type': 'error', 'message': str(e)})
+                yield self.sse.send({'type': 'done'})
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                log.warning("Could not send OS error to client - already disconnected")
+                return
         except Exception as e:
             log.error(f"Exception: {e}")
             # Mark streaming as failed

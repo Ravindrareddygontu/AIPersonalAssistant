@@ -57,7 +57,9 @@ os.makedirs(CHATS_DIR, exist_ok=True)
 
 # AI Provider options
 AI_PROVIDERS = ['auggie', 'openai']
-DEFAULT_AI_PROVIDER = 'auggie'
+DEFAULT_AI_PROVIDER = os.environ.get('DEFAULT_AI_PROVIDER', 'auggie').strip().lower()
+if DEFAULT_AI_PROVIDER not in AI_PROVIDERS:
+    DEFAULT_AI_PROVIDER = 'auggie'
 
 # Available AI models - display names mapped to auggie model IDs
 AVAILABLE_MODELS = [
@@ -92,7 +94,7 @@ def get_auggie_model_id(display_name):
 
 class Settings:
     def __init__(self):
-        self._workspace = os.path.expanduser("~/Projects/POC'S/ai-chat-app")
+        self._workspace = os.environ.get('DEFAULT_WORKSPACE', os.path.expanduser("~/projects"))
         self._model = DEFAULT_MODEL
         self._history_enabled = True  # Global toggle for chat history storage
         self._slack_notify = False  # Send status to Slack after completion

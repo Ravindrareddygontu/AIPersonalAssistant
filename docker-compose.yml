@@ -1,0 +1,40 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aipersonalassistant-app
+    ports:
+      - "5001:5001"
+    environment:
+      FLASK_ENV: production
+      PYTHONUTF8: "1"
+      MONGODB_URI: mongodb://mongodb:27017
+      MONGODB_DB_NAME: ai_chat_app
+      DEFAULT_AI_PROVIDER: auggie
+      DEFAULT_WORKSPACE: /root/projects
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SLACK_ENABLED: "false"
+    volumes:
+      - ${USERPROFILE}/.augment:/root/.augment
+      - ${USERPROFILE}/Desktop/projects:/root/projects
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7
+    container_name: aipersonalassistant-mongo
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
