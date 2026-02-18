@@ -1,5 +1,3 @@
-"""Provider management routes."""
-
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, status
@@ -15,11 +13,6 @@ async def list_providers(
     registry: RegistryDep,
     capability: Optional[ProviderCapability] = None,
 ) -> List[ProviderInfo]:
-    """
-    List all registered providers.
-    
-    Optionally filter by capability.
-    """
     if capability:
         return registry.find_by_capability(capability)
     return registry.list_providers()
@@ -30,7 +23,6 @@ async def get_provider(
     provider_name: str,
     registry: RegistryDep,
 ) -> ProviderInfo:
-    """Get information about a specific provider."""
     if not registry.has_provider(provider_name):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -46,7 +38,6 @@ async def check_provider_health(
     provider_name: str,
     registry: RegistryDep,
 ) -> dict:
-    """Check the health of a specific provider."""
     if not registry.has_provider(provider_name):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -68,6 +59,5 @@ async def find_providers_by_capability(
     capability: ProviderCapability,
     registry: RegistryDep,
 ) -> List[ProviderInfo]:
-    """Find all providers that support a specific capability."""
     return registry.find_by_capability(capability)
 

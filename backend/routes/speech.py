@@ -1,4 +1,3 @@
-"""Speech-to-Text route using OpenAI Voice provider directly."""
 import os
 import logging
 
@@ -15,7 +14,6 @@ _voice_provider = None
 
 
 def get_voice_provider() -> OpenAIVoiceProvider:
-    """Get or create the voice provider instance."""
     global _voice_provider
     if _voice_provider is None:
         api_key = os.environ.get('OPENAI_API_KEY')
@@ -24,7 +22,6 @@ def get_voice_provider() -> OpenAIVoiceProvider:
 
 
 def _log_request(method: str, url: str, data=None):
-    """Log incoming request."""
     if data:
         log.info(f"[REQUEST] {method} {url} | data: {data}")
     else:
@@ -32,18 +29,11 @@ def _log_request(method: str, url: str, data=None):
 
 
 def _log_response(method: str, url: str, status: int, data=None):
-    """Log outgoing response."""
     log.info(f"[RESPONSE] {method} {url} | Status: {status}")
 
 
 @speech_router.post('/api/speech-to-text')
 async def speech_to_text(request: Request, audio: UploadFile = File(...)):
-    """
-    Convert speech audio to text using OpenAI Voice provider.
-
-    Expects: multipart/form-data with 'audio' file
-    Returns: { "text": "transcribed text", "success": true }
-    """
     url = str(request.url)
     _log_request('POST', url)
 
@@ -91,7 +81,6 @@ async def speech_to_text(request: Request, audio: UploadFile = File(...)):
 
 @speech_router.get('/api/speech-to-text/status')
 async def speech_service_status():
-    """Check if speech service is available."""
     try:
         provider = get_voice_provider()
         api_key = os.environ.get('OPENAI_API_KEY')

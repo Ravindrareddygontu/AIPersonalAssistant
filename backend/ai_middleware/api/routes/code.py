@@ -1,5 +1,3 @@
-"""Code generation, completion, and analysis routes."""
-
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, status
@@ -27,11 +25,6 @@ async def generate_code(
     api_key: ApiKeyDep,
     provider: ProviderDep,
 ) -> CodeGenerationResponse:
-    """
-    Generate code from a natural language prompt.
-    
-    Describe what you want and get code in the specified language.
-    """
     provider_name = provider or request.provider
     if not provider_name:
         raise HTTPException(
@@ -57,11 +50,6 @@ async def generate_code_stream(
     api_key: ApiKeyDep,
     provider: ProviderDep,
 ) -> StreamingResponse:
-    """
-    Stream code generation.
-    
-    Returns Server-Sent Events with code chunks.
-    """
     provider_name = provider or request.provider
     if not provider_name:
         raise HTTPException(
@@ -92,11 +80,6 @@ async def complete_code(
     api_key: ApiKeyDep,
     provider: ProviderDep,
 ) -> CodeCompletionResponse:
-    """
-    Complete code given a prefix and optional suffix.
-    
-    Supports fill-in-the-middle completion.
-    """
     provider_name = provider or request.provider
     if not provider_name:
         raise HTTPException(
@@ -123,11 +106,6 @@ async def analyze_code(
     api_key: ApiKeyDep,
     provider: ProviderDep,
 ) -> CodeAnalysisResponse:
-    """
-    Analyze code for issues, security problems, or get explanations.
-    
-    Supports different analysis types: review, security, explain, optimize.
-    """
     provider_name = provider or request.provider
     if not provider_name:
         raise HTTPException(
@@ -154,11 +132,6 @@ async def execute_code(
     api_key: ApiKeyDep,
     provider: ProviderDep,
 ) -> CodeExecutionResponse:
-    """
-    Execute code in a sandboxed environment.
-    
-    Returns stdout, stderr, and exit code.
-    """
     provider_name = provider or request.provider
     if not provider_name:
         raise HTTPException(

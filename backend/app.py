@@ -1,4 +1,4 @@
-"""AI Chat Application - FastAPI backend."""
+
 import os
 import sys
 import logging
@@ -32,14 +32,12 @@ log = logging.getLogger('app')
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan handler."""
     log.info("🚀 AI Chat Application starting...")
     yield
     log.info("👋 AI Chat Application shutting down...")
 
 
 def create_app() -> FastAPI:
-    """Create and configure the FastAPI application."""
     base_dir = os.path.dirname(os.path.dirname(__file__))
     template_dir = os.path.join(base_dir, 'templates')
     static_dir = os.path.join(base_dir, 'static')

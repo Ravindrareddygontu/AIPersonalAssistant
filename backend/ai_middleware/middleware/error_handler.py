@@ -1,5 +1,3 @@
-"""Error handling middleware and exceptions."""
-
 from typing import Any, Dict, Optional
 from uuid import UUID
 
@@ -11,7 +9,6 @@ logger = structlog.get_logger()
 
 
 class AIMiddlewareException(Exception):
-    """Base exception for AI Middleware."""
 
     def __init__(
         self,
@@ -31,7 +28,6 @@ class AIMiddlewareException(Exception):
         self.provider = provider
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert exception to dictionary for JSON response."""
         return {
             "error": self.error_code,
             "error_code": self.error_code,
@@ -43,7 +39,6 @@ class AIMiddlewareException(Exception):
 
 
 class ProviderError(AIMiddlewareException):
-    """Error from an AI provider."""
 
     def __init__(
         self,
@@ -64,7 +59,6 @@ class ProviderError(AIMiddlewareException):
 
 
 class RateLimitError(AIMiddlewareException):
-    """Rate limit exceeded."""
 
     def __init__(
         self,
@@ -82,7 +76,6 @@ class RateLimitError(AIMiddlewareException):
 
 
 class ValidationError(AIMiddlewareException):
-    """Request validation error."""
 
     def __init__(
         self,
@@ -103,7 +96,6 @@ class ValidationError(AIMiddlewareException):
 
 
 class AuthenticationError(AIMiddlewareException):
-    """Authentication failed."""
 
     def __init__(self, message: str = "Authentication failed", **kwargs: Any) -> None:
         super().__init__(
@@ -115,7 +107,6 @@ class AuthenticationError(AIMiddlewareException):
 
 
 class NotFoundError(AIMiddlewareException):
-    """Resource not found."""
 
     def __init__(self, message: str, resource: Optional[str] = None, **kwargs: Any) -> None:
         details = kwargs.pop("details", {})
@@ -131,7 +122,6 @@ class NotFoundError(AIMiddlewareException):
 
 
 async def error_handler_middleware(request: Request, call_next):
-    """Middleware to handle exceptions and return consistent error responses."""
     try:
         return await call_next(request)
     except AIMiddlewareException as e:
@@ -163,6 +153,5 @@ async def error_handler_middleware(request: Request, call_next):
 
 
 def setup_error_handlers(app: FastAPI) -> None:
-    """Set up exception handlers on the FastAPI app."""
     app.middleware("http")(error_handler_middleware)
 

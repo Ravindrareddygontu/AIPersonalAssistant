@@ -1,12 +1,9 @@
-"""Main API router combining all route modules."""
-
 from fastapi import APIRouter
 
 from backend.ai_middleware.api.routes import chat, code, image, providers, video, voice
 
 
 def create_router() -> APIRouter:
-    """Create and configure the main API router."""
     router = APIRouter()
 
     # Include all route modules

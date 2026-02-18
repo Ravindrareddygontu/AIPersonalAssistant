@@ -1,5 +1,3 @@
-"""Rate limiting middleware."""
-
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -17,14 +15,11 @@ logger = structlog.get_logger()
 
 @dataclass
 class RateLimitState:
-    """State for tracking rate limits."""
-    
     requests: int = 0
     window_start: float = field(default_factory=time.time)
 
 
 class InMemoryRateLimiter:
-    """Simple in-memory rate limiter using sliding window."""
 
     def __init__(
         self,
@@ -36,7 +31,6 @@ class InMemoryRateLimiter:
         self._state: Dict[str, RateLimitState] = defaultdict(RateLimitState)
 
     def _get_key(self, request: Request) -> str:
-        """Generate a rate limit key from request."""
         # Use API key if present, otherwise use IP
         api_key = request.headers.get("X-API-Key")
         if api_key:
@@ -46,12 +40,6 @@ class InMemoryRateLimiter:
         return f"ip:{client_ip}"
 
     def check(self, request: Request) -> tuple[bool, int, int]:
-        """
-        Check if request is within rate limits.
-        
-        Returns:
-            (allowed, remaining, reset_after_seconds)
-        """
         key = self._get_key(request)
         now = time.time()
         state = self._state[key]
@@ -76,7 +64,6 @@ class InMemoryRateLimiter:
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Middleware for rate limiting requests."""
 
     def __init__(
         self,
@@ -96,7 +83,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: Callable
     ) -> Response:
-        """Check rate limits before processing request."""
         # Skip rate limiting for excluded paths
         if request.url.path in self.exclude_paths:
             return await call_next(request)

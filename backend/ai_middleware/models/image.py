@@ -1,5 +1,3 @@
-"""Image generation and analysis models."""
-
 from enum import Enum
 from typing import Optional
 from uuid import UUID
@@ -10,7 +8,6 @@ from backend.ai_middleware.models.base import BaseRequest, BaseResponse
 
 
 class ImageSize(str, Enum):
-    """Standard image sizes."""
 
     SMALL = "256x256"
     MEDIUM = "512x512"
@@ -20,14 +17,12 @@ class ImageSize(str, Enum):
 
 
 class ImageQuality(str, Enum):
-    """Image quality levels."""
 
     STANDARD = "standard"
     HD = "hd"
 
 
 class ImageStyle(str, Enum):
-    """Image generation styles."""
 
     NATURAL = "natural"
     VIVID = "vivid"
@@ -36,7 +31,6 @@ class ImageStyle(str, Enum):
 
 
 class ImageGenerationRequest(BaseRequest):
-    """Image generation request."""
 
     prompt: str
     negative_prompt: Optional[str] = None
@@ -50,7 +44,6 @@ class ImageGenerationRequest(BaseRequest):
 
 
 class GeneratedImage(BaseModel):
-    """A single generated image."""
 
     url: Optional[str] = None
     b64_data: Optional[str] = None
@@ -59,18 +52,15 @@ class GeneratedImage(BaseModel):
 
 
 class ImageGenerationResponse(BaseResponse):
-    """Image generation response."""
 
     images: list[GeneratedImage]
-    
+
     @property
     def first_image(self) -> Optional[GeneratedImage]:
-        """Get the first generated image."""
         return self.images[0] if self.images else None
 
 
 class ImageEditRequest(BaseRequest):
-    """Image editing request."""
 
     image_data: bytes = Field(exclude=True)
     prompt: str
@@ -80,13 +70,11 @@ class ImageEditRequest(BaseRequest):
 
 
 class ImageEditResponse(BaseResponse):
-    """Image editing response."""
 
     images: list[GeneratedImage]
 
 
 class ImageAnalysisRequest(BaseRequest):
-    """Image analysis request."""
 
     image_data: bytes = Field(exclude=True)
     image_url: Optional[str] = None
@@ -96,7 +84,6 @@ class ImageAnalysisRequest(BaseRequest):
 
 
 class BoundingBox(BaseModel):
-    """Bounding box for detected objects."""
 
     x: float
     y: float
@@ -105,7 +92,6 @@ class BoundingBox(BaseModel):
 
 
 class DetectedObject(BaseModel):
-    """A detected object in an image."""
 
     label: str
     confidence: float
@@ -113,7 +99,6 @@ class DetectedObject(BaseModel):
 
 
 class ImageAnalysisResponse(BaseResponse):
-    """Image analysis response."""
 
     description: str
     objects: Optional[list[DetectedObject]] = None

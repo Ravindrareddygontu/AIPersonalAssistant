@@ -1,5 +1,3 @@
-"""Provider registration and management."""
-
 from backend.ai_middleware.providers.registry import (
     ProviderRegistry,
     get_registry,

@@ -1,5 +1,3 @@
-"""Voice/speech routes."""
-
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
@@ -24,11 +22,6 @@ async def transcribe_audio(
     language: Optional[str] = Form(None),
     model: Optional[str] = Form(None),
 ) -> VoiceToTextResponse:
-    """
-    Transcribe audio to text (Speech-to-Text).
-    
-    Upload an audio file and get the transcription.
-    """
     if not provider:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -64,11 +57,6 @@ async def synthesize_speech(
     api_key: ApiKeyDep,
     provider: ProviderDep,
 ) -> Response:
-    """
-    Convert text to speech (Text-to-Speech).
-    
-    Returns audio data in the requested format.
-    """
     provider_name = provider or request.provider
     if not provider_name:
         raise HTTPException(
@@ -102,11 +90,6 @@ async def synthesize_speech_stream(
     api_key: ApiKeyDep,
     provider: ProviderDep,
 ) -> StreamingResponse:
-    """
-    Stream text-to-speech audio.
-    
-    Returns audio chunks as they're generated.
-    """
     provider_name = provider or request.provider
     if not provider_name:
         raise HTTPException(
@@ -136,7 +119,6 @@ async def list_voices(
     api_key: ApiKeyDep,
     provider: ProviderDep,
 ) -> dict:
-    """List available voices for a provider."""
     if not provider:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

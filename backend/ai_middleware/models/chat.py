@@ -1,5 +1,3 @@
-"""Chat/conversation models."""
-
 from enum import Enum
 from typing import Any, Optional, Union
 from uuid import UUID
@@ -10,7 +8,6 @@ from backend.ai_middleware.models.base import BaseRequest, BaseResponse, StreamE
 
 
 class MessageRole(str, Enum):
-    """Role of a message sender."""
 
     SYSTEM = "system"
     USER = "user"
@@ -20,16 +17,14 @@ class MessageRole(str, Enum):
 
 
 class ContentPart(BaseModel):
-    """Multimodal content part."""
 
-    type: str  # "text", "image_url", "audio"
+    type: str
     text: Optional[str] = None
     image_url: Optional[dict[str, str]] = None
     audio: Optional[dict[str, str]] = None
 
 
 class ToolCall(BaseModel):
-    """A tool/function call made by the model."""
 
     id: str
     type: str = "function"
@@ -37,7 +32,6 @@ class ToolCall(BaseModel):
 
 
 class ChatMessage(BaseModel):
-    """A single message in a conversation."""
 
     role: MessageRole
     content: Union[str, list[ContentPart], None] = None
@@ -50,14 +44,12 @@ class ChatMessage(BaseModel):
 
 
 class ToolDefinition(BaseModel):
-    """Definition of a tool the model can use."""
 
     type: str = "function"
     function: dict[str, Any]
 
 
 class ChatRequest(BaseRequest):
-    """Chat completion request."""
 
     messages: list[ChatMessage]
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
@@ -73,7 +65,6 @@ class ChatRequest(BaseRequest):
 
 
 class ChatChoice(BaseModel):
-    """A single choice/response in a chat completion."""
 
     index: int = 0
     message: ChatMessage
@@ -81,13 +72,11 @@ class ChatChoice(BaseModel):
 
 
 class ChatResponse(BaseResponse):
-    """Chat completion response."""
 
     choices: list[ChatChoice]
-    
+
     @property
     def content(self) -> Optional[str]:
-        """Get the content of the first choice."""
         if self.choices and self.choices[0].message.content:
             content = self.choices[0].message.content
             return content if isinstance(content, str) else None
@@ -95,12 +84,10 @@ class ChatResponse(BaseResponse):
 
     @property
     def message(self) -> Optional[ChatMessage]:
-        """Get the first message."""
         return self.choices[0].message if self.choices else None
 
 
 class ChatStreamDelta(BaseModel):
-    """Delta content in a streaming response."""
 
     role: Optional[MessageRole] = None
     content: Optional[str] = None
@@ -108,7 +95,6 @@ class ChatStreamDelta(BaseModel):
 
 
 class ChatStreamChoice(BaseModel):
-    """A single choice in a streaming response."""
 
     index: int = 0
     delta: ChatStreamDelta
@@ -116,14 +102,12 @@ class ChatStreamChoice(BaseModel):
 
 
 class ChatStreamChunk(StreamEvent):
-    """A chunk of a streaming chat response."""
 
     event_type: str = "chat.chunk"
     choices: list[ChatStreamChoice]
 
     @property
     def content(self) -> Optional[str]:
-        """Get the delta content of the first choice."""
         if self.choices and self.choices[0].delta.content:
             return self.choices[0].delta.content
         return None

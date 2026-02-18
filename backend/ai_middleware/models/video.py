@@ -1,5 +1,3 @@
-"""Video generation and analysis models."""
-
 from enum import Enum
 from typing import Optional
 from uuid import UUID
@@ -10,7 +8,6 @@ from backend.ai_middleware.models.base import BaseRequest, BaseResponse, StreamE
 
 
 class VideoResolution(str, Enum):
-    """Video resolution options."""
 
     SD_480P = "480p"
     HD_720P = "720p"
@@ -20,7 +17,6 @@ class VideoResolution(str, Enum):
 
 
 class VideoFormat(str, Enum):
-    """Video format options."""
 
     MP4 = "mp4"
     WEBM = "webm"
@@ -29,7 +25,6 @@ class VideoFormat(str, Enum):
 
 
 class VideoGenerationRequest(BaseRequest):
-    """Video generation request."""
 
     prompt: str
     negative_prompt: Optional[str] = None
@@ -44,7 +39,6 @@ class VideoGenerationRequest(BaseRequest):
 
 
 class GeneratedVideo(BaseModel):
-    """A single generated video."""
 
     url: Optional[str] = None
     b64_data: Optional[str] = None
@@ -57,14 +51,12 @@ class GeneratedVideo(BaseModel):
 
 
 class VideoGenerationResponse(BaseResponse):
-    """Video generation response."""
 
     video: GeneratedVideo
     generation_time_seconds: Optional[float] = None
 
 
 class VideoAnalysisRequest(BaseRequest):
-    """Video analysis request."""
 
     video_data: bytes = Field(exclude=True)
     video_url: Optional[str] = None
@@ -75,7 +67,6 @@ class VideoAnalysisRequest(BaseRequest):
 
 
 class VideoSegment(BaseModel):
-    """A segment of analyzed video."""
 
     start_time: float
     end_time: float
@@ -85,7 +76,6 @@ class VideoSegment(BaseModel):
 
 
 class VideoAnalysisResponse(BaseResponse):
-    """Video analysis response."""
 
     description: str
     duration_seconds: float
@@ -98,7 +88,6 @@ class VideoAnalysisResponse(BaseResponse):
 
 
 class VideoStreamChunk(StreamEvent):
-    """A chunk of streaming video generation."""
 
     event_type: str = "video.chunk"
     progress_percent: float

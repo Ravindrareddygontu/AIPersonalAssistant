@@ -1,10 +1,3 @@
-"""
-TextCleaner - Utility for stripping ANSI codes and cleaning terminal output.
-
-This module provides regex-based cleaning of terminal output from the auggie CLI,
-removing escape sequences, box drawing characters, and UI artifacts.
-"""
-
 import re
 from typing import Optional
 
@@ -64,38 +57,13 @@ _NEWLINES_RE = re.compile(r'\n{3,}')
 
 
 class TextCleaner:
-    """
-    Utility class for cleaning terminal output text.
-
-    Provides static methods to strip ANSI codes and clean response content.
-    """
 
     @staticmethod
     def strip_ansi(text: str) -> str:
-        """
-        Remove ANSI escape sequences and extra terminal artifacts.
-
-        Args:
-            text: Raw terminal output with ANSI codes
-
-        Returns:
-            Text with all escape sequences removed
-        """
         return _EXTRA_RE.sub('', _ANSI_RE.sub('', text))
 
     @staticmethod
     def clean_response(text: str) -> str:
-        """
-        Clean a response by removing UI artifacts and normalizing whitespace.
-
-        Removes box drawing chars, model tags, shortcuts, and collapses newlines.
-
-        Args:
-            text: Text already stripped of ANSI codes
-
-        Returns:
-            Clean text suitable for display
-        """
         text = _CLEAN_RE.sub('', text)
         text = _AUTOMATION_RE.sub('', text)
         text = _COPY_RE.sub('', text)

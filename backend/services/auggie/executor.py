@@ -1,13 +1,3 @@
-"""
-AuggieExecutor - Generic interface for executing commands via Auggie.
-
-This is the core abstraction that can be used by:
-- Slack bot
-- CLI tools
-- Webhooks
-- Any other integration
-"""
-
 import os
 import time
 import select
@@ -27,7 +17,6 @@ log = logging.getLogger('auggie.executor')
 
 @dataclass
 class AuggieResponse:
-    """Response from Auggie execution."""
     success: bool
     content: str
     error: Optional[str] = None
@@ -35,15 +24,8 @@ class AuggieResponse:
 
 
 class AuggieExecutor:
-    """
-    Concrete implementation that executes commands via PTY session.
-    
-    This is a non-streaming executor - it waits for the complete response
-    before returning. Ideal for integrations that don't need real-time streaming.
-    """
-    
-    # Timeouts
-    MAX_EXECUTION_TIME = 300  # 5 minutes max
+
+    MAX_EXECUTION_TIME = 300
     SILENCE_TIMEOUT = 10.0    # No data for 10s after response = done
     DATA_SILENCE_TIMEOUT = 3.0  # No data for 3s = check completion
     PROMPT_WAIT_TIMEOUT = 60  # Wait for initial prompt
@@ -52,17 +34,6 @@ class AuggieExecutor:
         self.processor = None
     
     def execute(self, message: str, workspace: str, model: str = None) -> AuggieResponse:
-        """
-        Execute a message and wait for complete response.
-        
-        Args:
-            message: The command/question to send
-            workspace: Working directory for auggie
-            model: Optional model override
-            
-        Returns:
-            AuggieResponse with the result
-        """
         start_time = time.time()
         workspace = os.path.expanduser(workspace)
         
@@ -121,10 +92,6 @@ class AuggieExecutor:
             )
     
     def _sanitize_message(self, message: str) -> str:
-        """Sanitize message for terminal input.
-
-        Also strips braille spinner characters that auggie uses for status indicators.
-        """
         import re
         sanitized = message.replace('\n', ' ').replace('\r', ' ')
         # Remove braille spinner characters
@@ -142,8 +109,7 @@ class AuggieExecutor:
             .replace('─', '-'))
     
     def _send_and_wait(self, session, message: str) -> AuggieResponse:
-        """Send message and wait for complete response."""
-        # Drain any pending output
+        session.drain_output(timeout=0.2)
         session.drain_output(timeout=0.2)
 
         # Send message

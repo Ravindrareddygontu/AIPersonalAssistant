@@ -1,9 +1,3 @@
-"""
-ChatRepository - Handles all database operations for chat messages.
-
-Follows Single Responsibility Principle: Only handles DB persistence.
-"""
-
 import logging
 from datetime import datetime
 from backend.database import get_chats_collection, is_db_available_cached
@@ -13,8 +7,6 @@ log = logging.getLogger('chat.repository')
 
 
 class ChatRepository:
-    """Repository for chat message persistence operations."""
-
     def __init__(self, chat_id: str):
         self.chat_id = chat_id
         self._collection = None
@@ -27,7 +19,6 @@ class ChatRepository:
 
     @property
     def collection(self):
-        """Lazy-load the MongoDB collection."""
         # If we already know DB is unavailable, don't try again
         if self._db_available is False:
             return None
@@ -38,7 +29,6 @@ class ChatRepository:
 
     @property
     def is_db_available(self) -> bool:
-        """Check if database is available."""
         if self._db_available is None:
             # Use cached check first
             if not is_db_available_cached():
@@ -49,7 +39,6 @@ class ChatRepository:
         return self._db_available
 
     def get_chat(self) -> dict | None:
-        """Retrieve a chat by ID."""
         if not self.chat_id:
             return None
         if self.collection is None:
@@ -58,15 +47,6 @@ class ChatRepository:
         return self.collection.find_one({'id': self.chat_id})
 
     def save_question(self, question_content: str) -> str | None:
-        """
-        Save a new question to the chat and return the message ID.
-        
-        Args:
-            question_content: The user's question text
-            
-        Returns:
-            The generated message ID, or None if save failed
-        """
         if not self.chat_id:
             return None
 
@@ -93,16 +73,6 @@ class ChatRepository:
             return None
 
     def save_answer(self, message_id: str, cleaned_content: str) -> bool:
-        """
-        Save an answer to an existing question.
-
-        Args:
-            message_id: The ID of the Q&A pair to update
-            cleaned_content: Cleaned response for display
-
-        Returns:
-            True if save succeeded, False otherwise
-        """
         if not self.chat_id or not message_id:
             return False
 
@@ -124,7 +94,6 @@ class ChatRepository:
             return False
 
     def _update_chat(self, messages: list, title: str = None, streaming_status: str = None) -> None:
-        """Update chat document in database."""
         if self.collection is None:
             log.warning(f"MongoDB not available, skipping chat update for {self.chat_id}")
             return
@@ -144,7 +113,6 @@ class ChatRepository:
         )
 
     def set_streaming_status(self, status: str) -> None:
-        """Set streaming status for the chat (None, 'streaming', 'pending')."""
         if not self.chat_id:
             return
         if self.collection is None:
@@ -157,7 +125,6 @@ class ChatRepository:
         log.info(f"Set streaming_status={status} for chat {self.chat_id}")
 
     def save_partial_answer(self, message_id: str, partial_content: str) -> bool:
-        """Save partial streaming content to the database."""
         if not self.chat_id or not message_id:
             return False
         try:
@@ -179,7 +146,6 @@ class ChatRepository:
 
     @staticmethod
     def _generate_title(question: str, max_length: int = 50) -> str:
-        """Generate a chat title from the first question."""
         if len(question) > max_length:
             return question[:max_length] + '...'
         return question

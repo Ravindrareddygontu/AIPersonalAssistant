@@ -1,5 +1,3 @@
-"""Core abstractions for AI Middleware."""
-
 from backend.ai_middleware.core.base import BaseProvider, ProviderCapability, ProviderInfo
 from backend.ai_middleware.core.chat import ChatProvider
 from backend.ai_middleware.core.voice import VoiceProvider

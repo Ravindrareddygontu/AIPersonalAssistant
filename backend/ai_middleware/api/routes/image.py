@@ -1,5 +1,3 @@
-"""Image generation and analysis routes."""
-
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
@@ -22,11 +20,6 @@ async def generate_image(
     api_key: ApiKeyDep,
     provider: ProviderDep,
 ) -> ImageGenerationResponse:
-    """
-    Generate images from a text prompt.
-    
-    Returns URLs or base64-encoded image data.
-    """
     provider_name = provider or request.provider
     if not provider_name:
         raise HTTPException(
@@ -59,11 +52,6 @@ async def edit_image(
     size: str = Form("1024x1024"),
     n: int = Form(1),
 ) -> ImageEditResponse:
-    """
-    Edit an existing image based on a prompt.
-    
-    Optionally provide a mask to indicate areas to edit.
-    """
     if not provider:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -95,11 +83,6 @@ async def analyze_image(
     prompt: Optional[str] = Form(None),
     detail: str = Form("auto"),
 ) -> ImageAnalysisResponse:
-    """
-    Analyze an image and describe its contents.
-    
-    Optionally provide a prompt to ask specific questions about the image.
-    """
     if not provider:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -127,9 +110,6 @@ async def create_image_variations(
     n: int = Form(1),
     size: str = Form("1024x1024"),
 ) -> ImageGenerationResponse:
-    """
-    Create variations of an existing image.
-    """
     if not provider:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

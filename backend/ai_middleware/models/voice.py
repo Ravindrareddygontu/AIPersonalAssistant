@@ -1,5 +1,3 @@
-"""Voice/speech models."""
-
 from enum import Enum
 from typing import Optional
 from uuid import UUID
@@ -10,7 +8,6 @@ from backend.ai_middleware.models.base import BaseRequest, BaseResponse, StreamE
 
 
 class AudioFormat(str, Enum):
-    """Supported audio formats."""
 
     MP3 = "mp3"
     WAV = "wav"
@@ -23,9 +20,8 @@ class AudioFormat(str, Enum):
 
 
 class VoiceToTextRequest(BaseRequest):
-    """Speech-to-text request."""
 
-    audio_data: bytes = Field(exclude=True)  # Exclude from JSON serialization
+    audio_data: bytes = Field(exclude=True)
     audio_format: AudioFormat = AudioFormat.WAV
     language: Optional[str] = None
     prompt: Optional[str] = None  # Optional context/prompt
@@ -34,7 +30,6 @@ class VoiceToTextRequest(BaseRequest):
 
 
 class WordTimestamp(BaseModel):
-    """Timestamp information for a word."""
 
     word: str
     start: float
@@ -43,7 +38,6 @@ class WordTimestamp(BaseModel):
 
 
 class VoiceToTextResponse(BaseResponse):
-    """Speech-to-text response."""
 
     text: str
     language: Optional[str] = None
@@ -54,7 +48,6 @@ class VoiceToTextResponse(BaseResponse):
 
 
 class VoiceStyle(str, Enum):
-    """Voice speaking styles."""
 
     NEUTRAL = "neutral"
     CHEERFUL = "cheerful"
@@ -68,7 +61,6 @@ class VoiceStyle(str, Enum):
 
 
 class TextToVoiceRequest(BaseRequest):
-    """Text-to-speech request."""
 
     text: str
     voice: Optional[str] = None
@@ -81,7 +73,6 @@ class TextToVoiceRequest(BaseRequest):
 
 
 class TextToVoiceResponse(BaseResponse):
-    """Text-to-speech response."""
 
     audio_data: bytes = Field(exclude=True)
     audio_format: AudioFormat
@@ -94,7 +85,6 @@ class TextToVoiceResponse(BaseResponse):
 
 
 class VoiceStreamChunk(StreamEvent):
-    """A chunk of streaming audio data."""
 
     event_type: str = "voice.chunk"
     audio_chunk: bytes = Field(exclude=True)
@@ -106,7 +96,6 @@ class VoiceStreamChunk(StreamEvent):
 
 
 class RealtimeVoiceConfig(BaseModel):
-    """Configuration for real-time voice sessions."""
 
     voice: Optional[str] = None
     input_format: AudioFormat = AudioFormat.PCM

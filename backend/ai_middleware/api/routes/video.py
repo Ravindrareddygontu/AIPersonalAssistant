@@ -1,5 +1,3 @@
-"""Video generation and analysis routes."""
-
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
@@ -22,11 +20,6 @@ async def generate_video(
     api_key: ApiKeyDep,
     provider: ProviderDep,
 ) -> VideoGenerationResponse:
-    """
-    Generate a video from a text prompt.
-    
-    Returns a URL to the generated video or video data.
-    """
     provider_name = provider or request.provider
     if not provider_name:
         raise HTTPException(
@@ -54,11 +47,6 @@ async def generate_video_stream(
     api_key: ApiKeyDep,
     provider: ProviderDep,
 ) -> StreamingResponse:
-    """
-    Stream video generation progress.
-    
-    Returns Server-Sent Events with generation progress updates.
-    """
     provider_name = provider or request.provider
     if not provider_name:
         raise HTTPException(
@@ -91,11 +79,6 @@ async def generate_video_from_image(
     duration: float = Form(5.0),
     model: Optional[str] = Form(None),
 ) -> VideoGenerationResponse:
-    """
-    Generate a video from an image (image-to-video).
-    
-    Animates a static image into a video.
-    """
     if not provider:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -126,11 +109,6 @@ async def analyze_video(
     include_timestamps: bool = Form(False),
     include_transcript: bool = Form(False),
 ) -> VideoAnalysisResponse:
-    """
-    Analyze a video and describe its contents.
-    
-    Can include timestamps and audio transcription.
-    """
     if not provider:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

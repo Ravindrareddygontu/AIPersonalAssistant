@@ -1,5 +1,3 @@
-"""Base models for all AI middleware requests and responses."""
-
 from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID, uuid4
@@ -8,7 +6,6 @@ from pydantic import BaseModel, Field
 
 
 class UsageInfo(BaseModel):
-    """Token/unit usage information."""
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -21,7 +18,6 @@ class UsageInfo(BaseModel):
 
 
 class BaseRequest(BaseModel):
-    """Base class for all API requests."""
 
     request_id: UUID = Field(default_factory=uuid4)
     provider: Optional[str] = None
@@ -33,7 +29,6 @@ class BaseRequest(BaseModel):
 
 
 class BaseResponse(BaseModel):
-    """Base class for all API responses."""
 
     request_id: UUID
     provider: str
@@ -48,7 +43,6 @@ class BaseResponse(BaseModel):
 
 
 class ErrorResponse(BaseModel):
-    """Standard error response."""
 
     error: str
     error_code: str
@@ -59,7 +53,6 @@ class ErrorResponse(BaseModel):
 
 
 class StreamEvent(BaseModel):
-    """Base class for streaming events."""
 
     event_type: str
     request_id: UUID

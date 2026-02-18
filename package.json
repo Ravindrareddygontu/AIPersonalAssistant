@@ -5,7 +5,10 @@
   "main": "main.js",
   "scripts": {
     "start": "electron . --no-sandbox",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "keywords": [
     "augment",
@@ -16,8 +19,13 @@
   "author": "User",
   "license": "MIT",
   "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/preset-env": "^7.29.0",
+    "babel-jest": "^30.2.0",
     "electron": "^40.4.0",
     "electron-builder": "^25.1.8",
+    "jest": "^30.2.0",
+    "jest-environment-jsdom": "^30.2.0",
     "sharp": "^0.34.5"
   },
   "build": {

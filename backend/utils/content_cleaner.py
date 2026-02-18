@@ -1,29 +1,13 @@
-"""
-ContentCleaner - Cleans terminal artifacts from assistant responses.
-
-Follows Single Responsibility Principle: Only handles content cleaning.
-"""
-
 import re
 
 
 class ContentCleaner:
-    """Cleans terminal artifacts and formatting from AI responses."""
 
-    # Box drawing characters (no content)
+    BOX_CHARS = '─│╭╮╰╯┌┐└┘├┤┬┴┼'
     BOX_CHARS = '─│╭╮╰╯┌┐└┘├┤┬┴┼'
 
     @classmethod
     def clean_assistant_content(cls, content: str) -> str:
-        """
-        Remove terminal artifacts from assistant response before saving.
-        
-        Args:
-            content: Raw content from terminal
-            
-        Returns:
-            Cleaned content suitable for display/storage
-        """
         if not content:
             return content
 
@@ -65,7 +49,6 @@ class ContentCleaner:
 
     @classmethod
     def _is_prompt_line(cls, stripped: str) -> bool:
-        """Check if line indicates start of prompt (end of response)."""
         if stripped.startswith('›'):
             return True
         if stripped == '│' or stripped.startswith('│ ›'):
@@ -74,16 +57,6 @@ class ContentCleaner:
 
     @classmethod
     def _is_path_line(cls, stripped: str) -> bool:
-        """Check if line looks like a terminal prompt showing current directory.
-
-        A real terminal prompt path is typically:
-        - Just the path alone: /home/user/project
-        - Path with shell prompt: /home/user/project$ or /home/user %
-
-        NOT valid content like:
-        - /etc/nginx/nginx.conf is the config file
-        - /usr/bin/python3 script.py
-        """
         if not stripped.startswith('/'):
             return False
         if '/' not in stripped[1:]:
@@ -107,17 +80,14 @@ class ContentCleaner:
 
     @classmethod
     def _is_empty_box_line(cls, line: str) -> bool:
-        """Check if line is an empty box formatting line."""
         return '│                                                                          │' in line
 
     @classmethod
     def _is_box_only_line(cls, stripped: str) -> bool:
-        """Check if line contains only box drawing characters."""
         return stripped and all(c in cls.BOX_CHARS for c in stripped)
 
     @classmethod
     def _is_garbage_line(cls, stripped: str) -> bool:
-        """Check if line is garbage from escape codes."""
         if not stripped:
             return False
         if len(stripped) <= 5 and stripped.lstrip(';').isdigit():
@@ -126,7 +96,6 @@ class ContentCleaner:
 
     @classmethod
     def _clean_trailing_garbage(cls, line: str, stripped: str) -> str:
-        """Remove trailing escape code remnants."""
         if stripped.endswith(';'):
             return line.rstrip(';0123456789')
         if (len(stripped) > 2 and 
@@ -138,16 +107,6 @@ class ContentCleaner:
 
     @classmethod
     def strip_previous_response(cls, content: str, previous_response: str) -> str:
-        """
-        Remove previous response from start of content to avoid stale replay.
-        
-        Args:
-            content: Current content
-            previous_response: Previous response to strip
-            
-        Returns:
-            Content with previous response removed if it was at the start
-        """
         if previous_response and content and content.startswith(previous_response):
             return content[len(previous_response):].lstrip('\n')
         return content

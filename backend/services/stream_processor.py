@@ -1,9 +1,3 @@
-"""
-StreamProcessor - Handles stream chunk processing and content extraction.
-
-Follows Single Responsibility Principle: Only handles stream processing logic.
-"""
-
 import re
 import logging
 from backend.config import SKIP_PATTERNS, BOX_CHARS_PATTERN
@@ -16,8 +10,6 @@ _STATUS_LINE_RE = re.compile(r'\(\d+s\s*[•·]\s*esc to interrupt\)')
 
 
 class StreamProcessor:
-    """Processes streaming output from the Augment terminal."""
-
     # Patterns for detecting end of response
     END_PATTERN_PROMPT = re.compile(r'│ ›\s*│')
     END_PATTERN_BOX = re.compile(r'╰─+╯')
@@ -38,30 +30,15 @@ class StreamProcessor:
         self._update_pattern(user_message)
 
     def _update_pattern(self, message: str):
-        """Update the message pattern used for echo detection."""
         # Use shorter prefix for matching (terminal may wrap long messages)
         self.message_short = message[:20] if len(message) > 20 else message
         self.message_pattern = re.compile(r'›\s*' + re.escape(self.message_short))
 
     def update_search_message(self, message: str):
-        """Update the message to search for (used for image commands where question differs from original message)."""
         log.info(f"[PROCESSOR] Updating search message to: {message[:30]}...")
         self._update_pattern(message)
 
     def process_chunk(self, clean_output: str, state: StreamState) -> str | None:
-        """
-        Process a chunk of cleaned output and extract response content.
-
-        Simple approach: Look for ● markers in NEW output (after output_start_pos).
-        No need to find message echo - we already know where we started.
-
-        Args:
-            clean_output: ANSI-stripped terminal output
-            state: Current stream state
-
-        Returns:
-            Extracted content or None if no content found
-        """
         # Only search in NEW output (after output_start_pos)
         search_output = clean_output[state.output_start_pos:]
 
@@ -70,12 +47,6 @@ class StreamProcessor:
         return self._extract_response_content(search_output, state)
 
     def _find_best_match(self, matches: list, search_output: str):
-        """Find the best match from message echo matches.
-
-        Strategy: Prefer matches that have response markers (● or ~) nearby,
-        but fall back to the last match if none have markers nearby.
-        This handles cases where the response comes much later than 200 chars.
-        """
         best_match = None
         fallback_match = None
 
@@ -99,7 +70,6 @@ class StreamProcessor:
         return best_match if best_match else fallback_match
 
     def _extract_response_content(self, after_msg: str, state: StreamState) -> str | None:
-        """Extract response content from text after message echo."""
         lines = after_msg.split('\n')
         content = []
         in_response = False
@@ -184,12 +154,6 @@ class StreamProcessor:
         return result
 
     def _is_stop_condition(self, stripped: str, in_response: bool = False) -> bool:
-        """Check if line indicates we should stop extracting.
-
-        Args:
-            stripped: The stripped line to check
-            in_response: Whether we've already started seeing response content
-        """
         # "Message will be queued" is a UI notification that appears BEFORE the actual response
         # It has the │ › prefix but should NOT stop extraction
         if 'Message will be queued' in stripped:
@@ -228,7 +192,6 @@ class StreamProcessor:
         return False
 
     def _has_activity_indicator(self, text: str) -> bool:
-        """Check if terminal output shows auggie is still working."""
         # Look at the end of the text where activity indicators would appear
         check_section = text[-500:] if len(text) > 500 else text
         for indicator in self.ACTIVITY_INDICATORS:
@@ -237,28 +200,6 @@ class StreamProcessor:
         return False
 
     def check_end_pattern(self, clean_output: str, state: StreamState) -> bool:
-        """
-        Check if we've reached the end of the response.
-
-        The definitive signal that auggie finished is when it shows an EMPTY input prompt:
-        │ ›                                                                          │
-        ╰────────────────────────────────────────────────────────────────────────────╯
-
-        This means auggie is waiting for the next input, i.e., response is complete.
-
-        IMPORTANT: We also check:
-        1. If activity indicators are present (Sending request..., etc.) - NOT complete
-        2. If the content looks complete (has proper ending punctuation)
-
-        This prevents cutting off responses that are still being generated.
-
-        Args:
-            clean_output: ANSI-stripped terminal output
-            state: Current stream state
-
-        Returns:
-            True if end pattern detected (empty prompt ready for input)
-        """
         if not state.streaming_started or not state.saw_response_marker:
             return False
 

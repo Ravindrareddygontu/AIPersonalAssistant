@@ -1,5 +1,3 @@
-"""Main FastAPI application for AI Middleware."""
-
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -19,7 +17,6 @@ logger = structlog.get_logger()
 
 
 def register_openai_providers() -> None:
-    """Register all OpenAI providers."""
     from backend.ai_middleware.providers.openai import (
         OpenAIChatProvider,
         OpenAICodeProvider,
@@ -46,7 +43,6 @@ def register_openai_providers() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Application lifespan handler."""
     settings = get_settings()
 
     # Setup logging
@@ -76,7 +72,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    """Create and configure the FastAPI application."""
     settings = get_settings()
     
     app = FastAPI(
@@ -116,7 +111,6 @@ def create_app() -> FastAPI:
     # Health check endpoint
     @app.get("/health")
     async def health_check():
-        """Health check endpoint."""
         return {
             "status": "healthy",
             "version": __version__,
@@ -126,7 +120,6 @@ def create_app() -> FastAPI:
     # Root endpoint
     @app.get("/")
     async def root():
-        """Root endpoint with API information."""
         return {
             "name": "AI Middleware",
             "version": __version__,
@@ -143,7 +136,6 @@ app = create_app()
 
 
 def main() -> None:
-    """Run the application with uvicorn."""
     import uvicorn
     
     settings = get_settings()

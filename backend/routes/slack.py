@@ -1,13 +1,3 @@
-"""
-Slack webhook routes for FastAPI.
-
-These routes handle Slack Events API and slash commands when using
-HTTP mode instead of Socket Mode.
-
-For production deployment, these endpoints should be exposed via HTTPS
-and configured in your Slack app's settings.
-"""
-
 import os
 import hmac
 import hashlib
@@ -28,7 +18,6 @@ _slack_bot = None
 
 
 def get_slack_bot():
-    """Get or create the Slack bot instance."""
     global _slack_bot
     if _slack_bot is None:
         from backend.services.slack import create_slack_bot
@@ -37,7 +26,6 @@ def get_slack_bot():
 
 
 def verify_slack_signature(request_body: bytes, timestamp: str, signature: str) -> bool:
-    """Verify that the request came from Slack."""
     signing_secret = os.environ.get('SLACK_SIGNING_SECRET', '')
     if not signing_secret:
         log.warning("[SLACK] No signing secret configured, skipping verification")
@@ -58,7 +46,6 @@ def verify_slack_signature(request_body: bytes, timestamp: str, signature: str) 
 
 
 class SlackEventPayload(BaseModel):
-    """Slack event payload structure."""
     type: str
     token: Optional[str] = None
     challenge: Optional[str] = None
@@ -70,7 +57,6 @@ class SlackEventPayload(BaseModel):
 
 
 class SlashCommandPayload(BaseModel):
-    """Slack slash command payload structure."""
     token: str
     team_id: str
     channel_id: str
@@ -84,11 +70,6 @@ class SlashCommandPayload(BaseModel):
 
 @slack_router.post("/events")
 async def handle_slack_events(request: Request):
-    """
-    Handle Slack Events API webhook.
-    
-    This endpoint receives events when users mention the bot or DM it.
-    """
     body = await request.body()
     
     # Verify request signature
@@ -124,7 +105,6 @@ async def handle_slack_events(request: Request):
 
 
 async def _process_message_event(event: dict, payload: dict):
-    """Process a message event in the background."""
     import re
     import urllib.request
     import json
@@ -190,11 +170,6 @@ async def _process_message_event(event: dict, payload: dict):
 
 @slack_router.post("/command")
 async def handle_slash_command(request: Request, background_tasks: BackgroundTasks):
-    """
-    Handle /auggie slash command.
-
-    Responds immediately and processes the command in the background.
-    """
     body = await request.body()
 
     # Verify request signature
@@ -239,7 +214,6 @@ async def handle_slash_command(request: Request, background_tasks: BackgroundTas
 
 
 async def _process_slash_command(text: str, response_url: str):
-    """Process slash command and send response via response_url."""
     import urllib.request
     import json
 
@@ -285,7 +259,6 @@ async def _process_slash_command(text: str, response_url: str):
 
 
 def _get_help_text() -> str:
-    """Get help text for slash command."""
     return """🤖 *Auggie Bot - AI Code Assistant*
 
 *Usage:*
@@ -300,25 +273,13 @@ def _get_help_text() -> str:
 """
 
 
-# =============================================================================
-# Send Message Endpoint
-# =============================================================================
-
 class SendMessageRequest(BaseModel):
-    """Request to send a message to Slack."""
     message: str
     channel: Optional[str] = None  # Uses default channel if not specified
 
 
 @slack_router.post("/send")
 async def send_slack_message(request: SendMessageRequest):
-    """
-    Send a message to Slack.
-
-    Can use either:
-    - Bot Token (SLACK_BOT_TOKEN) to send to a specific channel
-    - Webhook URL (SLACK_WEBHOOK_URL) for simple notifications
-    """
     import json
     import urllib.request
 
@@ -381,9 +342,6 @@ async def send_slack_message(request: SendMessageRequest):
 
 @slack_router.get("/test")
 async def test_slack_connection():
-    """
-    Test Slack connection by sending a test message.
-    """
     import json
     import urllib.request
 

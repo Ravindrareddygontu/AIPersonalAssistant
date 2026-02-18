@@ -1,5 +1,3 @@
-"""FastAPI dependencies for API routes."""
-
 from typing import Annotated, Optional
 
 from fastapi import Depends, Header, HTTPException, status
@@ -9,12 +7,10 @@ from backend.ai_middleware.providers.registry import ProviderRegistry, get_regis
 
 
 async def get_settings_dep() -> Settings:
-    """Dependency to get application settings."""
     return get_settings()
 
 
 async def get_registry_dep() -> ProviderRegistry:
-    """Dependency to get the provider registry."""
     return get_registry()
 
 
@@ -23,11 +19,6 @@ async def verify_api_key(
     authorization: Annotated[Optional[str], Header()] = None,
     settings: Settings = Depends(get_settings_dep),
 ) -> str:
-    """
-    Verify the API key from headers.
-    
-    Accepts either X-API-Key header or Authorization: Bearer <token> header.
-    """
     api_key = x_api_key
     
     if not api_key and authorization:
@@ -51,7 +42,6 @@ async def get_provider_name(
     provider: Optional[str] = None,
     x_provider: Annotated[Optional[str], Header()] = None,
 ) -> Optional[str]:
-    """Get provider name from query param or header."""
     return provider or x_provider
 
 

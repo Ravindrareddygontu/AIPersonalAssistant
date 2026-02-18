@@ -1,4 +1,3 @@
-"""Routes module - FastAPI routers for all API endpoints."""
 from fastapi import FastAPI
 
 from backend.routes.main import main_router, set_templates
@@ -10,7 +9,6 @@ from backend.routes.slack import slack_router
 
 
 def register_routes(app: FastAPI):
-    """Register all FastAPI routers with the application."""
     app.include_router(main_router)
     app.include_router(settings_router)
     app.include_router(chat_router)

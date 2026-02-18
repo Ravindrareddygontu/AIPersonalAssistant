@@ -1,8 +1,3 @@
-"""
-Notification Routes - API endpoints for managing reminders.
-Reminders are stored in MongoDB and scheduled client-side using setTimeout.
-"""
-
 import json
 import logging
 from typing import Optional, List, Dict, Any
@@ -45,7 +40,6 @@ def _log_response(method: str, url: str, status: int, body=None):
 
 @notifications_router.get('/api/reminders')
 async def list_reminders(request: Request):
-    """Get all reminders."""
     url = str(request.url)
     _log_request('GET', url)
 
@@ -56,7 +50,6 @@ async def list_reminders(request: Request):
 
 @notifications_router.post('/api/reminders', status_code=201)
 async def create_reminder(request: Request, data: ReminderCreate):
-    """Create a new reminder."""
     url = str(request.url)
     _log_request('POST', url, data.model_dump())
 
@@ -67,7 +60,6 @@ async def create_reminder(request: Request, data: ReminderCreate):
 
 @notifications_router.get('/api/reminders/{reminder_id}')
 async def get_reminder(request: Request, reminder_id: str):
-    """Get a specific reminder."""
     url = str(request.url)
     _log_request('GET', url)
 
@@ -82,7 +74,6 @@ async def get_reminder(request: Request, reminder_id: str):
 
 @notifications_router.put('/api/reminders/{reminder_id}')
 async def update_reminder(request: Request, reminder_id: str, data: ReminderUpdate):
-    """Update a reminder."""
     url = str(request.url)
     data_dict = data.model_dump(exclude_none=True)
     _log_request('PUT', url, data_dict)
@@ -98,7 +89,6 @@ async def update_reminder(request: Request, reminder_id: str, data: ReminderUpda
 
 @notifications_router.delete('/api/reminders/{reminder_id}')
 async def delete_reminder(request: Request, reminder_id: str):
-    """Delete a reminder."""
     url = str(request.url)
     _log_request('DELETE', url)
 
@@ -112,7 +102,6 @@ async def delete_reminder(request: Request, reminder_id: str):
 
 @notifications_router.post('/api/reminders/{reminder_id}/toggle')
 async def toggle_reminder(request: Request, reminder_id: str):
-    """Toggle a reminder's enabled state."""
     url = str(request.url)
     _log_request('POST', url)
 

@@ -1,12 +1,3 @@
-"""
-Chat Routes - Handles chat streaming API endpoints.
-
-Refactored following SOLID principles:
-- Single Responsibility: Each class has one job
-- Open/Closed: Easy to extend without modifying
-- Dependency Injection: Dependencies are explicit
-"""
-
 import os
 import re
 import json
@@ -45,10 +36,6 @@ class ChatResetRequest(BaseModel):
     workspace: Optional[str] = None
 
 
-# =============================================================================
-# Message Sanitization
-# =============================================================================
-
 # Braille spinner characters used by auggie for status indicators
 _SPINNER_CHARS_RE = re.compile(r'[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠛⠓⠚⠖⠲⠳⠞]')
 
@@ -68,23 +55,6 @@ _UNICODE_TO_ASCII_MAP = {
 
 
 def _sanitize_message(message: str) -> str:
-    """
-    Sanitize a message for terminal input.
-
-    Performs the following transformations:
-    1. Replaces newlines with spaces (terminal expects single-line input)
-    2. Removes braille spinner characters (⠋⠙⠹⠸ etc.) used for status indicators
-    3. Converts special Unicode chars (●•⎿›╭╮╯╰│─) to ASCII equivalents
-
-    This prevents confusion in response marker detection since auggie uses
-    these characters for formatting its output.
-
-    Args:
-        message: User's input message
-
-    Returns:
-        Sanitized message safe for terminal input
-    """
     # Normalize newlines
     sanitized = message.replace('\n', ' ').replace('\r', ' ')
 
@@ -103,46 +73,33 @@ _abort_flag = threading.Event()
 
 
 def _log(msg: str) -> None:
-    """Log to both logger and stdout for visibility."""
     log.info(msg)
     print(f"[CHAT] {msg}", flush=True)
 
 
 class SSEFormatter:
-    """Formats data for Server-Sent Events."""
-
     @staticmethod
     def send(data: dict) -> str:
-        """Format data as SSE message."""
         return f"data: {json.dumps(data)}\n\n"
 
     @staticmethod
     def padding() -> str:
-        """Initial padding for SSE stream."""
         return ": " + " " * 2048 + "\n\n"
 
 
 class SessionHandler:
-    """Handles Augment session lifecycle."""
-
     def __init__(self, workspace: str, model: str):
         self.workspace = workspace if os.path.isdir(workspace) else os.path.expanduser('~')
         self.model = model
         self._status_queue = []  # Queue for status messages from callback
 
     def get_session(self):
-        """Get or create a session, handling initialization."""
         return SessionManager.get_or_create(self.workspace, self.model)
 
     def _status_callback(self, message: str):
-        """Callback to receive status messages during wait_for_prompt."""
         self._status_queue.append(message)
 
     def start_session(self, session, status_msg: str):
-        """Start a new session and wait for initialization.
-
-        Yields SSE status messages during initialization for real-time updates.
-        """
         yield SSEFormatter.send({'type': 'status', 'message': status_msg})
         session.start()
         yield SSEFormatter.send({'type': 'status', 'message': 'Initializing Augment...'})
@@ -194,10 +151,6 @@ class SessionHandler:
         return True
 
     def send_message(self, session, message: str):
-        """Send a message to the session.
-
-        Returns: (success: bool, echo_message: str) - echo_message is for echo detection
-        """
         try:
             # Drain leftover output (quick drain)
             drained = session.drain_output(timeout=0.1)
@@ -224,18 +177,6 @@ class SessionHandler:
             return (False, message)
 
     def _send_image_message(self, session, message: str):
-        """Send an image message with multi-step interaction.
-
-        Auggie expects:
-        1. /image + Enter → shows clip icon (image input mode)
-        2. file path + Enter → accepts the image
-        3. question + Enter → processes and responds
-
-        Format received: /images <path>|||<question>
-        Using ||| as separator because paths can contain spaces.
-
-        Returns: (success: bool, question: str) - question is for echo detection
-        """
         log.info(f"[IMAGE] ========== _send_image_message CALLED ==========")
         log.info(f"[IMAGE] Full message: {message[:100]}...")
         try:
@@ -301,7 +242,6 @@ class SessionHandler:
             return (False, message)
 
     def _send_regular_message(self, session, message: str) -> bool:
-        """Send a regular message (fallback from image parsing)."""
         sanitized_message = _sanitize_message(message)
         os.write(session.master_fd, sanitized_message.encode('utf-8'))
         time.sleep(0.1)
@@ -312,23 +252,7 @@ class SessionHandler:
 
 
 class StreamGenerator:
-    """
-    Generates SSE stream for chat responses.
-
-    Handles the complete lifecycle of a chat request:
-    1. Session management (get/create auggie session)
-    2. Message sending and echo detection
-    3. Response streaming with timeout handling
-    4. Response finalization and persistence
-
-    Uses various timeout thresholds to detect when response is complete
-    while allowing enough time for tool execution.
-    """
-
-    # ==========================================================================
     # Timeout Configuration (in seconds)
-    # Performance-tuned: balance responsiveness vs. allowing tool execution
-    # ==========================================================================
 
     STREAM_TIMEOUT = 300          # Maximum total stream duration (5 minutes)
     RAW_BUFFER_MAX = 300_000      # Max bytes to buffer from PTY output
@@ -358,7 +282,6 @@ class StreamGenerator:
         self.sse = SSEFormatter()
 
     def generate(self):
-        """Main generator for SSE stream."""
         log.info(f"Starting generate for: {self.message[:50]}...")
 
         # Mark chat as streaming
@@ -411,13 +334,11 @@ class StreamGenerator:
                 return
 
     def _continue_in_background(self):
-        """Continue processing in a background thread when client disconnects."""
         if self.repository:
             self.repository.set_streaming_status('pending')
             log.info(f"[BACKGROUND] Marked chat {self.chat_id} as pending for resume")
 
     def _handle_session(self):
-        """Handle session setup and message sending."""
         session, is_new = self.session_handler.get_session()
         log.info(f"Session: is_new={is_new}, initialized={session.initialized}")
 
@@ -462,7 +383,6 @@ class StreamGenerator:
                 session.in_use = False
 
     def _ensure_session_ready(self, session, is_new: bool):
-        """Ensure session is ready for use."""
         if is_new or not session.initialized:
             log.info("Starting new session...")
             for item in self.session_handler.start_session(session, 'Starting Augment...'):
@@ -485,7 +405,6 @@ class StreamGenerator:
         return True
 
     def _create_initial_state(self, session) -> StreamState:
-        """Create initial stream state."""
         previous_response = getattr(session, 'last_response', '') or ''
         session.last_response = ""
         session.last_message = ""
@@ -494,7 +413,6 @@ class StreamGenerator:
         return state
 
     def _stream_response(self, session, state: StreamState):
-        """Stream the response from Augment."""
         fd = session.master_fd
         _log(f"Starting stream loop, fd={fd}")
 
@@ -573,7 +491,6 @@ class StreamGenerator:
         yield from self._finalize_response(session, state)
 
     def _get_current_status(self, state: StreamState) -> str:
-        """Get current status message based on stream state."""
         # Check for specific activity indicators in RAW terminal output (not clean_output)
         # Activity indicators appear in the terminal UI, not in the cleaned response text
         output_tail = state.all_output[-3000:] if len(state.all_output) > 3000 else state.all_output
@@ -587,7 +504,6 @@ class StreamGenerator:
         return None
 
     def _detect_activity(self, output: str) -> str | None:
-        """Detect specific activity from terminal output."""
         # Activity patterns to look for
         activity_patterns = [
             'Summarizing conversation history',
@@ -623,7 +539,6 @@ class StreamGenerator:
         return None
 
     def _process_accumulated_data(self, state: StreamState):
-        """Process accumulated data from terminal buffer."""
         clean = state.clean_output
 
         # Check for message echo (only if not found yet)
@@ -641,7 +556,6 @@ class StreamGenerator:
             yield from self._process_content(clean, state)
 
     def _check_message_echo(self, clean: str, state: StreamState) -> None:
-        """Check if we've seen the message echo in output."""
         # Use echo_search_message (for image messages this is the question, not the /images command)
         # Sanitize it since that's what's actually sent to terminal
         sanitized = _sanitize_message(self.echo_search_message)
@@ -667,7 +581,6 @@ class StreamGenerator:
             state._logged_no_echo = True
 
     def _process_content(self, clean: str, state: StreamState):
-        """Process and stream content."""
         # DEBUG: Log raw PTY output to understand parsing issues
         if not hasattr(state, '_debug_logged') and len(clean) > 500:
             log.debug(f"[DEBUG] Raw clean output (last 1000 chars): {repr(clean[-1000:])}")
@@ -711,13 +624,6 @@ class StreamGenerator:
 
 
     def _should_exit(self, state: StreamState) -> bool:
-        """
-        Check if we should exit the stream loop.
-
-        Priority:
-        1. End pattern detected (empty input prompt) = DEFINITIVE signal, exit immediately
-        2. Fallback timeouts for edge cases where signal detection might fail
-        """
         # PRIMARY EXIT: End pattern detected (empty prompt = auggie ready for next input)
         # This is THE definitive signal that the response is complete
         if state.end_pattern_seen and state.elapsed_since_data > self.END_PATTERN_SILENCE:
@@ -757,7 +663,6 @@ class StreamGenerator:
         return False
 
     def _handle_abort(self, session, state: StreamState):
-        """Handle abort signal."""
         log.info("Abort signal received")
         state.aborted = True
         _abort_flag.clear()
@@ -783,7 +688,6 @@ class StreamGenerator:
         yield self.sse.send({'type': 'done'})
 
     def _finalize_response(self, session, state: StreamState):
-        """Finalize and send the complete response."""
         if state.aborted:
             return
 
@@ -865,13 +769,8 @@ class StreamGenerator:
         yield self.sse.send({'type': 'done'})
 
 
-# =============================================================================
-# FastAPI Routes
-# =============================================================================
-
 @chat_router.post('/api/chat/stream')
 async def chat_stream(request: Request, data: ChatStreamRequest):
-    """Stream chat response endpoint."""
     _abort_flag.clear()
 
     message = data.message
@@ -883,7 +782,6 @@ async def chat_stream(request: Request, data: ChatStreamRequest):
     generator = StreamGenerator(message, os.path.expanduser(workspace), chat_id=chat_id)
 
     async def stream_generator():
-        """Wrap the sync generator for async streaming with disconnect detection."""
         gen = generator.generate()
         try:
             for chunk in gen:
@@ -919,7 +817,6 @@ async def chat_stream(request: Request, data: ChatStreamRequest):
 
 @chat_router.post('/api/chat/abort')
 async def chat_abort():
-    """Abort current streaming request."""
     log.info("[REQUEST] POST /api/chat/abort")
     _abort_flag.set()
     response_data = {'status': 'ok', 'message': 'Abort signal sent'}
@@ -929,7 +826,6 @@ async def chat_abort():
 
 @chat_router.post('/api/chat/reset')
 async def chat_reset(data: Optional[ChatResetRequest] = None):
-    """Reset the auggie session for the current workspace."""
     workspace = data.workspace if data and data.workspace else settings.workspace
     workspace = os.path.expanduser(workspace)
 

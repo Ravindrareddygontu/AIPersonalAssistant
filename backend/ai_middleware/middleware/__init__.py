@@ -1,5 +1,3 @@
-"""Middleware components for AI Middleware."""
-
 from backend.ai_middleware.middleware.error_handler import (
     AIMiddlewareException,
     ProviderError,

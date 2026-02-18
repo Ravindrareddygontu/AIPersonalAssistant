@@ -1,5 +1,3 @@
-"""Chat completion routes."""
-
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, status
@@ -18,11 +16,6 @@ async def create_chat_completion(
     api_key: ApiKeyDep,
     provider: ProviderDep,
 ) -> ChatResponse:
-    """
-    Create a chat completion.
-    
-    Send a list of messages and get a response from the AI model.
-    """
     provider_name = provider or request.provider
     if not provider_name:
         raise HTTPException(
@@ -59,11 +52,6 @@ async def create_chat_completion_stream(
     api_key: ApiKeyDep,
     provider: ProviderDep,
 ) -> StreamingResponse:
-    """
-    Create a streaming chat completion.
-    
-    Returns a stream of Server-Sent Events (SSE) with response chunks.
-    """
     provider_name = provider or request.provider
     if not provider_name:
         raise HTTPException(
@@ -109,11 +97,6 @@ async def simple_completion(
     temperature: float = 0.7,
     max_tokens: Optional[int] = None,
 ) -> dict:
-    """
-    Simple completion endpoint.
-    
-    Takes a single prompt and returns the completion text.
-    """
     if not provider:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

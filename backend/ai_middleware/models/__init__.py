@@ -1,5 +1,3 @@
-"""Data models for AI Middleware."""
-
 from backend.ai_middleware.models.base import BaseRequest, BaseResponse, UsageInfo
 from backend.ai_middleware.models.chat import (
     ChatMessage,

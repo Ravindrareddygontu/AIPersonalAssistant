@@ -148,7 +148,7 @@ ipcMain.handle('open-logs-terminal', async () => {
 // IPC handler for resetting the session
 ipcMain.handle('reset-session', async () => {
     try {
-        const response = await fetch('http://localhost:5000/api/chat/reset', {
+        const response = await fetch('http://localhost:5001/api/chat/reset', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({})
@@ -229,13 +229,13 @@ app.whenReady().then(async () => {
 
     // Wait for server to respond
     console.log('Waiting for Flask server...');
-    await waitForServer('http://localhost:5000');
+    await waitForServer('http://localhost:5001');
 
     // Create hidden main window
     createWindow();
 
     // Load the URL
-    mainWindow.loadURL('http://localhost:5000');
+    mainWindow.loadURL('http://localhost:5001');
 
     // Forward all renderer console logs to terminal
     mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
@@ -257,7 +257,7 @@ app.whenReady().then(async () => {
         console.log('Load failed:', errorDescription, '- retrying...');
         setTimeout(() => {
             if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.loadURL('http://localhost:5000');
+                mainWindow.loadURL('http://localhost:5001');
             }
         }, 1000);
     });

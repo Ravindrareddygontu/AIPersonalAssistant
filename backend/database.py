@@ -1,4 +1,4 @@
-"""MongoDB database module for chat storage."""
+
 
 import logging
 import time
@@ -22,7 +22,6 @@ _CONNECTION_TIMEOUT_MS = 500  # Fast timeout (500ms) for quick failure detection
 
 
 def is_connected() -> bool:
-    """Check if MongoDB is currently connected."""
     global _client, _db
     if _client is None or _db is None:
         return False
@@ -34,10 +33,6 @@ def is_connected() -> bool:
 
 
 def is_db_available_cached() -> bool:
-    """
-    Check if database is available using cached status.
-    Returns cached result if within cache duration to avoid blocking timeouts.
-    """
     global _last_connection_attempt, _connection_available
 
     now = time.time()
@@ -52,10 +47,6 @@ def is_db_available_cached() -> bool:
 
 
 def check_connection() -> dict:
-    """
-    Check MongoDB connection status using cached status to avoid blocking.
-    Returns dict with 'connected' bool and optional 'error' message.
-    """
     global _connection_error, _connection_available
 
     # Use cached check to avoid timeout delays
@@ -71,11 +62,6 @@ def check_connection() -> dict:
 
 
 def get_db():
-    """
-    Get MongoDB database instance.
-    Returns None if connection fails (graceful degradation).
-    Uses caching to avoid repeated timeout waits when MongoDB is unavailable.
-    """
     global _client, _db, _connection_error, _last_connection_attempt, _connection_available
 
     now = time.time()
@@ -118,10 +104,6 @@ def get_db():
 
 
 def get_chats_collection():
-    """
-    Get the chats collection.
-    Returns None if database is not available.
-    """
     db = get_db()
     if db is None:
         return None
@@ -129,10 +111,6 @@ def get_chats_collection():
 
 
 def get_reminders_collection():
-    """
-    Get the reminders collection for scheduled notifications.
-    Returns None if database is not available.
-    """
     db = get_db()
     if db is None:
         return None

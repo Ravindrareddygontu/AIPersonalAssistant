@@ -1,9 +1,3 @@
-"""
-ResponseSummarizer - Summarizes Auggie responses for concise reporting.
-
-Used by integrations like Slack where full responses are too verbose.
-"""
-
 import re
 import logging
 from typing import List
@@ -12,17 +6,8 @@ log = logging.getLogger('auggie.summarizer')
 
 
 class ResponseSummarizer:
-    """
-    Summarizes Auggie responses into concise status updates.
-    
-    Extracts key actions like:
-    - Files created/modified/deleted
-    - Commands executed
-    - Errors encountered
-    - Key findings
-    """
-    
-    # Patterns to detect actions
+
+    FILE_CREATED_PATTERNS = [
     FILE_CREATED_PATTERNS = [
         r'[Cc]reated?\s+(?:file\s+)?[`\'"]([\w/.\-]+)[`\'"]',
         r'[Ww]rote\s+(?:to\s+)?[`\'"]([\w/.\-]+)[`\'"]',
@@ -65,16 +50,6 @@ class ResponseSummarizer:
     
     @classmethod
     def summarize(cls, content: str, max_length: int = 500) -> str:
-        """
-        Generate a concise summary of the response.
-        
-        Args:
-            content: Full response content
-            max_length: Maximum summary length
-            
-        Returns:
-            Concise summary string
-        """
         if not content:
             return "❓ No response received"
         
@@ -129,7 +104,6 @@ class ResponseSummarizer:
     
     @classmethod
     def _detect_status(cls, content: str) -> str:
-        """Detect overall success/failure status."""
         content_lower = content.lower()
         
         success_count = sum(1 for ind in cls.SUCCESS_INDICATORS if ind in content_lower)
@@ -143,7 +117,6 @@ class ResponseSummarizer:
     
     @classmethod
     def _extract_matches(cls, content: str, patterns: List[str]) -> List[str]:
-        """Extract all matches from patterns."""
         matches = []
         for pattern in patterns:
             for match in re.finditer(pattern, content):
@@ -153,8 +126,7 @@ class ResponseSummarizer:
     
     @classmethod
     def _get_first_meaningful_line(cls, content: str) -> str:
-        """Get first non-empty, meaningful line that's actual English."""
-        # Skip lines that are clearly UI elements or commands
+        skip_start = [
         skip_start = [
             '↳', '│', '─', '╭', '╰', '●', '⎿', '┌', '└', '├',
             '>', '$', '#', '```', '~~~', 'Terminal', 'Command'

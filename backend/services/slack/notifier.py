@@ -1,14 +1,3 @@
-"""
-Slack Notifier Service - Sends status notifications to Slack via webhook.
-
-This service sends concise 2-3 line summaries after chat completion:
-- Success: what was accomplished
-- Failure: what went wrong
-- Stopped: why it was interrupted
-
-Summaries are generated using pattern-based analysis in a background thread.
-"""
-
 import json
 import logging
 import threading
@@ -28,7 +17,6 @@ class CompletionStatus(Enum):
 
 @dataclass
 class SlackNotification:
-    """Represents a Slack notification to be sent."""
     question: str
     status: CompletionStatus
     summary: str
@@ -37,21 +25,14 @@ class SlackNotification:
 
 
 class SlackNotifier:
-    """Sends chat completion notifications to Slack via webhook."""
 
     def __init__(self, webhook_url: str):
         self.webhook_url = webhook_url
 
     def is_configured(self) -> bool:
-        """Check if webhook URL is configured."""
         return bool(self.webhook_url and self.webhook_url.startswith('https://hooks.slack.com/'))
 
     def notify(self, notification: SlackNotification) -> bool:
-        """
-        Send a notification to Slack.
-        
-        Returns True if successful, False otherwise.
-        """
         if not self.is_configured():
             log.warning("[SLACK] Webhook URL not configured")
             return False
@@ -61,8 +42,7 @@ class SlackNotifier:
         return self._send_webhook(message)
 
     def _format_message(self, notif: SlackNotification) -> str:
-        """Format notification into Slack message."""
-        # Truncate question if too long
+        question = notif.question
         question = notif.question
         if len(question) > 100:
             question = question[:97] + "..."
@@ -94,7 +74,6 @@ class SlackNotifier:
         return "\n".join(lines)
 
     def _send_webhook(self, message: str) -> bool:
-        """Send message to Slack webhook."""
         try:
             data = json.dumps({"text": message}).encode('utf-8')
             req = urllib.request.Request(
@@ -111,19 +90,6 @@ class SlackNotifier:
 
 
 def _extract_summary(content: str) -> str:
-    """
-    Extract a short summary from the already-cleaned chat content.
-
-    The content is already cleaned by the frontend pipeline, so we just
-    need to find the first meaningful sentence that isn't a command or
-    terminal output.
-
-    Args:
-        content: Cleaned chat response content
-
-    Returns:
-        A short summary string (max 200 chars)
-    """
     if not content:
         return "Task completed"
 
@@ -174,10 +140,6 @@ def _send_notification_thread(
     execution_time: Optional[float],
     webhook_url: str
 ):
-    """
-    Background thread to generate summary and send Slack notification.
-    Extracts summary from already-cleaned content.
-    """
     try:
         # Determine status and generate summary
         if stopped:
@@ -215,12 +177,6 @@ def notify_completion(
     stopped: bool = False,
     execution_time: Optional[float] = None
 ) -> bool:
-    """
-    Send a completion notification to Slack in a background thread.
-
-    Extracts summary from already-cleaned content (no extra auggie call needed).
-    Runs in background so it doesn't block the main response.
-    """
     from backend.config import settings
 
     if not settings.slack_notify:

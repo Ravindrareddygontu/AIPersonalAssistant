@@ -1,4 +1,3 @@
-"""Main routes - index page, auth check, directory browsing."""
 import os
 import json
 import logging
@@ -19,32 +18,27 @@ templates: Optional[Jinja2Templates] = None
 
 
 def set_templates(tmpl: Jinja2Templates):
-    """Set the Jinja2 templates instance."""
     global templates
     templates = tmpl
 
 
 def _log_request(method: str, url: str, body=None):
-    """Log incoming request details"""
     body_str = json.dumps(body)[:500] if body else 'None'
     log.info(f"[REQUEST] {method} {url} | Body: {body_str}")
 
 
 def _log_response(method: str, url: str, status: int, body=None):
-    """Log outgoing response details"""
     body_str = json.dumps(body)[:500] if body else 'None'
     log.info(f"[RESPONSE] {method} {url} | Status: {status} | Body: {body_str}")
 
 
 @main_router.get('/', response_class=HTMLResponse)
 async def index(request: Request):
-    """Render the main index page."""
     return templates.TemplateResponse("index.html", {"request": request})
 
 
 @main_router.get('/api/check-auth')
 async def check_auth(request: Request):
-    """Check if Augment CLI is authenticated."""
     url = str(request.url)
     _log_request('GET', url)
     try:
@@ -60,7 +54,6 @@ async def check_auth(request: Request):
 
 @main_router.get('/api/browse')
 async def browse_directories(request: Request, path: Optional[str] = None):
-    """Browse directories for workspace selection."""
     url = str(request.url)
     _log_request('GET', url, {'path': path})
     browse_path = os.path.expanduser(path if path else os.path.expanduser('~'))

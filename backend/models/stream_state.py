@@ -1,18 +1,9 @@
-"""
-StreamState - Data class for managing stream processing state.
-
-Follows Single Responsibility Principle: Only holds state data.
-Uses dataclass for clean, type-safe state management.
-"""
-
 import time
 from dataclasses import dataclass, field
 
 
 @dataclass
 class StreamState:
-    """Holds the state for a streaming response session."""
-    
     # Raw output accumulator
     all_output: str = ''
     clean_output: str = ''
@@ -52,40 +43,22 @@ class StreamState:
     _clean_tail: str = ''
 
     def update_data_time(self) -> None:
-        """Update the last data received timestamp."""
         self.last_data_time = time.time()
 
     def update_content_time(self) -> None:
-        """Update the last content change timestamp."""
         self.last_content_change = time.time()
 
     def mark_message_echo_found(self, position: int) -> None:
-        """Mark that we found the message echo at given position."""
         self.saw_message_echo = True
         self.output_start_pos = max(0, position - 50)
 
     def mark_streaming_started(self) -> None:
-        """Mark that streaming has started."""
         self.streaming_started = True
 
     def mark_response_marker_seen(self) -> None:
-        """Mark that we saw a response marker (● or ~)."""
         self.saw_response_marker = True
 
     def update_streamed_content(self, content: str) -> str:
-        """
-        Update streamed content and return content to stream.
-
-        For responsiveness, we stream:
-        - Complete lines when available (ends with newline)
-        - Partial content after a brief delay (for short responses like "4")
-
-        Args:
-            content: Full content so far
-
-        Returns:
-            Content to stream (complete lines preferred, partial if waiting too long)
-        """
         if len(content) <= self.streamed_length:
             return ''
 
@@ -117,15 +90,6 @@ class StreamState:
         return ''
 
     def flush_remaining_content(self, content: str) -> str:
-        """
-        Flush any remaining buffered content (for end of stream).
-
-        Args:
-            content: Full content
-
-        Returns:
-            Any remaining content that wasn't streamed yet
-        """
         if len(content) > self.streamed_length:
             remaining = content[self.streamed_length:]
             self.streamed_length = len(content)
@@ -135,28 +99,23 @@ class StreamState:
 
     @property
     def elapsed_since_data(self) -> float:
-        """Time elapsed since last data received."""
         return time.time() - self.last_data_time
 
     @property
     def elapsed_since_content(self) -> float:
-        """Time elapsed since last content change."""
         return time.time() - self.last_content_change
 
     @property
     def elapsed_since_message(self) -> float:
-        """Time elapsed since message was sent."""
         return time.time() - self.message_sent_time
 
     def should_log_wait(self, seconds: int) -> bool:
-        """Check if we should log wait time (avoid duplicate logs)."""
         if seconds in self._logged_wait_times:
             return False
         self._logged_wait_times.add(seconds)
         return True
 
     def has_substantial_content(self, min_length: int = 50, min_time: float = 5.0) -> bool:
-        """Check if we have substantial content (for end detection)."""
         return self.streamed_length > min_length and self.elapsed_since_message > min_time
 
     # Patterns indicating tools are executing (need extended timeout)
@@ -176,7 +135,6 @@ class StreamState:
     ]
 
     def is_tool_executing(self) -> bool:
-        """Check if AI is currently executing tools (needs extended timeout)."""
         content = self.last_streamed_content
         if not content:
             return False
@@ -188,13 +146,6 @@ class StreamState:
         return False
 
     def content_looks_complete(self) -> bool:
-        """Check if content looks like a complete response.
-
-        IMPORTANT: Uses current_full_content (the actual full content being processed)
-        rather than last_streamed_content (which only contains complete lines that have
-        been streamed). This prevents false positives where the last complete line ends
-        with punctuation but there's more partial content that hasn't been streamed yet.
-        """
         # Use current_full_content (most recent full content) if available,
         # otherwise fall back to last_streamed_content
         content = self.current_full_content or self.last_streamed_content

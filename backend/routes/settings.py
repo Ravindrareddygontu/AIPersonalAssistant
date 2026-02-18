@@ -1,4 +1,3 @@
-"""Settings routes - app settings and chat management."""
 import os
 import json
 import uuid
@@ -17,7 +16,6 @@ from backend.services import message_service as msg_svc
 
 
 def _generate_temp_chat_id():
-    """Generate a temporary chat ID for when DB is unavailable."""
     return f"temp-{str(uuid.uuid4())[:8]}"
 
 log = logging.getLogger('settings')
@@ -43,20 +41,17 @@ class ChatUpdate(BaseModel):
 
 
 def _log_request(method: str, url: str, body=None):
-    """Log incoming request details"""
     body_str = json.dumps(body)[:500] if body else 'None'
     log.info(f"[REQUEST] {method} {url} | Body: {body_str}")
 
 
 def _log_response(method: str, url: str, status: int, body=None):
-    """Log outgoing response details"""
     body_str = json.dumps(body)[:500] if body else 'None'
     log.info(f"[RESPONSE] {method} {url} | Status: {status} | Body: {body_str}")
 
 
 @settings_router.get('/api/settings')
 async def get_settings_endpoint(request: Request):
-    """Get current application settings."""
     url = str(request.url)
     _log_request('GET', url)
     response_data = settings.to_dict()
@@ -66,7 +61,6 @@ async def get_settings_endpoint(request: Request):
 
 @settings_router.post('/api/settings')
 async def save_settings(request: Request, data: SettingsUpdate):
-    """Save application settings."""
     url = str(request.url)
     data_dict = data.model_dump(exclude_none=True)
     _log_request('POST', url, data_dict)
@@ -118,7 +112,6 @@ async def save_settings(request: Request, data: SettingsUpdate):
 
 @settings_router.post('/api/session/reset')
 async def reset_session(request: Request, data: Optional[SessionResetRequest] = None):
-    """Reset the Augment session."""
     url = str(request.url)
     data_dict = data.model_dump() if data else {}
     _log_request('POST', url, data_dict)
@@ -135,7 +128,6 @@ async def reset_session(request: Request, data: Optional[SessionResetRequest] = 
 
 @settings_router.get('/api/db-status')
 async def get_db_status(request: Request):
-    """Check MongoDB connection status."""
     url = str(request.url)
     _log_request('GET', url)
     status = check_connection()
@@ -145,7 +137,6 @@ async def get_db_status(request: Request):
 
 @settings_router.get('/api/chats')
 async def list_chats(request: Request):
-    """List all chats."""
     url = str(request.url)
     _log_request('GET', url)
 
@@ -178,7 +169,6 @@ async def list_chats(request: Request):
 
 @settings_router.post('/api/chats')
 async def create_chat(request: Request):
-    """Create a new chat."""
     url = str(request.url)
     _log_request('POST', url)
     now = datetime.now().isoformat()
@@ -224,7 +214,6 @@ async def create_chat(request: Request):
 
 @settings_router.delete('/api/chats/clear')
 async def clear_all_chats(request: Request):
-    """Clear all chats. Must be defined before {chat_id} routes."""
     url = str(request.url)
     _log_request('DELETE', url)
 
@@ -249,7 +238,6 @@ async def clear_all_chats(request: Request):
 
 @settings_router.get('/api/chats/{chat_id}')
 async def get_chat(request: Request, chat_id: str):
-    """Get a specific chat."""
     url = str(request.url)
     _log_request('GET', url, {'chat_id': chat_id})
 
@@ -305,7 +293,6 @@ async def get_chat(request: Request, chat_id: str):
 
 @settings_router.post('/api/chats/{chat_id}/clear-streaming')
 async def clear_streaming_status(chat_id: str):
-    """Clear the streaming status for a chat (used after interrupted streams)."""
     # Quick check using cached status first (non-blocking)
     if not is_db_available_cached():
         chats_collection = None
@@ -329,7 +316,6 @@ async def clear_streaming_status(chat_id: str):
 
 @settings_router.put('/api/chats/{chat_id}')
 async def update_chat(request: Request, chat_id: str, data: ChatUpdate):
-    """Update a chat."""
     url = str(request.url)
 
     # Quick check using cached status first (non-blocking)
@@ -403,7 +389,6 @@ async def update_chat(request: Request, chat_id: str, data: ChatUpdate):
 
 @settings_router.delete('/api/chats/{chat_id}')
 async def delete_chat(request: Request, chat_id: str):
-    """Delete a chat."""
     url = str(request.url)
     _log_request('DELETE', url, {'chat_id': chat_id})
 

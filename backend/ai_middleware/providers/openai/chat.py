@@ -1,5 +1,3 @@
-"""OpenAI Chat provider implementation."""
-
 import time
 from datetime import datetime
 from typing import Any, AsyncIterator, List, Optional
@@ -26,7 +24,6 @@ logger = structlog.get_logger()
 
 
 class OpenAIChatProvider(ChatProvider, OpenAIClientMixin):
-    """OpenAI Chat Completions provider (GPT-5, GPT-4.1, o3, etc.)."""
 
     def __init__(self, api_key: Optional[str] = None, **kwargs: Any) -> None:
         super().__init__(api_key=api_key, **kwargs)
@@ -34,7 +31,6 @@ class OpenAIChatProvider(ChatProvider, OpenAIClientMixin):
 
     @property
     def default_model(self) -> str:
-        """Get default model from config."""
         return self._settings.openai_chat_model
 
     @property
@@ -52,7 +48,6 @@ class OpenAIChatProvider(ChatProvider, OpenAIClientMixin):
         )
 
     async def health_check(self) -> bool:
-        """Check if OpenAI API is accessible."""
         try:
             await self._make_request("GET", "/models", timeout=10.0)
             return True
@@ -60,7 +55,6 @@ class OpenAIChatProvider(ChatProvider, OpenAIClientMixin):
             return False
 
     def _format_messages(self, messages: List[ChatMessage]) -> List[dict]:
-        """Format messages for OpenAI API."""
         formatted = []
         for msg in messages:
             m = {"role": msg.role, "content": msg.content}
@@ -81,7 +75,6 @@ class OpenAIChatProvider(ChatProvider, OpenAIClientMixin):
         max_tokens: Optional[int] = None,
         **kwargs: Any,
     ) -> ChatResponse:
-        """Send a chat request to OpenAI."""
         start_time = time.perf_counter()
         request_id = uuid4()
         
@@ -145,7 +138,6 @@ class OpenAIChatProvider(ChatProvider, OpenAIClientMixin):
         max_tokens: Optional[int] = None,
         **kwargs: Any,
     ) -> AsyncIterator[ChatStreamChunk]:
-        """Stream a chat response from OpenAI."""
         request_id = uuid4()
         model = model or self.default_model
 

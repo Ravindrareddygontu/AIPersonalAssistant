@@ -1,10 +1,3 @@
-"""
-ResponseExtractor - Extracts clean AI responses from auggie terminal output.
-
-Parses terminal output to find and extract the actual AI response content,
-filtering out UI elements, status messages, and terminal artifacts.
-"""
-
 import re
 import logging
 from typing import Optional
@@ -34,30 +27,13 @@ _STATUS_PATTERNS = frozenset([
 
 
 class ResponseExtractor:
-    """Extracts AI response content from raw auggie terminal output."""
 
-    # Response content markers used by auggie CLI
-    RESPONSE_MARKER = '●'      # Main response line marker
+    RESPONSE_MARKER = '●'
     THINKING_MARKER = '~'      # Thinking/reasoning text marker
     CONTINUATION_MARKER = '⎿'  # Continuation/sub-response marker
 
     @staticmethod
     def extract_full(raw_output: str, user_message: str) -> str:
-        """
-        Extract the response from auggie terminal output.
-
-        Algorithm:
-        1. Find the user message in the output (last occurrence)
-        2. Find the first ● marker AFTER the message
-        3. Extract content from there until end markers (box UI elements)
-
-        Args:
-            raw_output: Raw terminal output from auggie PTY
-            user_message: The user's question/message to locate
-
-        Returns:
-            Cleaned response content, or empty string if not found
-        """
         text = _CTRL_CHARS_RE.sub('', TextCleaner.strip_ansi(raw_output))
 
         # Find user message position (use shorter prefix for robustness)

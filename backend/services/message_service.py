@@ -1,56 +1,13 @@
-"""
-Message Service - Handles message schema transformation between API and DB formats.
-
-DB Schema (internal):
-{
-    messages: [
-        {
-            id: 'unique-id',
-            index: 0,
-            question: 'user question',
-            answer: 'cleaned response for display',
-            questionTime: 'ISO timestamp',
-            answerTime: 'ISO timestamp'
-        },
-        ...
-    ]
-}
-
-API Schema (frontend-facing):
-{
-    messages: [
-        { role: 'user', content: '...', messageId: '...' },
-        { role: 'assistant', content: '...', messageId: '...' },
-        ...
-    ]
-}
-
-"""
-
 import uuid
 from datetime import datetime
 
 
 def generate_message_id(chat_id, index, content=None):
-    """Generate a unique message ID based on chat_id, index, and a unique suffix.
-
-    Uses UUID to ensure uniqueness even when retrying the same question.
-    """
     unique_suffix = uuid.uuid4().hex[:8]
     return f"{chat_id}-{index}-{unique_suffix}"
 
 
 def db_to_api_format(chat_id, db_messages):
-    """
-    Convert DB format (Q&A pairs) to API format (separate user/assistant messages).
-    
-    Args:
-        chat_id: The chat ID for generating message IDs
-        db_messages: List of Q&A pair objects from DB
-    
-    Returns:
-        List of separate user/assistant message objects for API
-    """
     api_messages = []
     
     for qa_pair in db_messages:
@@ -82,16 +39,6 @@ def db_to_api_format(chat_id, db_messages):
 
 
 def api_to_db_format(chat_id, api_messages):
-    """
-    Convert API format (separate messages) to DB format (Q&A pairs).
-    
-    Args:
-        chat_id: The chat ID
-        api_messages: List of separate user/assistant message objects from API
-    
-    Returns:
-        List of Q&A pair objects for DB storage
-    """
     db_messages = []
     current_pair = None
     pair_index = 0
@@ -125,17 +72,10 @@ def api_to_db_format(chat_id, api_messages):
 
 
 def get_message_count(db_messages):
-    """Get the count of Q&A pairs (for display purposes)."""
     return len(db_messages)
 
 
 def add_question(chat_id, db_messages, question_content):
-    """
-    Add a new question to the messages list.
-    
-    Returns:
-        Tuple of (updated_messages, new_message_id)
-    """
     index = len(db_messages)
     msg_id = generate_message_id(chat_id, index, question_content)
     
@@ -153,17 +93,6 @@ def add_question(chat_id, db_messages, question_content):
 
 
 def add_answer(db_messages, message_id, answer_content):
-    """
-    Add an answer to an existing question by message_id.
-
-    Args:
-        db_messages: List of Q&A pairs
-        message_id: The ID of the Q&A pair to update
-        answer_content: Cleaned response for display
-
-    Returns:
-        Updated messages list
-    """
     for pair in db_messages:
         if pair.get('id') == message_id:
             pair['answer'] = answer_content

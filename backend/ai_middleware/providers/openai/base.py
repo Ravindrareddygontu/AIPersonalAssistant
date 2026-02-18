@@ -1,5 +1,3 @@
-"""Base OpenAI provider with shared HTTP client functionality."""
-
 from typing import Any, AsyncIterator, Dict, Optional
 
 import httpx
@@ -15,13 +13,11 @@ OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 
 class OpenAIClientMixin:
-    """Mixin providing OpenAI HTTP client functionality."""
 
     api_key: Optional[str]
     config: Dict[str, Any]
 
     def _get_api_key(self) -> str:
-        """Get the API key, falling back to settings."""
         if self.api_key:
             return self.api_key
         settings = get_settings()
@@ -33,14 +29,12 @@ class OpenAIClientMixin:
         )
 
     def _get_headers(self) -> Dict[str, str]:
-        """Get headers for OpenAI API requests."""
         return {
             "Authorization": f"Bearer {self._get_api_key()}",
             "Content-Type": "application/json",
         }
 
     def _get_base_url(self) -> str:
-        """Get the base URL for OpenAI API."""
         return self.config.get("base_url", OPENAI_BASE_URL)
 
     async def _make_request(
@@ -51,7 +45,6 @@ class OpenAIClientMixin:
         files: Optional[Dict[str, Any]] = None,
         timeout: float = 60.0,
     ) -> Dict[str, Any]:
-        """Make an HTTP request to OpenAI API."""
         url = f"{self._get_base_url()}{endpoint}"
         headers = self._get_headers()
         
@@ -107,7 +100,6 @@ class OpenAIClientMixin:
         json_data: Dict[str, Any],
         timeout: float = 120.0,
     ) -> AsyncIterator[Dict[str, Any]]:
-        """Make a streaming request to OpenAI API."""
         url = f"{self._get_base_url()}{endpoint}"
         headers = self._get_headers()
         json_data["stream"] = True
@@ -137,7 +129,6 @@ class OpenAIClientMixin:
         url: str,
         timeout: float = 60.0,
     ) -> bytes:
-        """Download binary data from a URL."""
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(url)
             response.raise_for_status()

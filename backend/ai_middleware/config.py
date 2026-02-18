@@ -1,5 +1,3 @@
-"""Configuration management for AI Middleware."""
-
 from functools import lru_cache
 from typing import Optional
 
@@ -7,7 +5,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -64,6 +61,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """Get cached settings instance."""
     return Settings()
 

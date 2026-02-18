@@ -1,13 +1,3 @@
-"""
-Application Configuration - Central configuration for the AI Chat App.
-
-Contains settings, constants, and configuration for:
-- Database connections (MongoDB)
-- AI model configuration
-- Terminal output filtering patterns
-- Slack integration settings
-"""
-
 import os
 import re
 import signal
@@ -83,7 +73,6 @@ MODEL_ID_MAP = {
 }
 
 def get_auggie_model_id(display_name):
-    """Convert display model name to auggie CLI model ID."""
     return MODEL_ID_MAP.get(display_name, display_name)
 
 

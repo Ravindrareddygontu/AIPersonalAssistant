@@ -1,5 +1,3 @@
-"""Code generation, completion, and analysis models."""
-
 from enum import Enum
 from typing import Optional
 from uuid import UUID
@@ -10,7 +8,6 @@ from backend.ai_middleware.models.base import BaseRequest, BaseResponse, StreamE
 
 
 class ProgrammingLanguage(str, Enum):
-    """Supported programming languages."""
 
     PYTHON = "python"
     JAVASCRIPT = "javascript"
@@ -34,7 +31,6 @@ class ProgrammingLanguage(str, Enum):
 
 
 class CodeAnalysisType(str, Enum):
-    """Types of code analysis."""
 
     REVIEW = "review"
     SECURITY = "security"
@@ -46,7 +42,6 @@ class CodeAnalysisType(str, Enum):
 
 
 class CodeGenerationRequest(BaseRequest):
-    """Code generation request."""
 
     prompt: str
     language: str = "python"
@@ -58,7 +53,6 @@ class CodeGenerationRequest(BaseRequest):
 
 
 class CodeCompletionRequest(BaseRequest):
-    """Code completion request (fill-in-middle)."""
 
     code_prefix: str
     code_suffix: Optional[str] = None
@@ -69,7 +63,6 @@ class CodeCompletionRequest(BaseRequest):
 
 
 class CodeAnalysisRequest(BaseRequest):
-    """Code analysis request."""
 
     code: str
     language: str = "python"
@@ -79,7 +72,6 @@ class CodeAnalysisRequest(BaseRequest):
 
 
 class CodeExecutionRequest(BaseRequest):
-    """Code execution request."""
 
     code: str
     language: str = "python"
@@ -91,7 +83,6 @@ class CodeExecutionRequest(BaseRequest):
 
 
 class CodeGenerationResponse(BaseResponse):
-    """Code generation response."""
 
     code: str
     language: str
@@ -102,7 +93,6 @@ class CodeGenerationResponse(BaseResponse):
 
 
 class CodeCompletionResponse(BaseResponse):
-    """Code completion response."""
 
     completion: str
     language: str
@@ -110,7 +100,6 @@ class CodeCompletionResponse(BaseResponse):
 
 
 class CodeIssue(BaseModel):
-    """A code issue found during analysis."""
 
     severity: str  # "error", "warning", "info", "suggestion"
     message: str
@@ -123,7 +112,6 @@ class CodeIssue(BaseModel):
 
 
 class CodeAnalysisResponse(BaseResponse):
-    """Code analysis response."""
 
     summary: str
     issues: list[CodeIssue]
@@ -133,7 +121,6 @@ class CodeAnalysisResponse(BaseResponse):
 
 
 class CodeExecutionResponse(BaseResponse):
-    """Code execution response."""
 
     stdout: str
     stderr: str
@@ -144,7 +131,6 @@ class CodeExecutionResponse(BaseResponse):
 
 
 class CodeStreamChunk(StreamEvent):
-    """A chunk of streaming code generation."""
 
     event_type: str = "code.chunk"
     content: str

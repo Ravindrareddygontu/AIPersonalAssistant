@@ -1,5 +1,3 @@
-"""Logging middleware and configuration."""
-
 import json
 import time
 from typing import Callable
@@ -18,14 +16,12 @@ TRUNCATED_CHARS = 200
 
 
 def truncate_log_data(data: str) -> str:
-    """Truncate data if it exceeds 1MB, showing only 200 chars."""
     if len(data.encode('utf-8')) > MAX_LOG_SIZE_BYTES:
         return f"{data[:TRUNCATED_CHARS]}... [TRUNCATED - original size: {len(data)} chars]"
     return data
 
 
 def setup_logging() -> None:
-    """Configure structured logging."""
     settings = get_settings()
 
     structlog.configure(
@@ -51,12 +47,10 @@ def setup_logging() -> None:
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
-    """Middleware for request/response logging with body capture."""
 
     async def dispatch(
         self, request: Request, call_next: Callable
     ) -> Response:
-        """Log request and response details including bodies."""
         logger = structlog.get_logger()
 
         # Generate request ID
@@ -140,12 +134,10 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
-    """Middleware to add request context for downstream use."""
 
     async def dispatch(
         self, request: Request, call_next: Callable
     ) -> Response:
-        """Add request context."""
         request_id = request.headers.get("X-Request-ID", str(uuid4()))
         
         # Store in request state for downstream access

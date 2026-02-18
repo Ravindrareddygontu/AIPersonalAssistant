@@ -1,5 +1,3 @@
-"""OpenAI Voice provider implementation (GPT-4o Transcribe + TTS)."""
-
 import io
 import time
 from datetime import datetime
@@ -25,7 +23,6 @@ logger = structlog.get_logger()
 
 
 class OpenAIVoiceProvider(VoiceProvider, OpenAIClientMixin):
-    """OpenAI Voice provider using GPT-4o Transcribe (STT) and TTS API."""
 
     def __init__(self, api_key: Optional[str] = None, **kwargs: Any) -> None:
         super().__init__(api_key=api_key, **kwargs)
@@ -33,17 +30,14 @@ class OpenAIVoiceProvider(VoiceProvider, OpenAIClientMixin):
 
     @property
     def default_stt_model(self) -> str:
-        """Get default STT model from config."""
         return self._settings.openai_stt_model
 
     @property
     def default_tts_model(self) -> str:
-        """Get default TTS model from config."""
         return self._settings.openai_tts_model
 
     @property
     def default_voice(self) -> str:
-        """Get default voice from config."""
         return self._settings.openai_tts_voice
 
     @property
@@ -61,7 +55,6 @@ class OpenAIVoiceProvider(VoiceProvider, OpenAIClientMixin):
         )
 
     async def health_check(self) -> bool:
-        """Check if OpenAI API is accessible."""
         try:
             await self._make_request("GET", "/models", timeout=10.0)
             return True
@@ -76,7 +69,6 @@ class OpenAIVoiceProvider(VoiceProvider, OpenAIClientMixin):
         model: Optional[str] = None,
         **kwargs: Any,
     ) -> VoiceToTextResponse:
-        """Transcribe audio using OpenAI Whisper."""
         start_time = time.perf_counter()
         request_id = uuid4()
         model = model or self.default_stt_model
@@ -151,7 +143,6 @@ class OpenAIVoiceProvider(VoiceProvider, OpenAIClientMixin):
         speed: float = 1.0,
         **kwargs: Any,
     ) -> TextToVoiceResponse:
-        """Convert text to speech using OpenAI TTS."""
         start_time = time.perf_counter()
         request_id = uuid4()
 

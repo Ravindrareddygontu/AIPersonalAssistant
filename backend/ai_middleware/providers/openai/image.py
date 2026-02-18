@@ -1,5 +1,3 @@
-"""OpenAI Image provider implementation (GPT Image / DALL-E)."""
-
 import base64
 import io
 import time
@@ -26,7 +24,6 @@ logger = structlog.get_logger()
 
 
 class OpenAIImageProvider(ImageProvider, OpenAIClientMixin):
-    """OpenAI Image provider using GPT Image and DALL-E models."""
 
     VALID_SIZES_GPT_IMAGE = ["1024x1024", "1536x1024", "1024x1536", "auto"]
     VALID_SIZES_DALLE3 = ["1024x1024", "1792x1024", "1024x1792"]
@@ -38,7 +35,6 @@ class OpenAIImageProvider(ImageProvider, OpenAIClientMixin):
 
     @property
     def default_model(self) -> str:
-        """Get default model from config."""
         return self._settings.openai_image_model
 
     @property
@@ -56,7 +52,6 @@ class OpenAIImageProvider(ImageProvider, OpenAIClientMixin):
         )
 
     async def health_check(self) -> bool:
-        """Check if OpenAI API is accessible."""
         try:
             await self._make_request("GET", "/models", timeout=10.0)
             return True
@@ -72,7 +67,6 @@ class OpenAIImageProvider(ImageProvider, OpenAIClientMixin):
         n: int = 1,
         **kwargs: Any,
     ) -> ImageGenerationResponse:
-        """Generate images using DALL-E."""
         start_time = time.perf_counter()
         request_id = uuid4()
         model = model or self.default_model
@@ -133,7 +127,6 @@ class OpenAIImageProvider(ImageProvider, OpenAIClientMixin):
         size: str = "1024x1024",
         **kwargs: Any,
     ) -> ImageEditResponse:
-        """Edit an image using DALL-E 2."""
         start_time = time.perf_counter()
         request_id = uuid4()
         
@@ -191,7 +184,6 @@ class OpenAIImageProvider(ImageProvider, OpenAIClientMixin):
         size: str = "1024x1024",
         **kwargs: Any,
     ) -> ImageGenerationResponse:
-        """Create variations of an image using DALL-E 2."""
         start_time = time.perf_counter()
         request_id = uuid4()
         model = "dall-e-2"

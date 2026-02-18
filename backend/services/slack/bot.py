@@ -1,21 +1,3 @@
-"""
-Slack Bot Handler using Slack Bolt framework.
-
-This module provides event-driven Slack integration using the Bolt framework.
-It handles:
-- App mentions (@bot messages)
-- Direct messages
-- Slash commands (/auggie)
-
-Setup:
-1. Create a Slack app at https://api.slack.com/apps
-2. Enable Socket Mode (or use Events API with webhook URL)
-3. Add Bot Token Scopes: chat:write, app_mentions:read, im:history, im:read, commands
-4. Subscribe to bot events: app_mention, message.im
-5. Create slash command: /auggie
-6. Install to workspace and get tokens
-"""
-
 import os
 import re
 import logging
@@ -28,7 +10,6 @@ log = logging.getLogger('slack.bot')
 
 @dataclass
 class SlackBotConfig:
-    """Configuration for the Slack bot."""
     bot_token: str = None           # xoxb-... Bot User OAuth Token
     app_token: str = None           # xapp-... App-Level Token (for Socket Mode)
     signing_secret: str = None      # For verifying requests (Events API mode)
@@ -47,17 +28,11 @@ class SlackBotConfig:
     
     @property
     def is_socket_mode(self) -> bool:
-        """Check if Socket Mode is available."""
         return bool(self.app_token and self.app_token.startswith('xapp-'))
 
 
 class SlackBot:
-    """
-    Slack bot using Bolt framework for event-driven interactions.
-    
-    Supports both Socket Mode (for development) and HTTP mode (for production).
-    """
-    
+
     def __init__(self, config: SlackBotConfig = None):
         self.config = config or SlackBotConfig()
         self._app = None
@@ -68,7 +43,6 @@ class SlackBot:
         self._running = False
     
     def _ensure_initialized(self):
-        """Initialize Slack app and Auggie executor lazily."""
         if self._app is not None:
             return
         
@@ -95,41 +69,33 @@ class SlackBot:
         log.info("[SLACK BOT] Initialized")
     
     def _register_handlers(self):
-        """Register all Slack event handlers."""
-        
+
         @self._app.event("app_mention")
         def handle_mention(event, say, client):
-            """Handle @bot mentions."""
             self._handle_message(event, say, client)
-        
+
         @self._app.event("message")
         def handle_message(event, say, client):
-            """Handle direct messages (DMs)."""
-            # Only handle DMs (im channel type)
             channel_type = event.get("channel_type")
             if channel_type == "im":
-                # Ignore bot's own messages
                 if event.get("bot_id"):
                     return
                 self._handle_message(event, say, client)
-        
+
         @self._app.command("/auggie")
         def handle_slash_command(ack, respond, command):
-            """Handle /auggie slash command."""
-            ack()  # Acknowledge immediately
+            ack()
             self._handle_slash_command(respond, command)
         
         log.info("[SLACK BOT] Event handlers registered")
     
     def _extract_message_text(self, event: dict) -> str:
-        """Extract clean message text from event."""
         text = event.get("text", "")
         # Remove bot mention if present
         text = re.sub(r'<@[A-Z0-9]+>\s*', '', text).strip()
         return text
     
     def _handle_message(self, event: dict, say: Callable, client):
-        """Process a message and respond."""
         text = self._extract_message_text(event)
         channel = event.get("channel")
         thread_ts = event.get("thread_ts") or event.get("ts")
@@ -186,7 +152,6 @@ class SlackBot:
             say(f"❌ Error: {str(e)}", thread_ts=thread_ts)
 
     def _handle_slash_command(self, respond: Callable, command: dict):
-        """Process a slash command."""
         text = command.get("text", "").strip()
         user = command.get("user_name", "user")
         channel = command.get("channel_id", "unknown")
@@ -245,7 +210,6 @@ class SlackBot:
             respond(f"❌ Error: {str(e)}")
 
     def _get_help_text(self) -> str:
-        """Get help text for slash command."""
         return """🤖 *Auggie Bot - AI Code Assistant*
 
 *Slash Commands:*
@@ -267,12 +231,10 @@ class SlackBot:
 
     @property
     def app(self):
-        """Get the Slack Bolt app instance (for FastAPI integration)."""
         self._ensure_initialized()
         return self._app
 
     def start_socket_mode(self, blocking: bool = True):
-        """Start the bot in Socket Mode (development)."""
         if not self.config.is_socket_mode:
             raise ValueError("Socket Mode requires SLACK_APP_TOKEN (xapp-...)")
 
@@ -292,7 +254,6 @@ class SlackBot:
             log.info("[SLACK BOT] Socket Mode started in background")
 
     def stop(self):
-        """Stop the bot."""
         self._running = False
         if self._handler:
             self._handler.close()
@@ -306,7 +267,6 @@ def create_slack_bot(
     workspace: str = None,
     model: str = None
 ) -> SlackBot:
-    """Create a configured SlackBot instance."""
     config = SlackBotConfig(
         bot_token=bot_token,
         app_token=app_token,

@@ -130,12 +130,6 @@ class AuggieSession:
         self.initialized = False
 
     def wait_for_prompt(self, timeout=60, status_callback=None):
-        """Wait for auggie to be ready - including indexing completion.
-
-        Args:
-            timeout: Maximum time to wait in seconds
-            status_callback: Optional callback function(message) for status updates
-        """
         start, output = time.time(), ""
         prompt_seen = False
         indexing_complete = False
@@ -208,7 +202,6 @@ class AuggieSession:
         return False, output
 
     def drain_output(self, timeout=1.0):
-        """Drain all pending output from the terminal buffer"""
         end = time.time() + timeout
         drained = 0
         while time.time() < end:
@@ -228,7 +221,6 @@ class AuggieSession:
 
 
 def _is_app_spawned_process(pid):
-    """Check if a process was spawned by this app by looking for AUGMENT_WORKSPACE env var."""
     try:
         env_path = f'/proc/{pid}/environ'
         if os.path.exists(env_path):
@@ -242,11 +234,6 @@ def _is_app_spawned_process(pid):
 
 
 def _get_auggie_processes():
-    """Get list of running auggie processes with their PIDs and start times.
-
-    Only returns processes that were spawned by this app (have AUGMENT_WORKSPACE env var).
-    This prevents killing user-started auggie processes in their terminal.
-    """
     try:
         # Use ps to get auggie processes with start time
         result = subprocess.run(
@@ -284,18 +271,11 @@ def _get_auggie_processes():
 
 
 def _get_tracked_pids():
-    """Get PIDs of auggie processes tracked by our session manager."""
     with _lock:
         return {s.process.pid for s in _sessions.values() if s.process and s.is_alive()}
 
 
 def cleanup_stale_auggie_processes(force_aggressive=False):
-    """
-    Find and kill stale auggie processes not managed by the session manager.
-
-    Args:
-        force_aggressive: If True, be more aggressive about killing processes
-    """
     tracked_pids = _get_tracked_pids()
     processes = _get_auggie_processes()
 
@@ -371,7 +351,6 @@ def cleanup_stale_auggie_processes(force_aggressive=False):
 
 
 def _cleanup_thread_func():
-    """Background thread that periodically cleans up stale processes."""
     log.info("[CLEANUP] Background cleanup thread started")
     while not _cleanup_stop_event.is_set():
         try:
@@ -386,7 +365,6 @@ def _cleanup_thread_func():
 
 
 def start_cleanup_thread():
-    """Start the background cleanup thread."""
     global _cleanup_thread
     if _cleanup_thread is None or not _cleanup_thread.is_alive():
         _cleanup_stop_event.clear()
@@ -418,7 +396,6 @@ class SessionManager:
 
     @staticmethod
     def cleanup_old():
-        """Clean up old sessions and stale OS processes."""
         with _lock:
             now = time.time()
             for ws in [w for w, s in _sessions.items() if now - s.last_used > 600]:
@@ -440,11 +417,6 @@ class SessionManager:
 
     @staticmethod
     def reset(workspace):
-        """Reset session for a workspace and clean up stale processes.
-
-        Returns:
-            bool: True if reset was performed, False if skipped due to active terminal
-        """
         with _lock:
             if workspace in _sessions:
                 # Don't reset if terminal is actively in use

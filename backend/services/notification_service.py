@@ -1,19 +1,3 @@
-"""
-Notification Service - CRUD operations for reminders.
-Scheduling is done client-side using setTimeout for efficiency.
-
-Reminder Schema:
-{
-    id: 'unique-id',
-    title: 'Punch In Reminder',
-    message: 'Time to punch in!',
-    time: '11:00',  # HH:MM format
-    days: ['mon', 'tue', 'wed', 'thu', 'fri'],  # Days of week
-    enabled: true,
-    created_at: 'ISO timestamp'
-}
-"""
-
 import logging
 import uuid
 from datetime import datetime
@@ -27,7 +11,6 @@ log = logging.getLogger('notifications')
 # CRUD Operations
 
 def create_reminder(title: str, message: str, time: str, days: List[str]) -> Optional[dict]:
-    """Create a new reminder. Returns None if DB is not available."""
     # Quick check using cached status first (non-blocking)
     if not is_db_available_cached():
         log.warning("MongoDB not available (cached), cannot create reminder")
@@ -56,7 +39,6 @@ def create_reminder(title: str, message: str, time: str, days: List[str]) -> Opt
 
 
 def get_all_reminders() -> List[dict]:
-    """Get all reminders. Returns empty list if DB is not available."""
     # Quick check using cached status first (non-blocking)
     if not is_db_available_cached():
         log.warning("MongoDB not available (cached), returning empty reminders list")
@@ -74,7 +56,6 @@ def get_all_reminders() -> List[dict]:
 
 
 def get_reminder(reminder_id: str) -> Optional[dict]:
-    """Get a reminder by ID. Returns None if DB is not available."""
     # Quick check using cached status first (non-blocking)
     if not is_db_available_cached():
         log.warning("MongoDB not available (cached), cannot get reminder")
@@ -92,7 +73,6 @@ def get_reminder(reminder_id: str) -> Optional[dict]:
 
 
 def update_reminder(reminder_id: str, updates: dict) -> Optional[dict]:
-    """Update a reminder. Returns None if DB is not available."""
     # Quick check using cached status first (non-blocking)
     if not is_db_available_cached():
         log.warning("MongoDB not available (cached), cannot update reminder")
@@ -119,7 +99,6 @@ def update_reminder(reminder_id: str, updates: dict) -> Optional[dict]:
 
 
 def delete_reminder(reminder_id: str) -> bool:
-    """Delete a reminder. Returns False if DB is not available."""
     # Quick check using cached status first (non-blocking)
     if not is_db_available_cached():
         log.warning("MongoDB not available (cached), cannot delete reminder")
@@ -139,7 +118,6 @@ def delete_reminder(reminder_id: str) -> bool:
 
 
 def toggle_reminder(reminder_id: str) -> Optional[dict]:
-    """Toggle a reminder's enabled state. Returns None if DB is not available."""
     reminder = get_reminder(reminder_id)
     if reminder:
         new_state = not reminder.get('enabled', True)

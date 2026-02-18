@@ -1,5 +1,3 @@
-"""OpenAI Code provider implementation using GPT models."""
-
 import time
 from datetime import datetime
 from typing import Any, AsyncIterator, Optional
@@ -24,7 +22,6 @@ logger = structlog.get_logger()
 
 
 class OpenAICodeProvider(CodeProvider, OpenAIClientMixin):
-    """OpenAI Code provider using GPT models for code generation and analysis."""
 
     def __init__(self, api_key: Optional[str] = None, **kwargs: Any) -> None:
         super().__init__(api_key=api_key, **kwargs)
@@ -32,7 +29,6 @@ class OpenAICodeProvider(CodeProvider, OpenAIClientMixin):
 
     @property
     def default_model(self) -> str:
-        """Get default model from config."""
         return self._settings.openai_code_model
 
     @property
@@ -64,7 +60,6 @@ class OpenAICodeProvider(CodeProvider, OpenAIClientMixin):
         model: Optional[str] = None,
         **kwargs: Any,
     ) -> CodeGenerationResponse:
-        """Generate code from a natural language prompt."""
         start_time = time.perf_counter()
         request_id = uuid4()
         model = model or self.default_model
@@ -135,7 +130,6 @@ Only output the code without explanations unless specifically asked."""
         model: Optional[str] = None,
         **kwargs: Any,
     ) -> CodeCompletionResponse:
-        """Complete code given prefix and optional suffix (fill-in-middle)."""
         start_time = time.perf_counter()
         request_id = uuid4()
         model = model or self.default_model
@@ -180,7 +174,6 @@ Only output the code without explanations unless specifically asked."""
         model: Optional[str] = None,
         **kwargs: Any,
     ) -> CodeAnalysisResponse:
-        """Analyze code for issues, security, or explanations."""
         start_time = time.perf_counter()
         request_id = uuid4()
         model = model or self.default_model
@@ -234,7 +227,6 @@ Format issues as JSON array."""
         language: str = "python",
         **kwargs: Any,
     ) -> AsyncIterator[CodeStreamChunk]:
-        """Stream code generation."""
         request_id = uuid4()
         model = kwargs.get("model") or self.default_model
 
