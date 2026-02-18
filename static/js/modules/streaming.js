@@ -118,6 +118,21 @@ function finalizeStreamingMessage(finalContent, requestId) {
     state.streamingMessageDiv = null;
     const providerSelect = DOM.get('providerSelectHeader');
     if (providerSelect) providerSelect.disabled = false;
+    hideStopButton();
+}
+
+function showStopButton() {
+    const stopBtn = DOM.get('stopBtn');
+    const sendBtn = DOM.get('sendBtn');
+    if (stopBtn) stopBtn.style.display = 'flex';
+    if (sendBtn) sendBtn.style.display = 'none';
+}
+
+function hideStopButton() {
+    const stopBtn = DOM.get('stopBtn');
+    const sendBtn = DOM.get('sendBtn');
+    if (stopBtn) stopBtn.style.display = 'none';
+    if (sendBtn) sendBtn.style.display = 'flex';
 }
 
 export async function sendMessage() {
@@ -161,6 +176,7 @@ export async function sendMessage() {
     hideWelcome();
     addMessage('user', displayMessage, true);
     showTypingIndicator('Connecting...');
+    showStopButton();
     state.isProcessing = true;
     DOM.get('sendBtn').disabled = true;
 
@@ -174,7 +190,8 @@ export async function sendMessage() {
             body: JSON.stringify({
                 message: formattedMessage,
                 workspace: state.currentWorkspace,
-                chatId: state.currentChatId
+                chatId: state.currentChatId,
+                history: state.chatHistory || []
             }),
             signal: state.currentAbortController.signal
         });
@@ -244,6 +261,17 @@ export async function sendMessage() {
                             }
                             break;
 
+                        case 'aborted':
+                            if (!isBackground && streamingContent) {
+                                const partialContent = streamingContent + '\n\n*(stopped)*';
+                                finalizeStreamingMessage(partialContent, thisRequestId);
+                                completeActiveRequest(thisChatId, partialContent, false);
+                            }
+                            activeRequests.delete(thisChatId);
+                            hideTypingIndicator();
+                            hideStopButton();
+                            break;
+
                         case 'error':
                             activeRequests.delete(thisChatId);
                             if (!isBackground) {
@@ -282,8 +310,10 @@ export function stopCurrentRequest() {
     if (state.currentAbortController) {
         state.currentAbortController.abort();
         state.currentAbortController = null;
+        fetch('/api/chat/abort', { method: 'POST' }).catch(() => {});
     }
     hideTypingIndicator();
+    hideStopButton();
     state.isProcessing = false;
     DOM.get('sendBtn').disabled = false;
 }

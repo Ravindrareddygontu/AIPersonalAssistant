@@ -114,29 +114,6 @@ function cleanGarbageCharacters(text) {
 }
 
 function formatSectionHeaders(text) {
-    text = text.replace(/^([A-Z][A-Za-z0-9\s\-]{2,50})\s*$(?=\n[\s]*([•\-\*]|\d+\.)\s+)/gm, (match, header) => {
-        if (!header.includes('|')) return `<div class="section-header"><strong>${header}</strong></div>`;
-        return match;
-    });
-    text = text.replace(/^(<strong>([^<]+)<\/strong>)\s*$/gm, '<div class="section-header">$1</div>');
-    text = text.replace(/^([A-Z][A-Za-z0-9\s\-]+):\s*$/gm, (match, header) => {
-        if (header.length < 60 && !header.includes('|')) return `<div class="section-header"><strong>${header}</strong></div>`;
-        return match;
-    });
-    text = text.replace(/^\s*(\d+)[\.\)]\s+([A-Z][A-Za-z0-9\s\-]{2,50})\s*$/gm, (match, num, header) => {
-        if (!header.includes('|')) return `<div class="section-header"><strong>${num}. ${header}</strong></div>`;
-        return match;
-    });
-    const headerKeywords = ['Summary', 'Details', 'Overview', 'Findings', 'Results', 'Analysis', 'Notes', 'Steps', 'Instructions', 'Explanation', 'Solution', 'Problem', 'Issue', 'Cause', 'Fix', 'Changes', 'Updates', 'Status'];
-    text = text.replace(/^([A-Z][A-Za-z\s]{3,40})\s*$/gm, (match, header) => {
-        const hasKeyword = headerKeywords.some(kw => header.includes(kw));
-        if (hasKeyword && !header.includes('|')) return `<div class="section-header"><strong>${header}</strong></div>`;
-        return match;
-    });
-    text = text.replace(/^([A-Z][A-Z0-9\s\-]{2,40})\s*$/gm, (match, header) => {
-        if (!header.includes('|')) return `<div class="section-header"><strong>${header}</strong></div>`;
-        return match;
-    });
     return text;
 }
 
@@ -399,9 +376,7 @@ export function formatMessage(text, isStreaming = false) {
     inlineCodes.forEach((code, i) => { text = text.replace(`__INLINE_CODE_${i}__`, code); });
 
     text = text.replace(/<p>(<div class="tool-block)/g, '$1');
-    text = text.replace(/<p>(<div class="section-header)/g, '$1');
     text = text.replace(/(<\/div>)<\/p>/g, '$1');
-    text = text.replace(/<br>(<div class="section-header)/g, '$1');
     text = text.replace(/(<br>)+(<br><div class="tool-block)/g, '$2');
     text = text.replace(/(<\/div><br>)(<br>)+/g, '$1');
     text = text.replace(/(<br>)+(<br><div class="table-container)/g, '$2');
@@ -544,12 +519,7 @@ function formatCompleteStructures(text) {
     result = result.replace(/^# (.+)$/gm, '<h2>$1</h2>');
     result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
-    result = result.replace(/^([A-Z][A-Za-z0-9\s\-]+):\s*$/gm, (match, header) => {
-        if (header.length < 60 && !header.includes('|')) {
-            return `<div class="section-header"><strong>${header}</strong></div>`;
-        }
-        return match;
-    });
+
     result = result.replace(/^[\s]*[-•]\s+(.+)$/gm, '<li class="stream-li">$1</li>');
     result = result.replace(/^[\s]*(\d+)\.\s+(.+)$/gm, '<li class="stream-li-num">$1. $2</li>');
     result = result.replace(/\n{3,}/g, '\n\n');

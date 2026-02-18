@@ -839,7 +839,7 @@ body {
 }
 
 .message.user {
-    margin-bottom: 4px;
+    margin-bottom: 20px;
     flex-direction: row-reverse;
     justify-content: flex-start;
     align-items: center;
@@ -3772,6 +3772,7 @@ body:has(.sidebar.collapsed) #browserModal .modal-content {
 
 .notification-warning {
     border-color: var(--warning);
+    background: var(--bg-tertiary);
 }
 
 .notification-warning .notification-icon {

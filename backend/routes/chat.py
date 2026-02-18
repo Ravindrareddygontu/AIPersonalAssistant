@@ -34,6 +34,7 @@ class ChatStreamRequest(BaseModel):
     message: str
     workspace: Optional[str] = None
     chatId: Optional[str] = None
+    history: Optional[List[dict]] = None
 
 
 class ChatResetRequest(BaseModel):
@@ -828,6 +829,14 @@ class OpenAIStreamGenerator:
             messages = self._build_messages()
 
             async for chunk in provider.chat_stream(messages=messages, model=model):
+                if _abort_flag.is_set():
+                    log.info("[OPENAI] Abort signal received")
+                    _abort_flag.clear()
+                    if self.repository:
+                        self.repository.set_streaming_status(None)
+                    yield self.sse.send({'type': 'aborted', 'message': 'Request aborted'})
+                    yield self.sse.send({'type': 'done'})
+                    return
                 for choice in chunk.choices:
                     if choice.delta.content:
                         content = choice.delta.content
@@ -884,7 +893,7 @@ async def chat_stream(request: Request, data: ChatStreamRequest):
     log.info(f"[REQUEST] POST /api/chat/stream | provider: {settings.ai_provider} | message: '{message[:100]}...'")
 
     if settings.ai_provider == 'openai':
-        generator = OpenAIStreamGenerator(message, chat_id=chat_id)
+        generator = OpenAIStreamGenerator(message, chat_id=chat_id, history=data.history)
 
         async def openai_stream():
             async for chunk in generator.generate():
