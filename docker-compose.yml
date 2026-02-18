@@ -18,6 +18,10 @@ services:
     volumes:
       - ${USERPROFILE}/.augment:/root/.augment
       - ${USERPROFILE}/Desktop/projects:/root/projects
+      # Mount source code for live updates (no rebuild needed)
+      - ./backend:/app/backend
+      - ./static:/app/static
+      - ./templates:/app/templates
     depends_on:
       mongodb:
         condition: service_healthy

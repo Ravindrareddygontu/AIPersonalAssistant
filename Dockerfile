@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nodejs npm procps ca-certificates \
+    && apt-get install -y --no-install-recommends nodejs npm procps ca-certificates git \
     && npm install -g @augmentcode/auggie \
     && rm -rf /var/lib/apt/lists/*
 
