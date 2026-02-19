@@ -44,22 +44,45 @@ describe('UI Module', () => {
     });
 
     describe('showTypingIndicator', () => {
-        test('should show typing indicator with message', () => {
+        test('should show typing indicator with message when streaming message exists', () => {
+            const streamingMsg = document.createElement('div');
+            streamingMsg.className = 'message streaming';
+            streamingMsg.innerHTML = `
+                <div class="streaming-status" style="display: none;">
+                    <i class="fas fa-circle-notch fa-spin streaming-status-icon"></i>
+                    <span class="streaming-status-text"></span>
+                </div>
+            `;
+            document.body.appendChild(streamingMsg);
+
             showTypingIndicator('Processing...');
-            
-            const indicator = document.getElementById('typingIndicator');
-            expect(indicator.style.display).toBe('flex');
-            expect(indicator.textContent).toContain('Processing...');
+
+            const status = streamingMsg.querySelector('.streaming-status');
+            expect(status.style.display).toBe('flex');
+            expect(status.querySelector('.streaming-status-text').textContent).toBe('Processing...');
+
+            streamingMsg.remove();
         });
     });
 
     describe('hideTypingIndicator', () => {
-        test('should hide typing indicator', () => {
-            showTypingIndicator();
+        test('should hide typing indicator when streaming message exists', () => {
+            const streamingMsg = document.createElement('div');
+            streamingMsg.className = 'message streaming';
+            streamingMsg.innerHTML = `
+                <div class="streaming-status" style="display: flex;">
+                    <i class="fas fa-circle-notch fa-spin streaming-status-icon"></i>
+                    <span class="streaming-status-text">Processing...</span>
+                </div>
+            `;
+            document.body.appendChild(streamingMsg);
+
             hideTypingIndicator();
-            
-            const indicator = document.getElementById('typingIndicator');
-            expect(indicator.style.display).toBe('none');
+
+            const status = streamingMsg.querySelector('.streaming-status');
+            expect(status.style.display).toBe('none');
+
+            streamingMsg.remove();
         });
     });
 

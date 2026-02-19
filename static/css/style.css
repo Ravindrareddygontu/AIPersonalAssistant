@@ -2557,6 +2557,25 @@ body {
     51%, 100% { opacity: 0; }
 }
 
+/* Streaming status indicator - below answer content, left aligned */
+.streaming-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    font-size: 15px;
+    color: var(--text-muted);
+}
+
+.streaming-status-icon {
+    font-size: 11px;
+    color: var(--primary);
+}
+
+.streaming-status-text {
+    font-weight: 400;
+}
+
 /* Streaming code block styles */
 .streaming-text pre.streaming-code {
     position: relative;

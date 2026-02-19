@@ -43,43 +43,36 @@ function getStatusIcon(message) {
 }
 
 export function showTypingIndicator(statusMessage = 'Thinking...') {
-    const statusBar = DOM.get('inputStatusBar');
-    if (!statusBar) return;
-
-    statusBar.style.display = 'flex';
-
-    const statusText = statusBar.querySelector('.status-text');
-    if (statusText) {
-        statusText.textContent = statusMessage;
-    }
-
-    const statusIcon = statusBar.querySelector('.status-icon');
-    if (statusIcon) {
-        const iconClass = getStatusIcon(statusMessage);
-        statusIcon.className = `fas ${iconClass} fa-spin status-icon`;
+    const streamingStatus = document.querySelector('.message.streaming .streaming-status');
+    if (streamingStatus) {
+        streamingStatus.style.display = 'flex';
+        const statusText = streamingStatus.querySelector('.streaming-status-text');
+        const statusIcon = streamingStatus.querySelector('.streaming-status-icon');
+        if (statusText) statusText.textContent = statusMessage;
+        if (statusIcon) {
+            const iconClass = getStatusIcon(statusMessage);
+            statusIcon.className = `fas ${iconClass} fa-spin streaming-status-icon`;
+        }
     }
 }
 
 export function updateTypingIndicatorText(text) {
-    const statusBar = DOM.get('inputStatusBar');
-    if (statusBar) {
-        const statusText = statusBar.querySelector('.status-text');
-        if (statusText) {
-            statusText.textContent = text;
-        }
-
-        const statusIcon = statusBar.querySelector('.status-icon');
+    const streamingStatus = document.querySelector('.message.streaming .streaming-status');
+    if (streamingStatus) {
+        const statusText = streamingStatus.querySelector('.streaming-status-text');
+        const statusIcon = streamingStatus.querySelector('.streaming-status-icon');
+        if (statusText) statusText.textContent = text;
         if (statusIcon) {
             const iconClass = getStatusIcon(text);
-            statusIcon.className = `fas ${iconClass} fa-spin status-icon`;
+            statusIcon.className = `fas ${iconClass} fa-spin streaming-status-icon`;
         }
     }
 }
 
 export function hideTypingIndicator() {
-    const statusBar = DOM.get('inputStatusBar');
-    if (statusBar) {
-        statusBar.style.display = 'none';
+    const streamingStatus = document.querySelector('.message.streaming .streaming-status');
+    if (streamingStatus) {
+        streamingStatus.style.display = 'none';
     }
 }
 

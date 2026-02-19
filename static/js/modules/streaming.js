@@ -65,7 +65,13 @@ function startStreamingMessage(requestId) {
     streamingMessageDiv.className = 'message assistant streaming';
     streamingMessageDiv.innerHTML = `
         <div class="message-avatar"><i class="fas fa-robot"></i></div>
-        <div class="message-content"><span class="streaming-cursor">▋</span></div>
+        <div class="message-content">
+            <div class="message-text"></div>
+            <div class="streaming-status">
+                <i class="fas fa-circle-notch fa-spin streaming-status-icon"></i>
+                <span class="streaming-status-text">Connecting...</span>
+            </div>
+        </div>
     `;
     container.appendChild(streamingMessageDiv);
     container.scrollTop = container.scrollHeight;
@@ -82,9 +88,9 @@ function appendStreamingContent(content, requestId) {
 
     streamingContent += content;
 
-    const contentDiv = streamingMessageDiv.querySelector('.message-content');
-    if (contentDiv) {
-        contentDiv.innerHTML = formatMessageIncremental(streamingContent);
+    const textDiv = streamingMessageDiv.querySelector('.message-text');
+    if (textDiv) {
+        textDiv.innerHTML = formatMessageIncremental(streamingContent);
     }
 
     // Smooth scroll with throttling to avoid jitter
@@ -113,6 +119,10 @@ function finalizeStreamingMessage(finalContent, requestId) {
     if (streamingMessageDiv) {
         streamingMessageDiv.classList.remove('streaming');
         streamingMessageDiv.dataset.messageId = messageId;
+
+        const streamingStatus = streamingMessageDiv.querySelector('.streaming-status');
+        if (streamingStatus) streamingStatus.remove();
+
         const contentDiv = streamingMessageDiv.querySelector('.message-content');
         if (contentDiv) {
             const actionsHTML = `
@@ -195,7 +205,8 @@ export async function sendMessage() {
     clearSelectedImages();
     hideWelcome();
     addMessage('user', displayMessage, true);
-    showTypingIndicator('Connecting...');
+    startStreamingMessage(thisRequestId);
+    updateTypingStatus('Connecting...');
     showStopButton();
     state.isProcessing = true;
     DOM.get('sendBtn').disabled = true;
@@ -246,7 +257,7 @@ export async function sendMessage() {
 
                         case 'stream_start':
                             if (bgRequest) bgRequest.status = 'streaming';
-                            if (!isBackground) startStreamingMessage(thisRequestId);
+                            if (!isBackground) updateTypingStatus('Receiving...');
                             break;
 
                         case 'stream':
