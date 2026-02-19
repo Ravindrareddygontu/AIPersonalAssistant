@@ -29,9 +29,8 @@ export function checkDbStatus(dbStatus, historyEnabled) {
     }
 }
 
-export function showDbWarning(error) {
+function getOrCreateBanner() {
     let banner = document.getElementById('dbStatusBanner');
-
     if (!banner) {
         banner = document.createElement('div');
         banner.id = 'dbStatusBanner';
@@ -41,7 +40,27 @@ export function showDbWarning(error) {
             chatMain.insertBefore(banner, chatMain.firstChild);
         }
     }
+    return banner;
+}
 
+export function showDbSuccess() {
+    const banner = getOrCreateBanner();
+    banner.className = 'db-status-banner db-status-success';
+    banner.innerHTML = `
+        <i class="fas fa-check-circle"></i>
+        <span>MongoDB connected</span>
+    `;
+    banner.style.display = 'flex';
+
+    setTimeout(() => {
+        banner.style.display = 'none';
+        banner.className = 'db-status-banner';
+    }, 2000);
+}
+
+export function showDbWarning(error) {
+    const banner = getOrCreateBanner();
+    banner.className = 'db-status-banner';
     banner.innerHTML = `
         <i class="fas fa-exclamation-triangle"></i>
         <span>MongoDB connection issue – your chats won't be stored</span>
@@ -108,7 +127,7 @@ export async function retryDbConnection() {
         dbError = status.error || null;
 
         if (dbConnected) {
-            hideDbWarning();
+            showDbSuccess();
             bannerDismissed = false;
         } else {
             if (retryBtn && retryIcon) {

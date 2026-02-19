@@ -4309,7 +4309,7 @@ body:has(.sidebar.collapsed) #browserModal .modal-content {
     color: var(--warning);
     font-size: 0.85rem;
     font-weight: 500;
-    z-index: 100;
+    z-index: 5;
 }
 
 .db-status-banner i.fa-exclamation-triangle {
@@ -4348,6 +4348,16 @@ body:has(.sidebar.collapsed) #browserModal .modal-content {
 @keyframes dbRetrySpinner {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+}
+
+.db-status-banner.db-status-success {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.3);
+    color: #22c55e;
+}
+
+.db-status-banner.db-status-success i {
+    color: #22c55e;
 }
 
 /* Notifications - matches modal styling */

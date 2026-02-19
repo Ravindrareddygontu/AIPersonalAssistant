@@ -17,7 +17,7 @@ _connection_error = None  # Track last connection error
 _last_connection_attempt = 0  # Timestamp of last connection attempt
 _connection_available = None  # True/False/None (None = not checked yet)
 _CACHE_DURATION_SUCCESS = 60  # Cache successful connection status for 60 seconds
-_CACHE_DURATION_FAILURE = 30  # Cache failed connection status for 30 seconds (faster retry)
+_CACHE_DURATION_FAILURE = 5  # Cache failed connection status for 5 seconds (quick retry)
 _CONNECTION_TIMEOUT_MS = 500  # Fast timeout (500ms) for quick failure detection
 
 

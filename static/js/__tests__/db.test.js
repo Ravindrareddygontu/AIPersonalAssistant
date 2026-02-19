@@ -107,7 +107,7 @@ describe('DB Module', () => {
             expect(isDbConnected()).toBe(false);
         });
 
-        test('should not show warning when DB connected', async () => {
+        test('should not show banner when DB connected', async () => {
             document.body.innerHTML = '<div class="chat-main"></div>';
 
             global.fetch = jest.fn(() => Promise.resolve({
@@ -226,7 +226,7 @@ describe('DB Module', () => {
             expect(messageSpan.textContent).toBe('Retrying connection...');
         });
 
-        test('should hide banner when connection succeeds', async () => {
+        test('should show success banner when connection succeeds', async () => {
             document.body.innerHTML = '<div class="chat-main"></div>';
             showDbWarning();
 
@@ -239,7 +239,9 @@ describe('DB Module', () => {
             await promise;
 
             const banner = document.getElementById('dbStatusBanner');
-            expect(banner.style.display).toBe('none');
+            expect(banner.style.display).toBe('flex');
+            expect(banner.classList.contains('db-status-success')).toBe(true);
+            expect(banner.textContent).toContain('MongoDB connected');
             expect(isDbConnected()).toBe(true);
         });
 
