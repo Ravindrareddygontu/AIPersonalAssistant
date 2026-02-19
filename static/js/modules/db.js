@@ -1,11 +1,16 @@
 let dbConnected = true;
 let dbError = null;
 let bannerDismissed = false;
+let onReconnectCallback = null;
 
 export function resetDbState() {
     dbConnected = true;
     dbError = null;
     bannerDismissed = false;
+}
+
+export function setOnReconnectCallback(callback) {
+    onReconnectCallback = callback;
 }
 
 export function isDbConnected() {
@@ -129,6 +134,9 @@ export async function retryDbConnection() {
         if (dbConnected) {
             showDbSuccess();
             bannerDismissed = false;
+            if (onReconnectCallback) {
+                onReconnectCallback();
+            }
         } else {
             if (retryBtn && retryIcon) {
                 retryBtn.disabled = false;

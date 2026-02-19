@@ -26,7 +26,7 @@ import {
     activateSlot,
     hasActiveConversation
 } from './workspace.js';
-import { checkDbStatus, isDbConnected, checkDbStatusInBackground } from './db.js';
+import { checkDbStatus, isDbConnected, checkDbStatusInBackground, setOnReconnectCallback } from './db.js';
 
 function applyTheme(theme) {
     const icon = document.querySelector('#themeToggle i');
@@ -93,6 +93,11 @@ async function initApp() {
     } catch (error) {
         console.error('[APP] Failed to load settings:', error);
     }
+
+    setOnReconnectCallback(async () => {
+        await loadChatList();
+        await createNewChat();
+    });
 
     await loadReminders();
     await loadChatList();
