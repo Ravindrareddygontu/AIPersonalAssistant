@@ -4341,6 +4341,15 @@ body:has(.sidebar.collapsed) #browserModal .modal-content {
     margin-left: 4px;
 }
 
+.db-status-banner .retry-spin {
+    animation: dbRetrySpinner 1s linear infinite;
+}
+
+@keyframes dbRetrySpinner {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 /* Notifications - matches modal styling */
 .notification {
     position: fixed;

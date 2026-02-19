@@ -26,6 +26,7 @@ import {
     activateSlot,
     hasActiveConversation
 } from './workspace.js';
+import { checkDbStatus, isDbConnected, checkDbStatusInBackground } from './db.js';
 
 function applyTheme(theme) {
     const icon = document.querySelector('#themeToggle i');
@@ -76,6 +77,17 @@ async function initApp() {
             if (settings.available_models) {
                 state.availableModels = settings.available_models;
                 populateModelSelect();
+            }
+
+            const historyToggle = DOM.get('historyToggle');
+            const historyEnabled = settings.history_enabled !== false;
+            if (historyToggle) {
+                historyToggle.checked = historyEnabled;
+            }
+            updateNewChatVisibility(historyEnabled);
+
+            if (historyEnabled) {
+                setTimeout(() => checkDbStatusInBackground(), 0);
             }
         }
     } catch (error) {
@@ -167,6 +179,11 @@ function setupEventListeners() {
         saveSettingsBtn.onclick = saveSettings;
     }
 
+    const historyToggle = DOM.get('historyToggle');
+    if (historyToggle) {
+        historyToggle.onchange = toggleHistoryEnabled;
+    }
+
     const selectFolderBtn = DOM.get('selectFolderBtn');
     if (selectFolderBtn && window.electronAPI?.selectFolder) {
         selectFolderBtn.onclick = selectWorkspaceFolder;
@@ -218,6 +235,36 @@ async function saveSettings() {
         toggleSettings();
     } catch (error) {
         showNotification('Failed to save settings', 'error');
+    }
+}
+
+function updateNewChatVisibility(historyEnabled) {
+    const newChatBtn = DOM.get('newChatBtn');
+    const sidebarActions = DOM.get('sidebarActions');
+    const chatHistory = DOM.get('chatHistory');
+    const sidebarFooter = DOM.get('sidebarFooter');
+
+    const display = historyEnabled ? '' : 'none';
+
+    if (newChatBtn) newChatBtn.style.display = display;
+    if (sidebarActions) sidebarActions.style.display = display;
+    if (chatHistory) chatHistory.style.display = display;
+    if (sidebarFooter) sidebarFooter.style.display = display;
+}
+
+async function toggleHistoryEnabled() {
+    const historyToggle = DOM.get('historyToggle');
+    if (!historyToggle) return;
+
+    const enabled = historyToggle.checked;
+    try {
+        await api.saveSettings({ history_enabled: enabled });
+        updateNewChatVisibility(enabled);
+        checkDbStatus({ connected: isDbConnected() }, enabled);
+    } catch (error) {
+        console.error('[APP] Failed to save history setting:', error);
+        historyToggle.checked = !enabled;
+        showNotification('Failed to save setting', 'error');
     }
 }
 
