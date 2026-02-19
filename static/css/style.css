@@ -2262,6 +2262,92 @@ body {
     gap: 8px;
 }
 
+.add-shortcut-btn {
+    position: absolute;
+    bottom: 28px;
+    right: calc(10% + 28px);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: var(--bg-tertiary);
+    border: none;
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    transition: color 0.2s, background 0.2s;
+}
+
+.add-shortcut-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+/* Add Shortcut Modal */
+#addShortcutModal .modal-content {
+    width: 320px;
+    position: absolute;
+    top: auto !important;
+    bottom: 120px;
+    left: auto !important;
+    right: calc(10% + 28px);
+}
+
+.shortcut-form .form-group {
+    margin-bottom: 14px;
+}
+
+.shortcut-form .form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.shortcut-form .form-group input,
+.shortcut-form .form-group textarea {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.shortcut-form .form-group input:focus,
+.shortcut-form .form-group textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.shortcut-form .form-group textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+.save-shortcut-btn {
+    width: 100%;
+    padding: 10px;
+    background: var(--primary);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.save-shortcut-btn:hover {
+    background: var(--primary-hover);
+}
+
 .shortcut-btn {
     display: inline-flex;
     align-items: center;
@@ -2279,6 +2365,27 @@ body {
 .shortcut-btn:hover {
     background: var(--bg-hover);
     color: var(--text);
+}
+
+.custom-shortcut {
+    position: relative;
+}
+
+.custom-shortcut .shortcut-delete {
+    display: none;
+    margin-left: 6px;
+    font-size: 14px;
+    font-weight: bold;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.custom-shortcut:hover .shortcut-delete {
+    display: inline;
+}
+
+.custom-shortcut .shortcut-delete:hover {
+    color: var(--danger, #e74c3c);
 }
 
 .chat-input-wrapper textarea {

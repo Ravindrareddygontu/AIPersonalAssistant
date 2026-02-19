@@ -154,11 +154,11 @@
                         </button>
                     </div>
                 </div>
-                <div class="input-quick-shortcuts">
-                    <button class="shortcut-btn" onclick="sendSuggestion('commit the changes with small message')" title="commit the changes with small message">
-                        <i class="fas fa-code-commit"></i> commit
-                    </button>
+                <div class="input-quick-shortcuts" id="quickShortcuts">
                 </div>
+                <button class="add-shortcut-btn" id="addShortcutBtn" title="Add shortcut">
+                    <i class="fas fa-plus"></i>
+                </button>
             </div>
         </main>
     </div>
@@ -260,6 +260,31 @@
                 </div>
                 <div class="browser-list" id="browserList"></div>
                 <button class="save-settings-btn" onclick="selectCurrentDir()">Select This Folder</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Shortcut Modal -->
+    <div class="modal" id="addShortcutModal">
+        <div class="modal-content shortcut-modal-content">
+            <div class="modal-header">
+                <h2>Add Shortcut</h2>
+                <button class="close-btn" onclick="toggleAddShortcutModal()" title="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="shortcut-form">
+                    <div class="form-group">
+                        <label for="shortcutLabel">Label</label>
+                        <input type="text" id="shortcutLabel" placeholder="e.g. deploy">
+                    </div>
+                    <div class="form-group">
+                        <label for="shortcutPrompt">Prompt</label>
+                        <textarea id="shortcutPrompt" rows="3" placeholder="e.g. deploy the application to production"></textarea>
+                    </div>
+                    <button class="save-shortcut-btn" onclick="saveShortcut()">Save</button>
+                </div>
             </div>
         </div>
     </div>

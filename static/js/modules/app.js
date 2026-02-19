@@ -2,7 +2,7 @@ import { state, CONSTANTS } from './state.js';
 import { DOM, autoResize, escapeHtml } from './dom.js';
 import { api } from './api.js';
 import { getUnsyncedChats, saveChatToCache } from './cache.js';
-import { showNotification, toggleSettings, toggleSidebar } from './ui.js';
+import { showNotification, toggleSettings, toggleSidebar, toggleDevTools } from './ui.js';
 import { handleImageSelect, toggleVoiceRecording } from './media.js';
 import { loadReminders, addReminder } from './reminders.js';
 import { loadChat, loadChatList, newChat, renderChatMessages, clearAllChats } from './chat.js';
@@ -171,6 +171,15 @@ function setupEventListeners() {
         browserModal.onclick = (e) => {
             if (e.target === browserModal) {
                 closeBrowser();
+            }
+        };
+    }
+
+    const devToolsModal = DOM.get('devToolsModal');
+    if (devToolsModal) {
+        devToolsModal.onclick = (e) => {
+            if (e.target === devToolsModal) {
+                toggleDevTools();
             }
         };
     }
@@ -444,5 +453,100 @@ window.handleKeyDown = handleKeyDown;
 window.autoResize = autoResize;
 window.sendMessage = sendMessage;
 
-document.addEventListener('DOMContentLoaded', initApp);
+function toggleAddShortcutModal() {
+    const modal = document.getElementById('addShortcutModal');
+    modal.classList.toggle('active');
+    if (modal.classList.contains('active')) {
+        document.getElementById('shortcutLabel').value = '';
+        document.getElementById('shortcutPrompt').value = '';
+        document.getElementById('shortcutLabel').focus();
+    }
+}
+
+function saveShortcut() {
+    const label = document.getElementById('shortcutLabel').value.trim();
+    const prompt = document.getElementById('shortcutPrompt').value.trim();
+
+    if (!label && !prompt) {
+        showNotification('Please fill in at least one field', 'error');
+        return;
+    }
+
+    const finalLabel = label || prompt.split(/\s+/)[0];
+    const finalPrompt = prompt || label;
+
+    const shortcuts = JSON.parse(localStorage.getItem('customShortcuts') || '[]');
+    shortcuts.push({ label: finalLabel, prompt: finalPrompt });
+    localStorage.setItem('customShortcuts', JSON.stringify(shortcuts));
+
+    renderCustomShortcuts();
+    toggleAddShortcutModal();
+    showNotification('Shortcut added');
+}
+
+function initDefaultShortcuts() {
+    const existing = localStorage.getItem('customShortcuts');
+    if (!existing) {
+        const defaults = [
+            { label: 'commit', prompt: 'commit the changes with small message' },
+            { label: 'yes', prompt: 'yes' }
+        ];
+        localStorage.setItem('customShortcuts', JSON.stringify(defaults));
+    }
+}
+
+function renderCustomShortcuts() {
+    const container = document.querySelector('.input-quick-shortcuts');
+    if (!container) return;
+
+    container.querySelectorAll('.custom-shortcut').forEach(el => el.remove());
+
+    const shortcuts = JSON.parse(localStorage.getItem('customShortcuts') || '[]');
+    shortcuts.forEach((shortcut, index) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'shortcut-btn custom-shortcut';
+        wrapper.title = shortcut.prompt;
+
+        const label = document.createElement('span');
+        label.textContent = shortcut.label;
+        label.onclick = () => window.sendSuggestion(shortcut.prompt);
+
+        const deleteBtn = document.createElement('span');
+        deleteBtn.className = 'shortcut-delete';
+        deleteBtn.innerHTML = '&times;';
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            deleteShortcut(index);
+        };
+
+        wrapper.appendChild(label);
+        wrapper.appendChild(deleteBtn);
+        container.appendChild(wrapper);
+    });
+}
+
+function deleteShortcut(index) {
+    const shortcuts = JSON.parse(localStorage.getItem('customShortcuts') || '[]');
+    shortcuts.splice(index, 1);
+    localStorage.setItem('customShortcuts', JSON.stringify(shortcuts));
+    renderCustomShortcuts();
+    showNotification('Shortcut deleted');
+}
+
+window.toggleAddShortcutModal = toggleAddShortcutModal;
+window.saveShortcut = saveShortcut;
+window.renderCustomShortcuts = renderCustomShortcuts;
+
+document.addEventListener('DOMContentLoaded', () => {
+    initApp();
+    initDefaultShortcuts();
+    renderCustomShortcuts();
+    document.getElementById('addShortcutBtn')?.addEventListener('click', toggleAddShortcutModal);
+
+    document.getElementById('addShortcutModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'addShortcutModal') {
+            toggleAddShortcutModal();
+        }
+    });
+});
 
