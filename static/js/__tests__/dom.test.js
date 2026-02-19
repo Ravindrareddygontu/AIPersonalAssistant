@@ -47,15 +47,41 @@ describe('DOM Module', () => {
             const textarea = document.createElement('textarea');
             textarea.style.height = '50px';
             document.body.appendChild(textarea);
-            
+
             Object.defineProperty(textarea, 'scrollHeight', { value: 100, configurable: true });
-            
+            Object.defineProperty(textarea, 'offsetHeight', { value: 50, configurable: true });
+
             autoResize(textarea);
             expect(textarea.style.height).toBe('100px');
         });
 
+        test('should cap height at max height (200px)', () => {
+            const textarea = document.createElement('textarea');
+            textarea.style.height = '50px';
+            document.body.appendChild(textarea);
+
+            Object.defineProperty(textarea, 'scrollHeight', { value: 500, configurable: true });
+            Object.defineProperty(textarea, 'offsetHeight', { value: 50, configurable: true });
+
+            autoResize(textarea);
+            expect(textarea.style.height).toBe('200px');
+            expect(textarea.style.overflowY).toBe('auto');
+        });
+
         test('should handle null element gracefully', () => {
             expect(() => autoResize(null)).not.toThrow();
+        });
+
+        test('should support smooth parameter', () => {
+            const textarea = document.createElement('textarea');
+            textarea.style.height = '50px';
+            document.body.appendChild(textarea);
+
+            Object.defineProperty(textarea, 'scrollHeight', { value: 100, configurable: true });
+            Object.defineProperty(textarea, 'offsetHeight', { value: 50, configurable: true });
+
+            autoResize(textarea, false);
+            expect(textarea.style.height).toBe('100px');
         });
     });
 

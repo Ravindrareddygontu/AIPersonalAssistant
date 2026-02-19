@@ -75,6 +75,8 @@ function startStreamingMessage(requestId) {
     if (providerSelect) providerSelect.disabled = true;
 }
 
+let scrollTimeout = null;
+
 function appendStreamingContent(content, requestId) {
     if (requestId !== streamingRequestId || !streamingMessageDiv) return;
 
@@ -85,9 +87,18 @@ function appendStreamingContent(content, requestId) {
         contentDiv.innerHTML = formatMessageIncremental(streamingContent);
     }
 
-    const container = DOM.get('chatMessages');
-    if (container) {
-        container.scrollTop = container.scrollHeight;
+    // Smooth scroll with throttling to avoid jitter
+    if (!scrollTimeout) {
+        scrollTimeout = setTimeout(() => {
+            const container = DOM.get('chatMessages');
+            if (container) {
+                container.scrollTo({
+                    top: container.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }
+            scrollTimeout = null;
+        }, 50);
     }
 }
 

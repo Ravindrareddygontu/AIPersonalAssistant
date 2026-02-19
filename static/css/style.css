@@ -594,6 +594,7 @@ body {
     gap: 0;
     justify-content: center;
     align-items: center;
+    scroll-behavior: smooth;
 }
 
 .chat-messages:has(.message) {
@@ -2122,6 +2123,8 @@ body {
     line-height: 1.5;
     scrollbar-width: none;
     -ms-overflow-style: none;
+    transition: height 0.15s ease-out;
+    overflow-y: hidden;
 }
 
 .chat-input-wrapper textarea::-webkit-scrollbar {
@@ -2509,15 +2512,32 @@ body {
 /* Streaming message styles */
 .message.streaming .message-content {
     position: relative;
+    transition: all 0.1s ease-out;
 }
 
 .message.streaming .streaming-text {
-    animation: smoothFadeIn 0.15s ease-out;
+    animation: smoothFadeIn 0.2s ease-out;
+}
+
+/* Smooth content appearance for streaming */
+.message.streaming .message-content > * {
+    animation: contentFadeIn 0.15s ease-out;
 }
 
 @keyframes smoothFadeIn {
-    from { opacity: 0.7; }
+    from { opacity: 0.85; }
     to { opacity: 1; }
+}
+
+@keyframes contentFadeIn {
+    from {
+        opacity: 0.9;
+        transform: translateY(1px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .message.streaming .streaming-cursor {
@@ -2529,6 +2549,7 @@ body {
     margin-left: 4px;
     vertical-align: text-bottom;
     border-radius: 2px;
+    opacity: 0.9;
 }
 
 @keyframes blink-cursor {

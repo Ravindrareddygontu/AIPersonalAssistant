@@ -1030,6 +1030,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Apply cached settings immediately for instant UI
     loadSettings();
 
+    // Setup smooth paste handling for message input
+    const messageInput = document.getElementById('messageInput');
+    if (messageInput) {
+        messageInput.addEventListener('paste', () => {
+            // Use requestAnimationFrame to ensure the pasted content is in the textarea
+            requestAnimationFrame(() => {
+                autoResize(messageInput, true);
+            });
+        });
+    }
+
     // Restore sidebar state
     const savedSidebarState = localStorage.getItem('sidebarOpen');
     if (savedSidebarState === 'false') {
@@ -3834,10 +3845,32 @@ function handleKeyDown(event) {
     }
 }
 
-// Auto-resize textarea
-function autoResize(textarea) {
+// Auto-resize textarea with smooth transitions
+function autoResize(textarea, smooth = true) {
+    if (!textarea) return;
+
+    const maxHeight = 200;
+    const currentHeight = textarea.offsetHeight;
+
+    // Temporarily disable transition for measurement
+    textarea.style.transition = 'none';
     textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+    const targetHeight = Math.min(textarea.scrollHeight, maxHeight);
+
+    // Reset to current height immediately
+    textarea.style.height = currentHeight + 'px';
+
+    // Force reflow to ensure the transition works
+    textarea.offsetHeight;
+
+    // Re-enable transition and animate to target
+    if (smooth) {
+        textarea.style.transition = 'height 0.15s ease-out';
+    }
+    textarea.style.height = targetHeight + 'px';
+
+    // Handle overflow when at max height
+    textarea.style.overflowY = targetHeight >= maxHeight ? 'auto' : 'hidden';
 }
 
 // New chat (legacy - calls createNewChat)

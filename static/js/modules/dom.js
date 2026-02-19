@@ -16,11 +16,31 @@ export function escapeHtml(text) {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-export function autoResize(element) {
+export function autoResize(element, smooth = true) {
     if (!element) return;
+
+    const maxHeight = 200;
+    const currentHeight = element.offsetHeight;
+
+    // Temporarily disable transition for measurement
+    element.style.transition = 'none';
     element.style.height = 'auto';
-    const newHeight = Math.min(element.scrollHeight, 200);
-    element.style.height = newHeight + 'px';
+    const targetHeight = Math.min(element.scrollHeight, maxHeight);
+
+    // Reset to current height immediately
+    element.style.height = currentHeight + 'px';
+
+    // Force reflow to ensure the transition works
+    element.offsetHeight;
+
+    // Re-enable transition and animate to target
+    if (smooth) {
+        element.style.transition = 'height 0.15s ease-out';
+    }
+    element.style.height = targetHeight + 'px';
+
+    // Handle overflow when at max height
+    element.style.overflowY = targetHeight >= maxHeight ? 'auto' : 'hidden';
 }
 
 export function scrollToBottom(element, smooth = true) {
