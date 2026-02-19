@@ -334,7 +334,7 @@ function navigateToParent() {
 }
 
 function updateWorkspaceDisplay(animate = false) {
-    const display = DOM.get('workspaceDisplay');
+    const display = document.getElementById('workspaceDisplay');
     const input = DOM.get('workspaceInput');
     const current = DOM.get('currentWorkspace');
 
@@ -441,6 +441,12 @@ async function switchWorkspace() {
         activateSlot(newActive);
         showNotification(`Select folder for workspace ${newActive}`, 'info');
         browseWorkspace();
+        return;
+    }
+
+    if (targetWorkspace === state.currentWorkspace) {
+        activateSlot(newActive);
+        showNotification('Already in this workspace', 'info');
         return;
     }
 
@@ -816,6 +822,7 @@ window.updateModelSelectVisibility = updateModelSelectVisibility;
 window.handleKeyDown = handleKeyDown;
 window.autoResize = autoResize;
 window.sendMessage = sendMessage;
+window.updateWorkspaceDisplay = updateWorkspaceDisplay;
 
 let draggedShortcutIndex = null;
 let shortcutsContainerInitialized = false;

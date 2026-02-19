@@ -397,6 +397,14 @@ export async function loadChat(chatId) {
                     window.updateModelSelectVisibility();
                 }
             }
+
+            if (chat.workspace) {
+                state.currentWorkspace = chat.workspace;
+                localStorage.setItem('currentWorkspace', chat.workspace);
+                if (window.updateWorkspaceDisplay) {
+                    window.updateWorkspaceDisplay(true);
+                }
+            }
         }
     } catch (error) {
         console.error('Failed to load chat:', error);
