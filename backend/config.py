@@ -26,7 +26,6 @@ SKIP_PATTERNS: List[str] = [
     'Executing tools...',
     # Model/user info (shouldn't leak into responses)
     'Claude Opus', 'Version 0.',
-    '@veefin.com', '@gmail.com', 'ravindrar@',
     # Progress indicators
     '▇▇▇▇▇',
 ]
