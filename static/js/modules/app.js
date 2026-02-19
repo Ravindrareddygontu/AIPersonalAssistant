@@ -457,6 +457,8 @@ let editingShortcutIndex = null;
 
 function toggleAddShortcutModal(editIndex = null) {
     const modal = document.getElementById('addShortcutModal');
+    if (!modal) return;
+
     const modalTitle = modal.querySelector('.modal-header h2');
     const saveBtn = modal.querySelector('.save-shortcut-btn');
 
@@ -470,15 +472,15 @@ function toggleAddShortcutModal(editIndex = null) {
             const shortcut = shortcuts[editIndex];
             document.getElementById('shortcutLabel').value = shortcut.label;
             document.getElementById('shortcutPrompt').value = shortcut.prompt;
-            modalTitle.textContent = 'Edit Shortcut';
-            saveBtn.textContent = 'Update';
+            if (modalTitle) modalTitle.textContent = 'Edit Shortcut';
+            if (saveBtn) saveBtn.textContent = 'Update';
         } else {
             document.getElementById('shortcutLabel').value = '';
             document.getElementById('shortcutPrompt').value = '';
-            modalTitle.textContent = 'Add Shortcut';
-            saveBtn.textContent = 'Save';
+            if (modalTitle) modalTitle.textContent = 'Add Shortcut';
+            if (saveBtn) saveBtn.textContent = 'Save';
         }
-        document.getElementById('shortcutLabel').focus();
+        document.getElementById('shortcutLabel')?.focus();
     } else {
         editingShortcutIndex = null;
     }
@@ -627,7 +629,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initApp();
     initDefaultShortcuts();
     renderCustomShortcuts();
-    document.getElementById('addShortcutBtn')?.addEventListener('click', toggleAddShortcutModal);
+    document.getElementById('addShortcutBtn')?.addEventListener('click', () => toggleAddShortcutModal());
 
     document.getElementById('addShortcutModal')?.addEventListener('click', (e) => {
         if (e.target.id === 'addShortcutModal') {
