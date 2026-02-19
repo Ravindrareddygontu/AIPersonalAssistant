@@ -15,6 +15,10 @@ describe('Streaming Module', () => {
         state.currentAbortController = null;
         activeRequests.clear();
         global.fetch.mockReset();
+        global.fetch.mockImplementation(() => Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({})
+        }));
         DOM.clear();
     });
 

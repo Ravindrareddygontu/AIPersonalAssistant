@@ -910,7 +910,7 @@ body {
 /* Copy button for messages */
 .message-actions {
     position: absolute;
-    top: 8px;
+    top: -17px;
     right: 8px;
     display: flex;
     gap: 4px;

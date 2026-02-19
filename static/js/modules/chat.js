@@ -124,7 +124,7 @@ export function createMessageHTML(role, content, index, messageId) {
             <div class="message-content">
                 <div class="message-actions">
                     <button class="copy-btn" data-content="${encodeURIComponent(content)}">
-                        <i class="fas fa-copy"></i> Copy
+                        <i class="fas fa-copy"></i> Copy Answer
                     </button>
                 </div>
                 <div class="message-text">${formatMessage(content)}</div>
@@ -176,7 +176,7 @@ export function copyMessage(btn) {
         btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
         btn.classList.add('copied');
         setTimeout(() => {
-            btn.innerHTML = '<i class="fas fa-copy"></i> Copy';
+            btn.innerHTML = '<i class="fas fa-copy"></i> Copy Answer';
             btn.classList.remove('copied');
         }, COPY_FEEDBACK_DURATION);
     });

@@ -128,7 +128,7 @@ function finalizeStreamingMessage(finalContent, requestId) {
             const actionsHTML = `
                 <div class="message-actions">
                     <button class="copy-btn" data-content="${encodeURIComponent(content)}">
-                        <i class="fas fa-copy"></i> Copy
+                        <i class="fas fa-copy"></i> Copy Answer
                     </button>
                 </div>
             `;
