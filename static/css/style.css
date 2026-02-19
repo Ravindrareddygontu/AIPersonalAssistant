@@ -76,7 +76,18 @@ body {
     color: var(--text);
     height: 100vh;
     overflow: hidden;
-    transition: background-color 0.2s, color 0.2s;
+    transition: background-color var(--transition-slow) ease, color var(--transition-slow) ease;
+}
+
+body.theme-transitioning,
+body.theme-transitioning *,
+body.theme-transitioning *::before,
+body.theme-transitioning *::after {
+    transition: background-color var(--transition-slow) ease,
+                background var(--transition-slow) ease,
+                color var(--transition-slow) ease,
+                border-color var(--transition-slow) ease,
+                box-shadow var(--transition-slow) ease !important;
 }
 
 .app-container {

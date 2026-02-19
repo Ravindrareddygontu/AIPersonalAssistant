@@ -124,6 +124,9 @@ export function toggleSidebar() {
 
 export function toggleTheme() {
     const body = document.body;
+
+    body.classList.add('theme-transitioning');
+
     const isDark = body.classList.toggle('light-theme');
     localStorage.setItem('theme', isDark ? 'light' : 'dark');
 
@@ -132,6 +135,10 @@ export function toggleTheme() {
         themeIcon.classList.toggle('fa-moon', !isDark);
         themeIcon.classList.toggle('fa-sun', isDark);
     }
+
+    setTimeout(() => {
+        body.classList.remove('theme-transitioning');
+    }, 500);
 }
 
 export function refreshPage() {
