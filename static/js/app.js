@@ -4487,7 +4487,7 @@ async function createNewChat() {
         document.getElementById('messageInput').disabled = false;
 
         // Reset the auggie session to start fresh context
-        const resetUrl = '/api/session/reset';
+        const resetUrl = '/api/chat/reset';
         const resetBody = { workspace: currentWorkspace };
         logRequest('POST', resetUrl, resetBody);
         const resetResponse = await fetch(resetUrl, {
@@ -4497,6 +4497,7 @@ async function createNewChat() {
         });
         const resetData = await resetResponse.json();
         logResponse('POST', resetUrl, resetResponse.status, resetData);
+        console.log('[NEW CHAT] Auggie session reset');
 
         const createUrl = '/api/chats';
         logRequest('POST', createUrl);

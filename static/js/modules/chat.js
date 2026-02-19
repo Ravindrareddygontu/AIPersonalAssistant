@@ -505,6 +505,9 @@ export async function createNewChat() {
     }
 
     try {
+        await api.resetSession(state.currentWorkspace);
+        console.log('[NEW CHAT] Auggie session reset');
+
         const newChatData = await api.createChat(state.currentWorkspace);
         state.currentChatId = newChatData.id;
         state.chatHistory = [];

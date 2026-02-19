@@ -100,6 +100,20 @@ export const api = {
         const data = await response.json();
         logResponse('POST', url, response.status, data);
         return data;
+    },
+
+    async resetSession(workspace) {
+        const url = '/api/chat/reset';
+        const body = workspace ? { workspace } : {};
+        logRequest('POST', url, body);
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await response.json();
+        logResponse('POST', url, response.status, data);
+        return data;
     }
 };
 
