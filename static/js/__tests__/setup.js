@@ -36,6 +36,8 @@ beforeEach(() => {
         <input id="workspacePath" />
         <div id="browserPath"></div>
         <div id="browserList"></div>
+        <input id="browserSearch" />
+        <button id="browserClearBtn" style="display: none;"></button>
         <div id="chatHistory"></div>
         <div class="input-quick-shortcuts" id="quickShortcuts"></div>
         <button id="addShortcutBtn"></button>

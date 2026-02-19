@@ -5,7 +5,7 @@ import { getUnsyncedChats, saveChatToCache } from './cache.js';
 import { showNotification, toggleSettings, toggleSidebar, toggleDevTools } from './ui.js';
 import { handleImageSelect, toggleVoiceRecording } from './media.js';
 import { loadReminders, addReminder } from './reminders.js';
-import { loadChat, loadChatList, newChat, renderChatMessages, clearAllChats } from './chat.js';
+import { loadChat, loadChatList, newChat, renderChatMessages, clearAllChats, createNewChat } from './chat.js';
 import { sendMessage, stopCurrentRequest } from './streaming.js';
 import {
     getShortcuts,
@@ -17,6 +17,15 @@ import {
     reorderShortcuts,
     isModalOpen
 } from './shortcuts.js';
+import {
+    getWorkspaceSlots,
+    setWorkspaceSlots,
+    initWorkspaceSlots,
+    saveWorkspaceToSlot,
+    getNextWorkspace,
+    activateSlot,
+    hasActiveConversation
+} from './workspace.js';
 
 function applyTheme(theme) {
     const icon = document.querySelector('#themeToggle i');
@@ -58,6 +67,7 @@ async function initApp() {
             if (workspaceInput) {
                 workspaceInput.value = state.currentWorkspace;
             }
+            initWorkspaceSlots(state.currentWorkspace);
             updateWorkspaceDisplay();
 
             if (settings.model) {
@@ -162,6 +172,8 @@ function setupEventListeners() {
         selectFolderBtn.onclick = selectWorkspaceFolder;
     }
 
+    setupBrowserListEvents();
+
     const addReminderBtn = DOM.get('addReminderBtn');
     if (addReminderBtn) {
         addReminderBtn.onclick = addReminder;
@@ -253,6 +265,16 @@ function navigateToHome() {
     loadBrowserDirectory('~');
 }
 
+function navigateToParent() {
+    if (!state.browserCurrentPath || state.browserCurrentPath === '~' || state.browserCurrentPath === '/') {
+        return;
+    }
+    const parts = state.browserCurrentPath.split('/').filter(p => p);
+    parts.pop();
+    const parentPath = parts.length > 0 ? '/' + parts.join('/') : '/';
+    loadBrowserDirectory(parentPath);
+}
+
 function updateWorkspaceDisplay() {
     const display = DOM.get('workspaceDisplay');
     const input = DOM.get('workspaceInput');
@@ -260,8 +282,8 @@ function updateWorkspaceDisplay() {
 
     let displayPath = state.currentWorkspace;
     if (displayPath && displayPath !== '~') {
-        const folderName = displayPath.split('/').filter(p => p).pop() || displayPath;
-        displayPath = folderName;
+        const parts = displayPath.split('/').filter(p => p);
+        displayPath = parts.slice(-2).join('/') || displayPath;
     }
 
     if (display) display.textContent = displayPath || '~/';
@@ -269,29 +291,109 @@ function updateWorkspaceDisplay() {
     if (current) current.innerHTML = `<i class="fas fa-folder-open"></i> Current: ${state.currentWorkspace}`;
 }
 
-async function selectCurrentDir() {
-    const workspaceInput = DOM.get('workspaceInput') || DOM.get('workspacePath');
-    if (workspaceInput) workspaceInput.value = state.browserCurrentPath;
-    state.currentWorkspace = state.browserCurrentPath;
-    closeBrowser();
+function showWorkspaceDialog(targetPath) {
+    return new Promise((resolve) => {
+        const dialog = document.getElementById('workspaceDialog');
+        const messageEl = document.getElementById('workspaceDialogMessage');
+        const cancelBtn = document.getElementById('workspaceDialogCancel');
+        const newChatBtn = document.getElementById('workspaceDialogNewChat');
+
+        if (!dialog || !messageEl || !cancelBtn || !newChatBtn) {
+            resolve(false);
+            return;
+        }
+
+        const displayPath = targetPath.split('/').slice(-2).join('/') || targetPath;
+        messageEl.innerHTML = `Switch to <span class="workspace-path-highlight">${escapeHtml(displayPath)}</span>? This will start a new chat.`;
+        dialog.classList.add('show');
+
+        const cleanup = () => {
+            dialog.classList.remove('show');
+            cancelBtn.onclick = null;
+            newChatBtn.onclick = null;
+            dialog.onclick = null;
+        };
+
+        cancelBtn.onclick = () => {
+            cleanup();
+            resolve(false);
+        };
+
+        newChatBtn.onclick = () => {
+            cleanup();
+            resolve(true);
+        };
+
+        dialog.onclick = (e) => {
+            if (e.target === dialog) {
+                cleanup();
+                resolve(false);
+            }
+        };
+    });
+}
+
+async function applyWorkspaceChange(workspace, slotNumber = null) {
+    state.currentWorkspace = workspace;
     updateWorkspaceDisplay();
 
     try {
         await api.saveSettings({ workspace: state.currentWorkspace });
-        localStorage.setItem('workspace', state.currentWorkspace);
+        if (slotNumber !== null) {
+            activateSlot(slotNumber);
+        } else {
+            saveWorkspaceToSlot(state.currentWorkspace);
+        }
+        await createNewChat();
         showNotification('Workspace changed');
     } catch (error) {
         console.error('Error saving workspace:', error);
     }
 }
 
+async function selectCurrentDir() {
+    const newWorkspace = state.browserCurrentPath;
+    closeBrowser();
+
+    if (newWorkspace === state.currentWorkspace) {
+        return;
+    }
+
+    if (hasActiveConversation(state.chatHistory)) {
+        const confirmed = await showWorkspaceDialog(newWorkspace);
+        if (!confirmed) return;
+    }
+
+    await applyWorkspaceChange(newWorkspace);
+}
+
+async function switchWorkspace() {
+    const { newActive, targetWorkspace } = getNextWorkspace();
+
+    if (!targetWorkspace) {
+        activateSlot(newActive);
+        showNotification(`Select folder for workspace ${newActive}`, 'info');
+        browseWorkspace();
+        return;
+    }
+
+    if (hasActiveConversation(state.chatHistory)) {
+        const confirmed = await showWorkspaceDialog(targetWorkspace);
+        if (!confirmed) return;
+    }
+
+    await applyWorkspaceChange(targetWorkspace, newActive);
+}
+
 async function loadBrowserDirectory(path) {
     const listEl = DOM.get('browserList');
     const pathEl = DOM.get('browserPath');
+    const searchEl = document.getElementById('browserSearch');
 
     if (!listEl) return;
 
     listEl.innerHTML = '<div class="loading">Loading...</div>';
+    if (searchEl) searchEl.value = '';
 
     try {
         const response = await fetch(`/api/browse?path=${encodeURIComponent(path)}`);
@@ -302,31 +404,187 @@ async function loadBrowserDirectory(path) {
             return;
         }
 
-        state.browserCurrentPath = data.path || path;
+        state.browserCurrentPath = data.current || path;
+        state.browserItems = data.items || [];
         if (pathEl) pathEl.textContent = state.browserCurrentPath;
 
-        const items = data.items || [];
-        if (items.length === 0) {
-            listEl.innerHTML = '<div class="empty">Empty directory</div>';
-            return;
-        }
-
-        listEl.innerHTML = items.map(item => `
-            <div class="browser-item ${item.type}" onclick="window.browseItem('${escapeHtml(item.path)}', '${item.type}')">
-                <i class="fas fa-${item.type === 'directory' ? 'folder' : 'file'}"></i>
-                <span>${escapeHtml(item.name)}</span>
-            </div>
-        `).join('');
+        renderBrowserItems(state.browserItems);
     } catch (error) {
         listEl.innerHTML = `<div class="error">Failed to load directory</div>`;
         console.error('Error loading directory:', error);
     }
 }
 
-function browseItem(path, type) {
-    if (type === 'directory') {
-        loadBrowserDirectory(path);
+const browserState = {
+    selectedIndex: -1,
+    query: '',
+    debounceTimer: null
+};
+
+const BROWSER_DEBOUNCE_MS = 300;
+
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function highlightMatch(text, query) {
+    if (!query) return escapeHtml(text);
+    const escaped = escapeHtml(text);
+    return escaped.replace(new RegExp(`(${escapeRegex(query)})`, 'gi'), '<mark>$1</mark>');
+}
+
+function renderBrowserItems(items, showPath = false) {
+    const listEl = DOM.get('browserList');
+    if (!listEl) return;
+
+    browserState.selectedIndex = -1;
+
+    if (items.length === 0) {
+        listEl.innerHTML = '<div class="empty">No matching folders</div>';
+        return;
     }
+
+    listEl.innerHTML = items.map(item => {
+        const highlightedName = highlightMatch(item.name, browserState.query);
+        const pathHtml = showPath && item.display_path
+            ? `<span class="browser-item-path">${escapeHtml(item.display_path)}</span>`
+            : '';
+        return `
+            <div class="browser-item directory${showPath ? ' with-path' : ''}" data-path="${encodeURIComponent(item.path)}">
+                <i class="fas fa-folder"></i>
+                <span class="browser-item-name">${highlightedName}</span>${pathHtml}
+            </div>
+        `;
+    }).join('');
+}
+
+function getBrowserElements() {
+    return {
+        search: document.getElementById('browserSearch'),
+        clearBtn: document.getElementById('browserClearBtn'),
+        list: DOM.get('browserList')
+    };
+}
+
+function updateClearButton() {
+    const { search, clearBtn } = getBrowserElements();
+    if (search && clearBtn) {
+        clearBtn.style.display = search.value ? 'block' : 'none';
+    }
+}
+
+function clearBrowserSearch() {
+    const { search } = getBrowserElements();
+    if (search) {
+        search.value = '';
+        search.focus();
+    }
+    browserState.query = '';
+    updateClearButton();
+    renderBrowserItems(state.browserItems || []);
+}
+
+function filterBrowserList() {
+    const { search, list } = getBrowserElements();
+    if (!search) return;
+
+    const query = search.value.trim();
+    browserState.query = query;
+    updateClearButton();
+
+    if (browserState.debounceTimer) {
+        clearTimeout(browserState.debounceTimer);
+        browserState.debounceTimer = null;
+    }
+
+    if (!query) {
+        renderBrowserItems(state.browserItems || []);
+        return;
+    }
+
+    const queryLower = query.toLowerCase();
+    if (query.length < 2) {
+        const filtered = (state.browserItems || []).filter(item =>
+            item.name.toLowerCase().includes(queryLower)
+        );
+        renderBrowserItems(filtered);
+        return;
+    }
+
+    const displayPath = state.browserCurrentPath.replace(/^\/home\/[^/]+/, '~');
+    browserState.debounceTimer = setTimeout(async () => {
+        if (list) list.innerHTML = `<div class="loading">Searching in ${escapeHtml(displayPath)}...</div>`;
+
+        try {
+            const response = await fetch(`/api/search-folders?query=${encodeURIComponent(query)}&path=${encodeURIComponent(state.browserCurrentPath)}`);
+            const data = await response.json();
+            renderBrowserItems(data.items || [], true);
+        } catch (error) {
+            log.error('Error searching folders:', error);
+            renderBrowserItems([]);
+        }
+    }, BROWSER_DEBOUNCE_MS);
+}
+
+function handleBrowserKeydown(e) {
+    const { list } = getBrowserElements();
+    if (!list) return;
+
+    const items = list.querySelectorAll('.browser-item');
+    if (items.length === 0) return;
+
+    switch (e.key) {
+        case 'ArrowDown':
+            e.preventDefault();
+            browserState.selectedIndex = Math.min(browserState.selectedIndex + 1, items.length - 1);
+            updateBrowserSelection(items);
+            break;
+        case 'ArrowUp':
+            e.preventDefault();
+            browserState.selectedIndex = Math.max(browserState.selectedIndex - 1, 0);
+            updateBrowserSelection(items);
+            break;
+        case 'Enter':
+            if (browserState.selectedIndex >= 0) {
+                e.preventDefault();
+                const selectedItem = items[browserState.selectedIndex];
+                if (selectedItem) {
+                    loadBrowserDirectory(decodeURIComponent(selectedItem.dataset.path));
+                    clearBrowserSearch();
+                }
+            }
+            break;
+        case 'Escape':
+            clearBrowserSearch();
+            break;
+    }
+}
+
+function updateBrowserSelection(items) {
+    items.forEach((item, index) => {
+        item.classList.toggle('selected', index === browserState.selectedIndex);
+    });
+    const selected = items[browserState.selectedIndex];
+    if (selected) {
+        selected.scrollIntoView({ block: 'nearest' });
+    }
+}
+
+function setupBrowserListEvents() {
+    const listEl = DOM.get('browserList');
+    if (!listEl) return;
+
+    listEl.addEventListener('click', (e) => {
+        const item = e.target.closest('.browser-item');
+        if (!item) return;
+
+        const path = decodeURIComponent(item.dataset.path);
+        const type = item.dataset.type;
+
+        if (type === 'directory') {
+            loadBrowserDirectory(path);
+        }
+    });
 }
 
 function populateModelSelect() {
@@ -455,8 +713,14 @@ window.toggleSidebar = toggleSidebar;
 window.browseWorkspace = browseWorkspace;
 window.closeBrowser = closeBrowser;
 window.navigateToHome = navigateToHome;
+window.navigateToParent = navigateToParent;
+window.filterBrowserList = filterBrowserList;
+window.clearBrowserSearch = clearBrowserSearch;
+window.handleBrowserKeydown = handleBrowserKeydown;
 window.selectCurrentDir = selectCurrentDir;
-window.browseItem = browseItem;
+window.loadBrowserDirectory = loadBrowserDirectory;
+window.renderBrowserItems = renderBrowserItems;
+window.switchWorkspace = switchWorkspace;
 window.updateModelFromHeader = updateModelFromHeader;
 window.updateProviderFromHeader = updateProviderFromHeader;
 window.handleKeyDown = handleKeyDown;

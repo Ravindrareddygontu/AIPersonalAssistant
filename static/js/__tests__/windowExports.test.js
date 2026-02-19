@@ -24,13 +24,9 @@ jest.mock('../modules/api.js', () => ({
 }));
 
 import { state } from '../modules/state.js';
+import { DOM } from '../modules/dom.js';
+import '../modules/app.js';
 window.appState = state;
-
-window.browseWorkspace = jest.fn();
-window.closeBrowser = jest.fn();
-window.navigateToHome = jest.fn();
-window.selectCurrentDir = jest.fn();
-window.browseItem = jest.fn();
 
 describe('Window Global Exports', () => {
     describe('All HTML onclick handlers have corresponding window functions', () => {
@@ -129,6 +125,92 @@ describe('Window Global Exports', () => {
 
         test('deleteReminder should be callable', () => {
             expect(typeof window.deleteReminder).toBe('function');
+        });
+    });
+
+    describe('Browser functions', () => {
+        beforeEach(() => {
+            DOM._cache = {};
+            state.browserCurrentPath = '';
+            state.browserItems = [];
+            document.getElementById('browserList').innerHTML = '';
+        });
+
+        test('loadBrowserDirectory should parse data.current from API response', async () => {
+            const mockResponse = {
+                current: '/home/user/projects',
+                parent: '/home/user',
+                items: [
+                    { name: 'folder1', path: '/home/user/projects/folder1', type: 'directory', display_path: '~/projects/folder1' }
+                ]
+            };
+            global.fetch.mockResolvedValueOnce({
+                json: () => Promise.resolve(mockResponse)
+            });
+
+            await window.loadBrowserDirectory('/home/user/projects');
+
+            expect(state.browserCurrentPath).toBe('/home/user/projects');
+            expect(state.browserItems).toEqual(mockResponse.items);
+        });
+
+        test('loadBrowserDirectory should fallback to input path if data.current is missing', async () => {
+            global.fetch.mockResolvedValueOnce({
+                json: () => Promise.resolve({ items: [] })
+            });
+
+            await window.loadBrowserDirectory('/fallback/path');
+
+            expect(state.browserCurrentPath).toBe('/fallback/path');
+        });
+
+        test('loadBrowserDirectory should handle API errors', async () => {
+            global.fetch.mockResolvedValueOnce({
+                json: () => Promise.resolve({ error: 'Permission denied' })
+            });
+
+            await window.loadBrowserDirectory('/restricted');
+
+            const listEl = document.getElementById('browserList');
+            expect(listEl.innerHTML).toContain('Permission denied');
+        });
+
+        test('loadBrowserDirectory should handle fetch exceptions', async () => {
+            global.fetch.mockRejectedValueOnce(new Error('Network error'));
+
+            await window.loadBrowserDirectory('/some/path');
+
+            const listEl = document.getElementById('browserList');
+            expect(listEl.innerHTML).toContain('Failed to load directory');
+        });
+
+        test('renderBrowserItems should display folder items', () => {
+            const items = [
+                { name: 'docs', path: '/home/user/docs', type: 'directory', display_path: '~/docs' },
+                { name: 'src', path: '/home/user/src', type: 'directory', display_path: '~/src' }
+            ];
+
+            window.renderBrowserItems(items);
+
+            const listEl = document.getElementById('browserList');
+            expect(listEl.querySelectorAll('.browser-item').length).toBe(2);
+        });
+
+        test('renderBrowserItems should show empty message when no items', () => {
+            window.renderBrowserItems([]);
+
+            const listEl = document.getElementById('browserList');
+            expect(listEl.innerHTML).toContain('No matching folders');
+        });
+
+        test('clearBrowserSearch should reset browser state', () => {
+            state.browserItems = [{ name: 'test', path: '/test', type: 'directory' }];
+            const searchEl = document.getElementById('browserSearch');
+            searchEl.value = 'search query';
+
+            window.clearBrowserSearch();
+
+            expect(searchEl.value).toBe('');
         });
     });
 });

@@ -16,7 +16,7 @@ describe('DOM Module', () => {
 
     describe('escapeHtml', () => {
         test('should escape < and > characters', () => {
-            expect(escapeHtml('<script>alert("xss")</script>')).toBe('&lt;script&gt;alert("xss")&lt;/script&gt;');
+            expect(escapeHtml('<script>alert("xss")</script>')).toBe('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
         });
 
         test('should escape ampersand', () => {
