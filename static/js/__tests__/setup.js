@@ -16,7 +16,7 @@ global.URL.revokeObjectURL = jest.fn();
 beforeEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
-    
+
     document.body.innerHTML = `
         <div id="chatMessages"></div>
         <div id="sidebar" class="sidebar"></div>
@@ -34,6 +34,21 @@ beforeEach(() => {
         <div id="browserPath"></div>
         <div id="browserList"></div>
         <div id="chatHistory"></div>
+        <div class="input-quick-shortcuts" id="quickShortcuts"></div>
+        <button id="addShortcutBtn"></button>
+        <div class="modal" id="addShortcutModal">
+            <div class="modal-content shortcut-modal-content">
+                <div class="modal-header">
+                    <h2>Add Shortcut</h2>
+                </div>
+                <div class="modal-body">
+                    <input type="text" id="shortcutLabel" />
+                    <textarea id="shortcutPrompt"></textarea>
+                    <button class="save-shortcut-btn">Save</button>
+                </div>
+            </div>
+        </div>
+        <div id="notification"></div>
     `;
 });
 
