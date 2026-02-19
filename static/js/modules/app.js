@@ -453,13 +453,34 @@ window.handleKeyDown = handleKeyDown;
 window.autoResize = autoResize;
 window.sendMessage = sendMessage;
 
-function toggleAddShortcutModal() {
+let editingShortcutIndex = null;
+
+function toggleAddShortcutModal(editIndex = null) {
     const modal = document.getElementById('addShortcutModal');
+    const modalTitle = modal.querySelector('.modal-header h2');
+    const saveBtn = modal.querySelector('.save-shortcut-btn');
+
     modal.classList.toggle('active');
+
     if (modal.classList.contains('active')) {
-        document.getElementById('shortcutLabel').value = '';
-        document.getElementById('shortcutPrompt').value = '';
+        editingShortcutIndex = editIndex;
+
+        if (editIndex !== null) {
+            const shortcuts = JSON.parse(localStorage.getItem('customShortcuts') || '[]');
+            const shortcut = shortcuts[editIndex];
+            document.getElementById('shortcutLabel').value = shortcut.label;
+            document.getElementById('shortcutPrompt').value = shortcut.prompt;
+            modalTitle.textContent = 'Edit Shortcut';
+            saveBtn.textContent = 'Update';
+        } else {
+            document.getElementById('shortcutLabel').value = '';
+            document.getElementById('shortcutPrompt').value = '';
+            modalTitle.textContent = 'Add Shortcut';
+            saveBtn.textContent = 'Save';
+        }
         document.getElementById('shortcutLabel').focus();
+    } else {
+        editingShortcutIndex = null;
     }
 }
 
@@ -476,12 +497,18 @@ function saveShortcut() {
     const finalPrompt = prompt || label;
 
     const shortcuts = JSON.parse(localStorage.getItem('customShortcuts') || '[]');
-    shortcuts.push({ label: finalLabel, prompt: finalPrompt });
-    localStorage.setItem('customShortcuts', JSON.stringify(shortcuts));
 
+    if (editingShortcutIndex !== null) {
+        shortcuts[editingShortcutIndex] = { label: finalLabel, prompt: finalPrompt };
+        showNotification('Shortcut updated');
+    } else {
+        shortcuts.push({ label: finalLabel, prompt: finalPrompt });
+        showNotification('Shortcut added');
+    }
+
+    localStorage.setItem('customShortcuts', JSON.stringify(shortcuts));
     renderCustomShortcuts();
     toggleAddShortcutModal();
-    showNotification('Shortcut added');
 }
 
 function initDefaultShortcuts() {
@@ -495,6 +522,8 @@ function initDefaultShortcuts() {
     }
 }
 
+let draggedShortcutIndex = null;
+
 function renderCustomShortcuts() {
     const container = document.querySelector('.input-quick-shortcuts');
     if (!container) return;
@@ -506,10 +535,57 @@ function renderCustomShortcuts() {
         const wrapper = document.createElement('div');
         wrapper.className = 'shortcut-btn custom-shortcut';
         wrapper.title = shortcut.prompt;
+        wrapper.draggable = true;
+        wrapper.dataset.index = index;
+
+        wrapper.addEventListener('dragstart', (e) => {
+            draggedShortcutIndex = index;
+            wrapper.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+
+        wrapper.addEventListener('dragend', () => {
+            wrapper.classList.remove('dragging');
+            draggedShortcutIndex = null;
+        });
+
+        wrapper.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'move';
+            if (draggedShortcutIndex !== null && draggedShortcutIndex !== index) {
+                wrapper.classList.add('drag-over');
+            }
+        });
+
+        wrapper.addEventListener('dragleave', (e) => {
+            wrapper.classList.remove('drag-over');
+        });
+
+        wrapper.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            wrapper.classList.remove('drag-over');
+            if (draggedShortcutIndex !== null && draggedShortcutIndex !== index) {
+                reorderShortcuts(draggedShortcutIndex, index);
+            }
+        });
 
         const label = document.createElement('span');
+        label.className = 'shortcut-label';
         label.textContent = shortcut.label;
         label.onclick = () => window.sendSuggestion(shortcut.prompt);
+
+        const actions = document.createElement('span');
+        actions.className = 'shortcut-actions';
+
+        const editBtn = document.createElement('span');
+        editBtn.className = 'shortcut-edit';
+        editBtn.innerHTML = '<i class="fas fa-pen"></i>';
+        editBtn.onclick = (e) => {
+            e.stopPropagation();
+            toggleAddShortcutModal(index);
+        };
 
         const deleteBtn = document.createElement('span');
         deleteBtn.className = 'shortcut-delete';
@@ -519,10 +595,20 @@ function renderCustomShortcuts() {
             deleteShortcut(index);
         };
 
+        actions.appendChild(editBtn);
+        actions.appendChild(deleteBtn);
         wrapper.appendChild(label);
-        wrapper.appendChild(deleteBtn);
+        wrapper.appendChild(actions);
         container.appendChild(wrapper);
     });
+}
+
+function reorderShortcuts(fromIndex, toIndex) {
+    const shortcuts = JSON.parse(localStorage.getItem('customShortcuts') || '[]');
+    const [moved] = shortcuts.splice(fromIndex, 1);
+    shortcuts.splice(toIndex, 0, moved);
+    localStorage.setItem('customShortcuts', JSON.stringify(shortcuts));
+    renderCustomShortcuts();
 }
 
 function deleteShortcut(index) {

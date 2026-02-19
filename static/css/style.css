@@ -2369,19 +2369,52 @@ body {
 
 .custom-shortcut {
     position: relative;
+    cursor: grab;
 }
 
-.custom-shortcut .shortcut-delete {
-    display: none;
-    margin-left: 6px;
-    font-size: 14px;
-    font-weight: bold;
-    color: var(--text-muted);
+.custom-shortcut:active {
+    cursor: grabbing;
+}
+
+.custom-shortcut.dragging {
+    opacity: 0.5;
+}
+
+.custom-shortcut.drag-over {
+    outline: 2px dashed var(--primary);
+    outline-offset: 2px;
+}
+
+.custom-shortcut .shortcut-label {
     cursor: pointer;
 }
 
-.custom-shortcut:hover .shortcut-delete {
-    display: inline;
+.custom-shortcut .shortcut-actions {
+    display: none;
+    margin-left: 6px;
+}
+
+.custom-shortcut:hover .shortcut-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.custom-shortcut .shortcut-edit,
+.custom-shortcut .shortcut-delete {
+    font-size: 11px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px;
+}
+
+.custom-shortcut .shortcut-edit:hover {
+    color: var(--primary);
+}
+
+.custom-shortcut .shortcut-delete {
+    font-size: 14px;
+    font-weight: bold;
 }
 
 .custom-shortcut .shortcut-delete:hover {
