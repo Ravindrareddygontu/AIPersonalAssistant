@@ -176,7 +176,7 @@ function parseToolBlocks(text) {
 function renderToolBlock(tool) {
     const typeClass = `tool-${tool.toolType}`;
     const errorClass = tool.hasError ? ' has-error' : '';
-    let html = `<br><div class="tool-block ${typeClass}${errorClass}">`;
+    let html = `<div class="tool-block ${typeClass}${errorClass}">`;
     if (tool.lineRange) {
         const fileName = tool.command.split('/').pop();
         html += `<div class="tool-header"><i class="fas ${tool.icon}"></i> ${tool.name}</div>`;
@@ -597,7 +597,7 @@ function renderStreamingToolBlock(tool) {
     const typeClass = `tool-${tool.toolType}`;
     const errorClass = tool.hasError ? ' has-error' : '';
     const streamingClass = tool.isStreaming ? ' streaming' : '';
-    let html = `<br><div class="tool-block ${typeClass}${errorClass}${streamingClass}">`;
+    let html = `<div class="tool-block ${typeClass}${errorClass}${streamingClass}">`;
     if (tool.lineRange) {
         const fileName = tool.command.split('/').pop();
         html += `<div class="tool-header"><i class="fas ${tool.icon}"></i> ${tool.name}</div>`;
