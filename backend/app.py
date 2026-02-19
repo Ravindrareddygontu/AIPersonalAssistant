@@ -52,9 +52,18 @@ logging.getLogger('httpcore').setLevel(logging.WARNING)
 log = logging.getLogger('app')
 
 
+def _register_terminal_agents():
+    from backend.services.auggie import register_auggie_provider
+    from backend.services.codex import register_codex_provider
+    register_auggie_provider()
+    register_codex_provider()
+    log.info("✓ Terminal agent providers registered (auggie, codex)")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("🚀 AI Chat Application starting...")
+    _register_terminal_agents()
     yield
     log.info("👋 AI Chat Application shutting down...")
 

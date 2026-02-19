@@ -55,7 +55,8 @@ os.makedirs(CHATS_DIR, exist_ok=True)
 
 
 # AI Provider options
-AI_PROVIDERS = ['auggie', 'openai']
+AI_PROVIDERS = ['auggie', 'openai', 'codex']
+TERMINAL_AGENT_PROVIDERS = ['auggie', 'codex']
 DEFAULT_AI_PROVIDER = os.environ.get('DEFAULT_AI_PROVIDER', 'auggie').strip().lower()
 if DEFAULT_AI_PROVIDER not in AI_PROVIDERS:
     DEFAULT_AI_PROVIDER = 'auggie'

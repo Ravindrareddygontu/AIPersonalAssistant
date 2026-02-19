@@ -335,15 +335,23 @@ async function updateModelFromHeader() {
     if (!headerSelect) return;
 
     const model = headerSelect.value;
-    state.currentModel = model;
 
-    if (modalSelect) {
-        modalSelect.value = model;
+    if (state.currentAIProvider === 'openai') {
+        state.currentOpenAIModel = model;
+        localStorage.setItem('currentOpenAIModel', model);
+    } else if (state.currentAIProvider === 'codex') {
+        state.currentCodexModel = model;
+        localStorage.setItem('currentCodexModel', model);
+    } else {
+        state.currentModel = model;
+        if (modalSelect) {
+            modalSelect.value = model;
+        }
     }
 
     try {
         await api.saveSettings({ model: model });
-        console.log('[APP] Model updated to:', model);
+        console.log('[APP] Model updated to:', model, 'for provider:', state.currentAIProvider);
     } catch (error) {
         console.error('Failed to update model:', error);
     }
@@ -375,7 +383,8 @@ async function updateProviderFromHeader() {
     try {
         await api.saveSettings({ ai_provider: provider });
         console.log('[APP] Provider updated to:', provider);
-        showNotification(`Switched to ${provider === 'auggie' ? 'Auggie' : 'OpenAI'}`);
+        const providerNames = { auggie: 'Auggie', codex: 'Codex', openai: 'OpenAI' };
+        showNotification(`Switched to ${providerNames[provider] || provider}`);
     } catch (error) {
         console.error('Failed to update provider:', error);
     }
@@ -393,6 +402,18 @@ function updateModelSelectVisibility() {
             option.value = model;
             option.textContent = model;
             if (model === state.currentOpenAIModel) {
+                option.selected = true;
+            }
+            modelSelectHeader.appendChild(option);
+        });
+    } else if (state.currentAIProvider === 'codex') {
+        modelSelectHeader.innerHTML = '';
+        const codexModels = state.availableCodexModels || ['gpt-5.2', 'gpt-5.1', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5.2-chat-latest'];
+        codexModels.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            if (model === (state.currentCodexModel || 'gpt-5.2')) {
                 option.selected = true;
             }
             modelSelectHeader.appendChild(option);

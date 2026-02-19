@@ -50,6 +50,40 @@ describe('State Module', () => {
         test('should have isRecording as false', () => {
             expect(state.isRecording).toBe(false);
         });
+
+        test('should have default AI provider as auggie', () => {
+            expect(state.currentAIProvider).toBe('auggie');
+        });
+
+        test('should have available providers including auggie, codex and openai', () => {
+            expect(state.availableProviders).toContain('auggie');
+            expect(state.availableProviders).toContain('codex');
+            expect(state.availableProviders).toContain('openai');
+        });
+
+        test('should have default Codex model', () => {
+            expect(state.currentCodexModel).toBeDefined();
+            expect(typeof state.currentCodexModel).toBe('string');
+        });
+
+        test('should have available Codex models as array', () => {
+            expect(Array.isArray(state.availableCodexModels)).toBe(true);
+            expect(state.availableCodexModels.length).toBeGreaterThan(0);
+        });
+
+        test('should have default OpenAI model', () => {
+            expect(state.currentOpenAIModel).toBeDefined();
+            expect(typeof state.currentOpenAIModel).toBe('string');
+        });
+
+        test('should have available OpenAI models as array', () => {
+            expect(Array.isArray(state.availableOpenAIModels)).toBe(true);
+            expect(state.availableOpenAIModels.length).toBeGreaterThan(0);
+        });
+
+        test('should have streamingMessageDiv as null initially', () => {
+            expect(state.streamingMessageDiv).toBeNull();
+        });
     });
 
     describe('activeRequests Map', () => {

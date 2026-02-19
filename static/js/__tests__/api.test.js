@@ -131,5 +131,75 @@ describe('API Module', () => {
             expect(result).toEqual(mockChat);
         });
     });
+
+    describe('api.updateChatProvider', () => {
+        test('should PUT provider to /api/chats/:id', async () => {
+            global.fetch.mockResolvedValueOnce({
+                json: () => Promise.resolve({ status: 'success' })
+            });
+
+            await api.updateChatProvider('chat-123', 'codex');
+
+            expect(fetch).toHaveBeenCalledWith('/api/chats/chat-123', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider: 'codex' })
+            });
+        });
+
+        test('should update provider to auggie', async () => {
+            global.fetch.mockResolvedValueOnce({
+                json: () => Promise.resolve({ status: 'success' })
+            });
+
+            await api.updateChatProvider('chat-456', 'auggie');
+
+            expect(fetch).toHaveBeenCalledWith('/api/chats/chat-456', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider: 'auggie' })
+            });
+        });
+
+        test('should return response data', async () => {
+            const mockResponse = { status: 'success', provider: 'codex' };
+            global.fetch.mockResolvedValueOnce({
+                json: () => Promise.resolve(mockResponse)
+            });
+
+            const result = await api.updateChatProvider('chat-123', 'codex');
+            expect(result).toEqual(mockResponse);
+        });
+    });
+
+    describe('api.resetSession', () => {
+        test('should POST to /api/chat/reset with workspace', async () => {
+            global.fetch.mockResolvedValueOnce({
+                json: () => Promise.resolve({ status: 'reset' })
+            });
+
+            await api.resetSession('/home/user/project');
+
+            expect(fetch).toHaveBeenCalledWith('/api/chat/reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspace: '/home/user/project' })
+            });
+        });
+
+        test('should POST empty body when no workspace', async () => {
+            global.fetch.mockResolvedValueOnce({
+                json: () => Promise.resolve({ status: 'reset' })
+            });
+
+            await api.resetSession();
+
+            expect(fetch).toHaveBeenCalledWith('/api/chat/reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+        });
+    });
 });
 

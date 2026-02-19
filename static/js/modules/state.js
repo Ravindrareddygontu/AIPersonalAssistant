@@ -31,9 +31,11 @@ export const state = {
     audioChunks: [],
     isRecording: false,
     currentAIProvider: 'auggie',
-    availableProviders: ['auggie', 'openai'],
+    availableProviders: ['auggie', 'codex', 'openai'],
     currentOpenAIModel: 'gpt-5.2',
     availableOpenAIModels: ['gpt-5.2', 'gpt-5.2-chat-latest', 'gpt-5.1', 'gpt-5-mini', 'gpt-5-nano'],
+    currentCodexModel: 'gpt-5.2',
+    availableCodexModels: ['gpt-5.2', 'gpt-5.1', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5.2-chat-latest'],
     streamingMessageDiv: null
 };
 

@@ -8,7 +8,6 @@ log = logging.getLogger('auggie.summarizer')
 class ResponseSummarizer:
 
     FILE_CREATED_PATTERNS = [
-    FILE_CREATED_PATTERNS = [
         r'[Cc]reated?\s+(?:file\s+)?[`\'"]([\w/.\-]+)[`\'"]',
         r'[Ww]rote\s+(?:to\s+)?[`\'"]([\w/.\-]+)[`\'"]',
         r'[Ss]aved?\s+(?:to\s+)?[`\'"]([\w/.\-]+)[`\'"]',
@@ -126,7 +125,6 @@ class ResponseSummarizer:
     
     @classmethod
     def _get_first_meaningful_line(cls, content: str) -> str:
-        skip_start = [
         skip_start = [
             '↳', '│', '─', '╭', '╰', '●', '⎿', '┌', '└', '├',
             '>', '$', '#', '```', '~~~', 'Terminal', 'Command'
