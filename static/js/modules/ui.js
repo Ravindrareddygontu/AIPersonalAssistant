@@ -80,25 +80,39 @@ export function updateTypingStatus(message) {
     updateTypingIndicatorText(message);
 }
 
+export function closeModalWithAnimation(modal, activeClass = 'active') {
+    if (!modal) return Promise.resolve();
+    return new Promise((resolve) => {
+        modal.classList.add('closing');
+        setTimeout(() => {
+            modal.classList.remove(activeClass, 'closing');
+            resolve();
+        }, 500);
+    });
+}
+
+export function toggleModal(modal) {
+    if (!modal) return;
+    if (modal.classList.contains('active')) {
+        closeModalWithAnimation(modal);
+    } else {
+        modal.classList.add('active');
+    }
+}
+
 export function toggleSettings() {
     const modal = DOM.get('settingsModal');
-    if (modal) {
-        modal.classList.toggle('active');
-    }
+    toggleModal(modal);
 }
 
 export function toggleBrowser() {
     const modal = DOM.get('browserModal');
-    if (modal) {
-        modal.classList.toggle('active');
-    }
+    toggleModal(modal);
 }
 
 export function toggleDevTools() {
     const modal = DOM.get('devToolsModal');
-    if (modal) {
-        modal.classList.toggle('active');
-    }
+    toggleModal(modal);
 }
 
 export function toggleSidebar() {
@@ -106,10 +120,6 @@ export function toggleSidebar() {
     state.sidebarOpen = !state.sidebarOpen;
     sidebar.classList.toggle('collapsed', !state.sidebarOpen);
     localStorage.setItem('sidebarOpen', state.sidebarOpen);
-
-    if (state.sidebarOpen) {
-        sidebar.style.width = '280px';
-    }
 }
 
 export function toggleTheme() {
@@ -164,27 +174,18 @@ export function showConfirmDialog(message) {
         messageEl.textContent = message;
         dialog.classList.add('show');
 
-        const cleanup = () => {
-            dialog.classList.remove('show');
+        const cleanup = async (result) => {
+            await closeModalWithAnimation(dialog, 'show');
             cancelBtn.onclick = null;
             deleteBtn.onclick = null;
+            dialog.onclick = null;
+            resolve(result);
         };
 
-        cancelBtn.onclick = () => {
-            cleanup();
-            resolve(false);
-        };
-
-        deleteBtn.onclick = () => {
-            cleanup();
-            resolve(true);
-        };
-
+        cancelBtn.onclick = () => cleanup(false);
+        deleteBtn.onclick = () => cleanup(true);
         dialog.onclick = (e) => {
-            if (e.target === dialog) {
-                cleanup();
-                resolve(false);
-            }
+            if (e.target === dialog) cleanup(false);
         };
     });
 }

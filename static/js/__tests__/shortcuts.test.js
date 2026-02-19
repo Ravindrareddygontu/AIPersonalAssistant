@@ -15,10 +15,18 @@ import {
 } from '../modules/shortcuts.js';
 
 jest.mock('../modules/ui.js', () => ({
-    showNotification: jest.fn()
+    showNotification: jest.fn(),
+    closeModalWithAnimation: jest.fn((modal) => {
+        if (modal) {
+            modal.classList.add('closing');
+            setTimeout(() => {
+                modal.classList.remove('active', 'closing');
+            }, 500);
+        }
+    })
 }));
 
-import { showNotification } from '../modules/ui.js';
+import { showNotification, closeModalWithAnimation } from '../modules/ui.js';
 
 describe('Shortcuts Module', () => {
     beforeEach(() => {
@@ -203,12 +211,16 @@ describe('Shortcuts Module', () => {
 
     describe('toggleAddShortcutModal', () => {
         test('should toggle modal active class', () => {
+            jest.useFakeTimers();
             const modal = document.getElementById('addShortcutModal');
             expect(modal.classList.contains('active')).toBe(false);
             toggleAddShortcutModal();
             expect(modal.classList.contains('active')).toBe(true);
             toggleAddShortcutModal();
+            expect(modal.classList.contains('closing')).toBe(true);
+            jest.advanceTimersByTime(500);
             expect(modal.classList.contains('active')).toBe(false);
+            jest.useRealTimers();
         });
 
         test('should clear fields when opening for new shortcut', () => {
@@ -242,10 +254,13 @@ describe('Shortcuts Module', () => {
         });
 
         test('should reset editingShortcutId when closing', () => {
+            jest.useFakeTimers();
             setEditingShortcutId('some-id');
             toggleAddShortcutModal();
             toggleAddShortcutModal();
+            jest.advanceTimersByTime(500);
             expect(getEditingShortcutId()).toBeNull();
+            jest.useRealTimers();
         });
     });
 
@@ -275,9 +290,12 @@ describe('Shortcuts Module', () => {
         });
 
         test('should return false after modal is closed', () => {
+            jest.useFakeTimers();
             toggleAddShortcutModal();
             toggleAddShortcutModal();
+            jest.advanceTimersByTime(500);
             expect(isModalOpen()).toBe(false);
+            jest.useRealTimers();
         });
     });
 });

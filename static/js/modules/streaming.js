@@ -77,8 +77,8 @@ function startStreamingMessage(requestId) {
     container.scrollTop = container.scrollHeight;
 
     state.streamingMessageDiv = streamingMessageDiv;
-    const providerSelect = DOM.get('providerSelectHeader');
-    if (providerSelect) providerSelect.disabled = true;
+    const providerDropdown = document.getElementById('providerDropdown');
+    if (providerDropdown) providerDropdown.classList.add('disabled');
 }
 
 let scrollTimeout = null;
@@ -146,8 +146,8 @@ function finalizeStreamingMessage(finalContent, requestId) {
     streamingMessageDiv = null;
     streamingContent = '';
     state.streamingMessageDiv = null;
-    const providerSelect = DOM.get('providerSelectHeader');
-    if (providerSelect) providerSelect.disabled = false;
+    const providerDropdown = document.getElementById('providerDropdown');
+    if (providerDropdown) providerDropdown.classList.remove('disabled');
     hideStopButton();
 }
 

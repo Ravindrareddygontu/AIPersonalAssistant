@@ -1,4 +1,4 @@
-import { showNotification } from './ui.js';
+import { showNotification, closeModalWithAnimation } from './ui.js';
 
 const STORAGE_KEY = 'customShortcuts';
 
@@ -56,29 +56,30 @@ export function toggleAddShortcutModal(editId = null) {
     const { modal, labelInput, promptInput, modalTitle, saveBtn } = getElements();
     if (!modal) return;
 
-    modal.classList.toggle('active');
-
     if (modal.classList.contains('active')) {
-        editingShortcutId = editId;
-
-        if (editId !== null) {
-            const shortcut = getShortcuts().find(s => s.id === editId);
-            if (shortcut) {
-                labelInput.value = shortcut.label;
-                promptInput.value = shortcut.prompt;
-            }
-            if (modalTitle) modalTitle.textContent = 'Edit Shortcut';
-            if (saveBtn) saveBtn.textContent = 'Update';
-        } else {
-            labelInput.value = '';
-            promptInput.value = '';
-            if (modalTitle) modalTitle.textContent = 'Add Shortcut';
-            if (saveBtn) saveBtn.textContent = 'Save';
-        }
-        labelInput?.focus();
-    } else {
+        closeModalWithAnimation(modal);
         editingShortcutId = null;
+        return;
     }
+
+    modal.classList.add('active');
+    editingShortcutId = editId;
+
+    if (editId !== null) {
+        const shortcut = getShortcuts().find(s => s.id === editId);
+        if (shortcut) {
+            labelInput.value = shortcut.label;
+            promptInput.value = shortcut.prompt;
+        }
+        if (modalTitle) modalTitle.textContent = 'Edit Shortcut';
+        if (saveBtn) saveBtn.textContent = 'Update';
+    } else {
+        labelInput.value = '';
+        promptInput.value = '';
+        if (modalTitle) modalTitle.textContent = 'Add Shortcut';
+        if (saveBtn) saveBtn.textContent = 'Save';
+    }
+    labelInput?.focus();
 }
 
 export function saveShortcut() {

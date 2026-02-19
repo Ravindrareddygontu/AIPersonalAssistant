@@ -87,14 +87,21 @@ describe('UI Module', () => {
     });
 
     describe('toggleSettings', () => {
-        test('should toggle settings modal active class', () => {
+        test('should toggle settings modal active class', async () => {
+            jest.useFakeTimers();
             const modal = document.getElementById('settingsModal');
-            
+
             toggleSettings();
             expect(modal.classList.contains('active')).toBe(true);
-            
+
             toggleSettings();
+            expect(modal.classList.contains('closing')).toBe(true);
+
+            jest.advanceTimersByTime(500);
             expect(modal.classList.contains('active')).toBe(false);
+            expect(modal.classList.contains('closing')).toBe(false);
+
+            jest.useRealTimers();
         });
     });
 

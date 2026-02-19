@@ -2,7 +2,7 @@ import { state, CONSTANTS } from './state.js';
 import { DOM, autoResize, escapeHtml } from './dom.js';
 import { api } from './api.js';
 import { getUnsyncedChats, saveChatToCache } from './cache.js';
-import { showNotification, toggleSettings, toggleSidebar, toggleDevTools } from './ui.js';
+import { showNotification, toggleSettings, toggleSidebar, toggleDevTools, closeModalWithAnimation } from './ui.js';
 import { handleImageSelect, toggleVoiceRecording } from './media.js';
 import { loadReminders, addReminder } from './reminders.js';
 import { loadChat, loadChatList, newChat, renderChatMessages, clearAllChats, createNewChat } from './chat.js';
@@ -76,8 +76,14 @@ async function initApp() {
             }
             if (settings.available_models) {
                 state.availableModels = settings.available_models;
-                populateModelSelect();
             }
+
+            const savedProvider = localStorage.getItem('currentAIProvider');
+            if (savedProvider) {
+                state.currentAIProvider = savedProvider;
+            }
+            setProviderDropdownValue(state.currentAIProvider || 'auggie');
+            updateModelSelectVisibility();
 
             const historyToggle = DOM.get('historyToggle');
             const historyEnabled = settings.history_enabled !== false;
@@ -296,7 +302,7 @@ function browseWorkspace() {
         return;
     }
     if (modal.classList.contains('active')) {
-        modal.classList.remove('active');
+        closeModalWithAnimation(modal);
         return;
     }
     state.browserCurrentPath = state.currentWorkspace || '~';
@@ -310,7 +316,7 @@ function browseWorkspace() {
 
 function closeBrowser() {
     const modal = DOM.get('browserModal');
-    if (modal) modal.classList.remove('active');
+    if (modal) closeModalWithAnimation(modal);
 }
 
 function navigateToHome() {
@@ -327,7 +333,7 @@ function navigateToParent() {
     loadBrowserDirectory(parentPath);
 }
 
-function updateWorkspaceDisplay() {
+function updateWorkspaceDisplay(animate = false) {
     const display = DOM.get('workspaceDisplay');
     const input = DOM.get('workspaceInput');
     const current = DOM.get('currentWorkspace');
@@ -338,7 +344,26 @@ function updateWorkspaceDisplay() {
         displayPath = parts.slice(-2).join('/') || displayPath;
     }
 
-    if (display) display.textContent = displayPath || '~/';
+    if (display) {
+        if (animate && display.textContent !== (displayPath || '~/')) {
+            const oldWidth = display.offsetWidth;
+            display.style.width = oldWidth + 'px';
+            display.textContent = displayPath || '~/';
+            display.style.width = 'auto';
+            const newWidth = display.offsetWidth;
+            display.style.width = oldWidth + 'px';
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    display.style.width = newWidth + 'px';
+                    setTimeout(() => {
+                        display.style.width = '';
+                    }, 500);
+                });
+            });
+        } else {
+            display.textContent = displayPath || '~/';
+        }
+    }
     if (input) input.value = state.currentWorkspace;
     if (current) current.innerHTML = `<i class="fas fa-folder-open"></i> Current: ${state.currentWorkspace}`;
 }
@@ -359,35 +384,25 @@ function showWorkspaceDialog(targetPath) {
         messageEl.innerHTML = `Switch to <span class="workspace-path-highlight">${escapeHtml(displayPath)}</span>? This will start a new chat.`;
         dialog.classList.add('show');
 
-        const cleanup = () => {
-            dialog.classList.remove('show');
+        const cleanup = async (result) => {
+            await closeModalWithAnimation(dialog, 'show');
             cancelBtn.onclick = null;
             newChatBtn.onclick = null;
             dialog.onclick = null;
+            resolve(result);
         };
 
-        cancelBtn.onclick = () => {
-            cleanup();
-            resolve(false);
-        };
-
-        newChatBtn.onclick = () => {
-            cleanup();
-            resolve(true);
-        };
-
+        cancelBtn.onclick = () => cleanup(false);
+        newChatBtn.onclick = () => cleanup(true);
         dialog.onclick = (e) => {
-            if (e.target === dialog) {
-                cleanup();
-                resolve(false);
-            }
+            if (e.target === dialog) cleanup(false);
         };
     });
 }
 
 async function applyWorkspaceChange(workspace, slotNumber = null) {
     state.currentWorkspace = workspace;
-    updateWorkspaceDisplay();
+    updateWorkspaceDisplay(true);
 
     try {
         await api.saveSettings({ workspace: state.currentWorkspace });
@@ -502,7 +517,7 @@ function renderBrowserItems(items, showPath = false) {
             ? `<span class="browser-item-path">${escapeHtml(item.display_path)}</span>`
             : '';
         return `
-            <div class="browser-item directory${showPath ? ' with-path' : ''}" data-path="${encodeURIComponent(item.path)}">
+            <div class="browser-item directory${showPath ? ' with-path' : ''}" data-path="${encodeURIComponent(item.path)}" data-type="directory">
                 <i class="fas fa-folder"></i>
                 <span class="browser-item-name">${highlightedName}</span>${pathHtml}
             </div>
@@ -641,29 +656,35 @@ function setupBrowserListEvents() {
 
 function populateModelSelect() {
     const select = DOM.get('modelSelect');
-    const headerSelect = DOM.get('modelSelectHeader');
+    const modelOptions = document.getElementById('modelOptions');
+    const modelSelected = document.getElementById('modelSelected');
 
-    [select, headerSelect].forEach(sel => {
-        if (!sel) return;
-        sel.innerHTML = '';
+    if (select) {
+        select.innerHTML = '';
         state.availableModels.forEach(model => {
             const option = document.createElement('option');
             option.value = model;
             option.textContent = model;
-            if (model === state.currentModel) {
-                option.selected = true;
-            }
-            sel.appendChild(option);
+            if (model === state.currentModel) option.selected = true;
+            select.appendChild(option);
         });
-    });
+    }
+
+    if (modelOptions && modelSelected) {
+        modelOptions.innerHTML = '';
+        state.availableModels.forEach(model => {
+            const div = document.createElement('div');
+            div.className = 'dropdown-option' + (model === state.currentModel ? ' selected' : '');
+            div.dataset.value = model;
+            div.textContent = model;
+            modelOptions.appendChild(div);
+        });
+        modelSelected.querySelector('span').textContent = state.currentModel || 'Select Model';
+    }
 }
 
-async function updateModelFromHeader() {
-    const headerSelect = DOM.get('modelSelectHeader');
+async function updateModelFromHeader(model) {
     const modalSelect = DOM.get('modelSelect');
-    if (!headerSelect) return;
-
-    const model = headerSelect.value;
 
     if (state.currentAIProvider === 'openai') {
         state.currentOpenAIModel = model;
@@ -673,9 +694,7 @@ async function updateModelFromHeader() {
         localStorage.setItem('currentCodexModel', model);
     } else {
         state.currentModel = model;
-        if (modalSelect) {
-            modalSelect.value = model;
-        }
+        if (modalSelect) modalSelect.value = model;
     }
 
     try {
@@ -686,24 +705,20 @@ async function updateModelFromHeader() {
     }
 }
 
-async function updateProviderFromHeader() {
-    const headerSelect = DOM.get('providerSelectHeader');
-    if (!headerSelect) return;
-
+async function updateProviderFromHeader(provider) {
     if (state.streamingMessageDiv) {
         showNotification('Cannot switch provider while chat is streaming', 'warning');
-        headerSelect.value = state.currentAIProvider || 'auggie';
+        setProviderDropdownValue(state.currentAIProvider || 'auggie');
         return;
     }
 
     if (state.chatHistory && state.chatHistory.length > 0) {
         console.log('[APP] Blocking provider switch - chat has messages:', state.chatHistory.length);
         showNotification('Cannot switch provider mid-chat. Start a new chat to change provider.', 'warning');
-        headerSelect.value = state.currentAIProvider || 'auggie';
+        setProviderDropdownValue(state.currentAIProvider || 'auggie');
         return;
     }
 
-    const provider = headerSelect.value;
     state.currentAIProvider = provider;
     localStorage.setItem('currentAIProvider', provider);
 
@@ -719,37 +734,58 @@ async function updateProviderFromHeader() {
     }
 }
 
+function setProviderDropdownValue(provider) {
+    const providerOptions = document.getElementById('providerOptions');
+    const providerSelected = document.getElementById('providerSelected');
+    if (!providerOptions || !providerSelected) return;
+
+    const providerNames = { auggie: 'Auggie', codex: 'Codex', openai: 'OpenAI' };
+    providerSelected.querySelector('span').textContent = providerNames[provider] || provider;
+
+    providerOptions.querySelectorAll('.dropdown-option').forEach(opt => {
+        opt.classList.toggle('selected', opt.dataset.value === provider);
+    });
+}
+
+function setModelDropdownValue(model) {
+    const modelOptions = document.getElementById('modelOptions');
+    const modelSelected = document.getElementById('modelSelected');
+    if (!modelOptions || !modelSelected) return;
+
+    modelSelected.querySelector('span').textContent = model;
+    modelOptions.querySelectorAll('.dropdown-option').forEach(opt => {
+        opt.classList.toggle('selected', opt.dataset.value === model);
+    });
+}
+
 function updateModelSelectVisibility() {
-    const modelSelectHeader = DOM.get('modelSelectHeader');
-    if (!modelSelectHeader) return;
+    const modelOptions = document.getElementById('modelOptions');
+    const modelSelected = document.getElementById('modelSelected');
+    if (!modelOptions || !modelSelected) return;
+
+    let models = [];
+    let currentModel = '';
 
     if (state.currentAIProvider === 'openai') {
-        modelSelectHeader.innerHTML = '';
-        const openaiModels = state.availableOpenAIModels || ['gpt-5.2', 'gpt-5.2-chat-latest', 'gpt-5.1', 'gpt-5-mini', 'gpt-5-nano'];
-        openaiModels.forEach(model => {
-            const option = document.createElement('option');
-            option.value = model;
-            option.textContent = model;
-            if (model === state.currentOpenAIModel) {
-                option.selected = true;
-            }
-            modelSelectHeader.appendChild(option);
-        });
+        models = state.availableOpenAIModels || ['gpt-5.2', 'gpt-5.2-chat-latest', 'gpt-5.1', 'gpt-5-mini', 'gpt-5-nano'];
+        currentModel = state.currentOpenAIModel || models[0];
     } else if (state.currentAIProvider === 'codex') {
-        modelSelectHeader.innerHTML = '';
-        const codexModels = state.availableCodexModels || ['gpt-5.2', 'gpt-5.1', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5.2-chat-latest'];
-        codexModels.forEach(model => {
-            const option = document.createElement('option');
-            option.value = model;
-            option.textContent = model;
-            if (model === (state.currentCodexModel || 'gpt-5.2')) {
-                option.selected = true;
-            }
-            modelSelectHeader.appendChild(option);
-        });
+        models = state.availableCodexModels || ['gpt-5.2', 'gpt-5.1', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5.2-chat-latest'];
+        currentModel = state.currentCodexModel || 'gpt-5.2';
     } else {
         populateModelSelect();
+        return;
     }
+
+    modelOptions.innerHTML = '';
+    models.forEach(model => {
+        const div = document.createElement('div');
+        div.className = 'dropdown-option' + (model === currentModel ? ' selected' : '');
+        div.dataset.value = model;
+        div.textContent = model;
+        modelOptions.appendChild(div);
+    });
+    modelSelected.querySelector('span').textContent = currentModel;
 }
 
 function handleKeyDown(event) {
@@ -775,6 +811,8 @@ window.renderBrowserItems = renderBrowserItems;
 window.switchWorkspace = switchWorkspace;
 window.updateModelFromHeader = updateModelFromHeader;
 window.updateProviderFromHeader = updateProviderFromHeader;
+window.setProviderDropdownValue = setProviderDropdownValue;
+window.updateModelSelectVisibility = updateModelSelectVisibility;
 window.handleKeyDown = handleKeyDown;
 window.autoResize = autoResize;
 window.sendMessage = sendMessage;
@@ -898,11 +936,55 @@ window.toggleAddShortcutModal = toggleAddShortcutModal;
 window.saveShortcut = handleSaveShortcut;
 window.renderCustomShortcuts = renderCustomShortcuts;
 
+function initCustomDropdowns() {
+    const providerDropdown = document.getElementById('providerDropdown');
+    const modelDropdown = document.getElementById('modelDropdown');
+
+    const closeAllDropdowns = () => {
+        document.querySelectorAll('.custom-dropdown.open').forEach(d => d.classList.remove('open'));
+    };
+
+    const setupDropdown = (dropdown, onSelect) => {
+        if (!dropdown) return;
+
+        const selected = dropdown.querySelector('.dropdown-selected');
+        const options = dropdown.querySelector('.dropdown-options');
+
+        selected?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = dropdown.classList.contains('open');
+            closeAllDropdowns();
+            if (!isOpen) dropdown.classList.add('open');
+        });
+
+        options?.addEventListener('click', (e) => {
+            const option = e.target.closest('.dropdown-option');
+            if (!option) return;
+
+            const value = option.dataset.value;
+            const text = option.textContent;
+
+            options.querySelectorAll('.dropdown-option').forEach(o => o.classList.remove('selected'));
+            option.classList.add('selected');
+            selected.querySelector('span').textContent = text;
+            dropdown.classList.remove('open');
+
+            onSelect(value);
+        });
+    };
+
+    setupDropdown(providerDropdown, updateProviderFromHeader);
+    setupDropdown(modelDropdown, updateModelFromHeader);
+
+    document.addEventListener('click', closeAllDropdowns);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initApp();
     initDefaultShortcuts();
     migrateShortcutsWithIds(getShortcuts());
     renderCustomShortcuts();
+    initCustomDropdowns();
 
     document.getElementById('addShortcutBtn')?.addEventListener('click', () => toggleAddShortcutModal());
 

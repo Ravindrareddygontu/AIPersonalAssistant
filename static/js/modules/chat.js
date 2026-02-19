@@ -3,7 +3,7 @@ import { DOM, escapeHtml, scrollToBottom } from './dom.js';
 import { api } from './api.js';
 import { saveChatToCache, loadChatFromCache, markCacheSynced } from './cache.js';
 import { formatMessage, addCodeCopyButtons } from './markdown.js';
-import { showNotification } from './ui.js';
+import { showNotification, closeModalWithAnimation } from './ui.js';
 
 function showConfirmDialog(message) {
     return new Promise((resolve) => {
@@ -20,28 +20,18 @@ function showConfirmDialog(message) {
         messageEl.textContent = message;
         dialog.classList.add('show');
 
-        const cleanup = () => {
-            dialog.classList.remove('show');
+        const cleanup = async (result) => {
+            await closeModalWithAnimation(dialog, 'show');
             cancelBtn.onclick = null;
             deleteBtn.onclick = null;
             dialog.onclick = null;
+            resolve(result);
         };
 
-        cancelBtn.onclick = () => {
-            cleanup();
-            resolve(false);
-        };
-
-        deleteBtn.onclick = () => {
-            cleanup();
-            resolve(true);
-        };
-
+        cancelBtn.onclick = () => cleanup(false);
+        deleteBtn.onclick = () => cleanup(true);
         dialog.onclick = (e) => {
-            if (e.target === dialog) {
-                cleanup();
-                resolve(false);
-            }
+            if (e.target === dialog) cleanup(false);
         };
     });
 }
@@ -400,9 +390,8 @@ export async function loadChat(chatId) {
             if (chat.provider) {
                 state.currentAIProvider = chat.provider;
                 localStorage.setItem('currentAIProvider', chat.provider);
-                const providerSelect = document.getElementById('providerSelectHeader');
-                if (providerSelect) {
-                    providerSelect.value = chat.provider;
+                if (window.setProviderDropdownValue) {
+                    window.setProviderDropdownValue(chat.provider);
                 }
                 if (window.updateModelSelectVisibility) {
                     window.updateModelSelectVisibility();
@@ -516,9 +505,8 @@ export async function createNewChat() {
         if (newChatData.provider) {
             state.currentAIProvider = newChatData.provider;
             localStorage.setItem('currentAIProvider', newChatData.provider);
-            const providerSelect = document.getElementById('providerSelectHeader');
-            if (providerSelect) {
-                providerSelect.value = newChatData.provider;
+            if (window.setProviderDropdownValue) {
+                window.setProviderDropdownValue(newChatData.provider);
             }
             if (window.updateModelSelectVisibility) {
                 window.updateModelSelectVisibility();
