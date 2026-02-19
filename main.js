@@ -240,6 +240,9 @@ app.whenReady().then(async () => {
     // Create hidden main window
     createWindow();
 
+    // Clear cache to ensure fresh JS/CSS files are loaded
+    await mainWindow.webContents.session.clearCache();
+
     // Load the URL
     mainWindow.loadURL('http://localhost:5001');
 

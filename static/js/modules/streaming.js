@@ -64,6 +64,7 @@ function startStreamingMessage(requestId) {
     streamingMessageDiv = document.createElement('div');
     streamingMessageDiv.className = 'message assistant streaming';
     streamingMessageDiv.innerHTML = `
+        <div class="message-avatar"><i class="fas fa-robot"></i></div>
         <div class="message-content"><span class="streaming-cursor">▋</span></div>
     `;
     container.appendChild(streamingMessageDiv);
@@ -100,9 +101,17 @@ function finalizeStreamingMessage(finalContent, requestId) {
 
     if (streamingMessageDiv) {
         streamingMessageDiv.classList.remove('streaming');
+        streamingMessageDiv.dataset.messageId = messageId;
         const contentDiv = streamingMessageDiv.querySelector('.message-content');
         if (contentDiv) {
-            contentDiv.innerHTML = formatMessage(content, false);
+            const actionsHTML = `
+                <div class="message-actions">
+                    <button class="copy-btn" data-content="${encodeURIComponent(content)}">
+                        <i class="fas fa-copy"></i> Copy
+                    </button>
+                </div>
+            `;
+            contentDiv.innerHTML = actionsHTML + `<div class="message-text">${formatMessage(content, false)}</div>`;
         }
         addCodeCopyButtons(streamingMessageDiv);
     }

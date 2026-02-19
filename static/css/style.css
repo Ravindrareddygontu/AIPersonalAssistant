@@ -839,7 +839,7 @@ body {
 }
 
 .message.user {
-    margin-bottom: 20px;
+    margin-bottom: 32px;
     flex-direction: row-reverse;
     justify-content: flex-start;
     align-items: center;

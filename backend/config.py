@@ -94,7 +94,7 @@ def get_auggie_model_id(display_name):
 
 class Settings:
     def __init__(self):
-        self._workspace = os.environ.get('DEFAULT_WORKSPACE', os.path.expanduser("~/projects"))
+        self._workspace = os.environ.get('DEFAULT_WORKSPACE', os.path.expanduser("~/Projects/POC'S/ai-chat-app"))
         self._model = DEFAULT_MODEL
         self._history_enabled = True  # Global toggle for chat history storage
         self._slack_notify = False  # Send status to Slack after completion

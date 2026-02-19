@@ -421,6 +421,7 @@ window.updateModelFromHeader = updateModelFromHeader;
 window.updateProviderFromHeader = updateProviderFromHeader;
 window.handleKeyDown = handleKeyDown;
 window.autoResize = autoResize;
+window.sendMessage = sendMessage;
 
 document.addEventListener('DOMContentLoaded', initApp);
 
