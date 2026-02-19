@@ -124,6 +124,9 @@
                     <button class="image-btn" onclick="handleImageSelect()" id="imageBtn" title="Attach images (supports multiple)" aria-label="Attach images">
                         <i class="fas fa-image"></i>
                     </button>
+                    <div class="listening-overlay" id="listeningOverlay">
+                        <span class="listening-text">Listening<span class="listening-dots"></span></span>
+                    </div>
                     <textarea
                         id="messageInput"
                         placeholder="Ask anything..."
@@ -135,6 +138,12 @@
                     <div class="input-actions">
                         <button class="voice-btn" onclick="toggleVoiceRecording()" id="voiceBtn" title="Voice input (Speech to Text)" aria-label="Voice input">
                             <i class="fas fa-microphone" id="voiceIcon"></i>
+                            <div class="voice-waves" id="voiceWaves">
+                                <span class="wave-bar"></span>
+                                <span class="wave-bar"></span>
+                                <span class="wave-bar"></span>
+                                <span class="wave-bar"></span>
+                            </div>
                         </button>
                         <button class="send-btn" onclick="sendMessage()" id="sendBtn" title="Send message (Enter)" aria-label="Send message">
                             <i class="fas fa-arrow-up"></i>

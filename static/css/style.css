@@ -2074,6 +2074,44 @@ body {
     width: calc(100% - 15%);
     margin-left: auto;
     margin-right: 10%;
+    position: relative;
+}
+
+.listening-overlay {
+    display: none;
+    position: absolute;
+    left: 52px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 100;
+    pointer-events: none;
+    align-items: center;
+}
+
+.chat-input-wrapper.listening .listening-overlay {
+    display: flex;
+}
+
+.chat-input-wrapper.listening textarea::placeholder {
+    opacity: 0;
+}
+
+.listening-text {
+    font-size: 0.95rem;
+    color: var(--text);
+}
+
+.listening-dots::after {
+    content: '';
+    animation: listening-dots 0.8s infinite steps(1);
+}
+
+@keyframes listening-dots {
+    0% { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+    100% { content: ''; }
 }
 
 .chat-input-wrapper:focus-within {
@@ -2198,12 +2236,69 @@ body {
     background: #ff4444;
     animation: pulse-recording 1.5s infinite;
     box-shadow: 0 2px 8px rgba(255, 68, 68, 0.4);
+    padding: 8px 12px;
+    gap: 8px;
 }
 
 .voice-btn.recording:hover {
     color: #fff;
     background: #ff5555;
     transform: scale(1.05);
+}
+
+.voice-btn.recording .fa-microphone,
+.voice-btn.recording .fa-microphone-slash {
+    display: none;
+}
+
+.voice-waves {
+    display: none;
+    align-items: center;
+    gap: 3px;
+    height: 18px;
+}
+
+.voice-btn.recording .voice-waves {
+    display: flex;
+}
+
+.wave-bar {
+    width: 3px;
+    height: 100%;
+    background: #fff;
+    border-radius: 2px;
+    animation: wave-pulse 0.8s ease-in-out infinite;
+}
+
+.wave-bar:nth-child(1) {
+    animation-delay: 0s;
+    height: 40%;
+}
+
+.wave-bar:nth-child(2) {
+    animation-delay: 0.15s;
+    height: 70%;
+}
+
+.wave-bar:nth-child(3) {
+    animation-delay: 0.3s;
+    height: 100%;
+}
+
+.wave-bar:nth-child(4) {
+    animation-delay: 0.45s;
+    height: 60%;
+}
+
+@keyframes wave-pulse {
+    0%, 100% {
+        transform: scaleY(0.4);
+        opacity: 0.7;
+    }
+    50% {
+        transform: scaleY(1);
+        opacity: 1;
+    }
 }
 
 @keyframes pulse-recording {
@@ -2218,11 +2313,32 @@ body {
 .voice-btn.processing {
     color: var(--primary);
     cursor: wait;
-    animation: spin 1s linear infinite;
+    padding: 8px 12px;
+    gap: 8px;
 }
 
-.voice-btn.processing i::before {
-    content: "\f110"; /* spinner icon */
+.voice-btn.processing .voice-waves {
+    display: flex;
+}
+
+.voice-btn.processing .voice-waves .wave-bar {
+    background: var(--primary);
+    animation: wave-processing 0.6s ease-in-out infinite;
+}
+
+@keyframes wave-processing {
+    0%, 100% {
+        transform: scaleY(0.3);
+        opacity: 0.5;
+    }
+    50% {
+        transform: scaleY(0.8);
+        opacity: 0.8;
+    }
+}
+
+.voice-btn.processing .fa-microphone {
+    display: none;
 }
 
 @keyframes spin {
@@ -2563,7 +2679,7 @@ body {
     align-items: center;
     gap: 8px;
     padding: 8px 0;
-    font-size: 15px;
+    font-size: 16px;
     color: var(--text-muted);
 }
 

@@ -201,6 +201,7 @@ async function transcribeAudio(audioBlob) {
 function updateVoiceButtonState() {
     const voiceBtn = document.getElementById('voiceBtn');
     const voiceIcon = document.getElementById('voiceIcon');
+    const inputWrapper = document.querySelector('.chat-input-wrapper');
 
     if (!voiceBtn || !voiceIcon) return;
 
@@ -208,10 +209,12 @@ function updateVoiceButtonState() {
         voiceBtn.classList.add('recording');
         voiceIcon.classList.remove('fa-microphone');
         voiceIcon.classList.add('fa-microphone-slash');
+        if (inputWrapper) inputWrapper.classList.add('listening');
     } else {
         voiceBtn.classList.remove('recording');
         voiceIcon.classList.remove('fa-microphone-slash');
         voiceIcon.classList.add('fa-microphone');
+        if (inputWrapper) inputWrapper.classList.remove('listening');
     }
 }
 
