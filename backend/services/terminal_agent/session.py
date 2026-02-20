@@ -18,10 +18,11 @@ log = logging.getLogger('terminal_agent.session')
 
 class TerminalSession:
 
-    def __init__(self, provider: 'TerminalAgentProvider', workspace: str, model: Optional[str] = None):
+    def __init__(self, provider: 'TerminalAgentProvider', workspace: str, model: Optional[str] = None, session_id: Optional[str] = None):
         self.provider = provider
         self.workspace = os.path.expanduser(workspace)
         self.model = model or provider.config.default_model
+        self.session_id = session_id
         self.process: Optional[Popen] = None
         self.master_fd: Optional[int] = None
         self.initialized: bool = False
@@ -48,7 +49,7 @@ class TerminalSession:
 
             self._set_nonblocking(master_fd)
 
-            cmd = self.provider.get_command(self.workspace, self.model)
+            cmd = self.provider.get_command(self.workspace, self.model, self.session_id)
             env = self.provider.get_env()
 
             log.info(f"[{self.provider.name}] Starting session: {' '.join(cmd)}")

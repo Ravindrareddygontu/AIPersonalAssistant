@@ -23,7 +23,8 @@ class SessionManager:
         cls,
         provider: TerminalAgentProvider,
         workspace: str,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        session_id: Optional[str] = None
     ) -> Tuple[TerminalSession, bool]:
         key = f"{provider.name}:{workspace}:{model or 'default'}"
         if key in cls._sessions:
@@ -32,7 +33,7 @@ class SessionManager:
                 return session, False
             session.cleanup()
 
-        session = TerminalSession(provider, workspace, model)
+        session = TerminalSession(provider, workspace, model, session_id)
         cls._sessions[key] = session
         return session, True
 
@@ -108,6 +109,16 @@ class TerminalAgentExecutor:
                 execution_time=time.time() - start_time
             )
 
+    def _check_activity_indicator(self, clean_output: str, state: StreamState) -> bool:
+        if not state.saw_response_marker:
+            return False
+        last_section = clean_output[-500:] if len(clean_output) > 500 else clean_output
+        for indicator in self.provider.get_activity_indicators():
+            if indicator in last_section:
+                log.debug(f"[EXECUTOR] Activity indicator detected: {indicator}")
+                return True
+        return state.is_tool_executing()
+
     def _send_and_wait(self, session: TerminalSession, message: str) -> TerminalAgentResponse:
         session.drain_output(timeout=0.2)
         session.drain_output(timeout=0.2)
@@ -140,21 +151,6 @@ class TerminalAgentExecutor:
                 log.warning(f"[EXECUTOR] Max execution time reached ({elapsed:.1f}s)")
                 break
 
-            if state.saw_response_marker:
-                if state.is_tool_executing():
-                    if silence > 60.0:
-                        log.info(f"[EXECUTOR] Tool execution timeout ({silence:.1f}s)")
-                        break
-                    continue
-
-                if state.content_looks_complete() and silence > self.config.data_silence_timeout:
-                    log.info(f"[EXECUTOR] Content complete + {silence:.1f}s silence")
-                    break
-
-                if silence > self.config.silence_timeout:
-                    log.info(f"[EXECUTOR] Silence timeout after response ({silence:.1f}s)")
-                    break
-
             ready = select.select([fd], [], [], 0.1)[0]
             if ready:
                 try:
@@ -175,9 +171,18 @@ class TerminalAgentExecutor:
 
                 if state.saw_message_echo:
                     processor.process_chunk(clean, state)
+
                     if processor.check_end_pattern(clean, state):
                         log.info(f"[EXECUTOR] End pattern detected")
                         break
+
+                    if self._check_activity_indicator(clean, state):
+                        last_data_time = time.time()
+                        continue
+
+            if state.saw_response_marker and silence > self.config.silence_timeout:
+                log.info(f"[EXECUTOR] Silence timeout after response ({silence:.1f}s)")
+                break
 
         session.drain_output(0.3)
         clean_all = TextCleaner.strip_ansi(state.all_output)

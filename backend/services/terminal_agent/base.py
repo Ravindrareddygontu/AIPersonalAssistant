@@ -38,7 +38,7 @@ class TerminalAgentProvider(ABC):
         return self.config.name
 
     @abstractmethod
-    def get_command(self, workspace: str, model: Optional[str] = None) -> List[str]:
+    def get_command(self, workspace: str, model: Optional[str] = None, session_id: Optional[str] = None) -> List[str]:
         """Return the CLI command to start the agent as a list of arguments."""
         ...
 

@@ -8,6 +8,8 @@ DEFAULT_TOOL_PATTERNS: List[str] = [
     'executing tools',
     '- read file',
     '- read directory',
+    'read directory',
+    'read file',
     '- search',
     'codebase search',
     'terminal -',
@@ -16,6 +18,9 @@ DEFAULT_TOOL_PATTERNS: List[str] = [
     '↳ search',
     'reading file',
     'searching',
+    'running',
+    'launching',
+    'executing',
 ]
 
 # Incomplete sentence indicators for content_looks_complete() - module level for performance

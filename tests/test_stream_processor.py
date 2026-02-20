@@ -116,6 +116,124 @@ class TestStreamProcessorSamePrefix:
         assert state2.streamed_length == 0
 
 
+class TestMessageHistoryFiltering:
+    """Test filtering of Auggie's message history UI elements.
+
+    Bug Description:
+    - Auggie's terminal UI shows numbered list of previous messages (e.g., "1. user question")
+    - During streaming, these lines get redrawn constantly and pollute the output
+    - In one case, the user's question appeared 841 times in the answer!
+    """
+
+    def test_filters_message_history_lines(self):
+        """Test that numbered message history lines are filtered out."""
+        question = "i am asking about slack bot"
+        processor = StreamProcessor(question)
+        state = StreamState()
+        state.mark_message_echo_found(0)
+
+        output = """● Let me look at the terminal_agent executor:
+1. i am asking about slack bot
+backend/services/terminal_agent/executor.py - read file
+1. i am asking about slack bot
+1. i am asking about slack bot
+⎿ Read 213 lines
+1. i am asking about slack bot
+Now I understand the flow.
+1. i am asking about slack bot
+The solution is to check status indicators."""
+
+        result = processor.process_chunk(output, state)
+
+        assert result is not None
+        assert "i am asking about slack bot" not in result
+        assert "terminal_agent executor" in result
+        assert "Now I understand the flow" in result
+
+    def test_filters_different_numbered_prefixes(self):
+        """Test filtering works for any number prefix (1., 2., 10., etc.)."""
+        question = "what are the performance issues"
+        processor = StreamProcessor(question)
+        state = StreamState()
+        state.mark_message_echo_found(0)
+
+        output = """● Here are the issues:
+1. what are the performance issues
+2. what are the performance issues
+10. what are the performance issues
+1. Memory leaks in the cache
+2. Slow database queries"""
+
+        result = processor.process_chunk(output, state)
+
+        assert result is not None
+        assert "what are the performance issues" not in result
+        assert "Memory leaks" in result
+        assert "Slow database" in result
+
+    def test_keeps_similar_but_different_messages(self):
+        """Test that similar messages with different content are kept."""
+        question = "list the databases"
+        processor = StreamProcessor(question)
+        state = StreamState()
+        state.mark_message_echo_found(0)
+
+        output = """● Found these:
+1. list the databases
+1. list the users
+2. MongoDB
+3. PostgreSQL"""
+
+        result = processor.process_chunk(output, state)
+
+        assert result is not None
+        assert "list the databases" not in result
+        assert "list the users" in result
+        assert "MongoDB" in result
+
+    def test_short_messages_not_filtered(self):
+        """Test that short messages (<5 chars) don't trigger filtering."""
+        question = "hi"
+        processor = StreamProcessor(question)
+
+        assert processor._message_history_pattern is None
+
+    def test_message_history_pattern_built_correctly(self):
+        """Test the pattern is built with proper escaping."""
+        question = "what is 2+2?"
+        processor = StreamProcessor(question)
+
+        assert processor._message_history_pattern is not None
+        # Should match exact lines
+        assert processor._message_history_pattern.match("1. what is 2+2?")
+        assert processor._message_history_pattern.match("99. what is 2+2?")
+        assert processor._message_history_pattern.match("1. what is 2+2?  ")  # trailing space ok
+        # Should NOT match
+        assert not processor._message_history_pattern.match("what is 2+2?")
+        assert not processor._message_history_pattern.match("1. different question")
+        # Should NOT match when there's content AFTER the question
+        assert not processor._message_history_pattern.match("1. what is 2+2? - here's the answer")
+
+    def test_preserves_question_in_legitimate_answer(self):
+        """Test that question appearing in AI's answer is NOT filtered."""
+        question = "list databases"
+        processor = StreamProcessor(question)
+        state = StreamState()
+        state.mark_message_echo_found(0)
+
+        output = """● Here are the database commands:
+1. list databases - shows all DBs
+2. create database - makes new DB
+3. drop database - deletes a DB"""
+
+        result = processor.process_chunk(output, state)
+
+        assert result is not None
+        # The question should appear because it has " - shows all DBs" after it
+        assert "list databases" in result
+        assert "shows all DBs" in result
+
+
 class TestStreamProcessorBasic:
     """Basic functionality tests for StreamProcessor."""
 

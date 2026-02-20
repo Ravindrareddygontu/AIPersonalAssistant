@@ -23,9 +23,10 @@ MAX_AUGGIE_PROCESSES = 3  # Maximum number of auggie processes allowed
 
 
 class AuggieSession:
-    def __init__(self, workspace, model=None):
+    def __init__(self, workspace, model=None, session_id=None):
         self.workspace = workspace
         self.model = model
+        self.session_id = session_id
         self.process = None
         self.master_fd = None
         self.last_used = time.time()
@@ -74,6 +75,15 @@ class AuggieSession:
                 break
 
         cmd = [auggie_cmd]
+
+        if self.session_id:
+            from backend.services.auggie.session_tracker import session_exists
+            if session_exists(self.session_id):
+                cmd.extend(['--resume', self.session_id])
+                log.info(f"[SESSION] Resuming Auggie session: {self.session_id}")
+            else:
+                log.warning(f"[SESSION] Session {self.session_id} not found, starting fresh")
+
         auggie_model_id = None
         if self.model:
             auggie_model_id = get_auggie_model_id(self.model)
@@ -376,41 +386,63 @@ def start_cleanup_thread():
 
 class SessionManager:
     @staticmethod
-    def get_or_create(workspace, model=None):
+    def get_or_create(workspace, model=None, session_id=None):
         # Ensure cleanup thread is running
         start_cleanup_thread()
 
         with _lock:
-            if workspace in _sessions and _sessions[workspace].is_alive():
-                # If model changed, restart the session
-                if model and _sessions[workspace].model != model:
-                    log.info(f"[SESSION] Model changed from {_sessions[workspace].model} to {model}, restarting session")
-                    _sessions[workspace].cleanup()
-                    _sessions[workspace] = AuggieSession(workspace, model)
-                    return _sessions[workspace], True
-                _sessions[workspace].last_used = time.time()
-                return _sessions[workspace], False
+            log.info(f"[SESSION] get_or_create called for workspace={workspace}, model={model}, session_id={session_id}")
+            log.info(f"[SESSION] Current sessions: {list(_sessions.keys())}")
+
             if workspace in _sessions:
-                _sessions[workspace].cleanup()
-            _sessions[workspace] = AuggieSession(workspace, model)
+                session = _sessions[workspace]
+                is_alive = session.is_alive()
+                log.info(f"[SESSION] Found existing session: is_alive={is_alive}, pid={session.process.pid if session.process else None}, last_used={time.time() - session.last_used:.1f}s ago")
+
+                if is_alive:
+                    # If model changed, restart the session
+                    if model and session.model != model:
+                        log.info(f"[SESSION] Model changed from {session.model} to {model}, restarting session")
+                        session.cleanup()
+                        _sessions[workspace] = AuggieSession(workspace, model, session_id)
+                        return _sessions[workspace], True
+                    session.last_used = time.time()
+                    return session, False
+                else:
+                    log.warning(f"[SESSION] Session exists but process is dead, cleaning up")
+                    session.cleanup()
+            else:
+                log.info(f"[SESSION] No existing session for workspace, creating new one")
+
+            _sessions[workspace] = AuggieSession(workspace, model, session_id)
             return _sessions[workspace], True
 
     @staticmethod
     def cleanup_old():
         with _lock:
             now = time.time()
-            for ws in [w for w, s in _sessions.items() if now - s.last_used > 600]:
+            log.debug(f"[CLEANUP] cleanup_old called, checking {len(_sessions)} sessions")
+
+            old_sessions = [w for w, s in _sessions.items() if now - s.last_used > 600]
+            if old_sessions:
+                log.info(f"[CLEANUP] Found {len(old_sessions)} sessions older than 10 minutes: {old_sessions}")
+
+            for ws in old_sessions:
+                session = _sessions[ws]
+                age_seconds = now - session.last_used
+
                 # Don't delete sessions that have an active terminal open (in_use)
-                if _sessions[ws].in_use:
-                    log.info(f"[CLEANUP] Skipping session {ws}: terminal is in use")
+                if session.in_use:
+                    log.info(f"[CLEANUP] Skipping session {ws}: terminal is in use (age: {age_seconds:.0f}s)")
                     continue
                 # Don't delete sessions where the process is still alive - user may return
                 # Only delete sessions where the process has died
-                if _sessions[ws].is_alive():
-                    log.info(f"[CLEANUP] Skipping session {ws}: process still alive (PID: {_sessions[ws].process.pid})")
+                if session.is_alive():
+                    log.info(f"[CLEANUP] Skipping session {ws}: process still alive (PID: {session.process.pid}, age: {age_seconds:.0f}s)")
                     continue
-                log.info(f"[CLEANUP] Cleaning up dead session {ws}")
-                _sessions[ws].cleanup()
+
+                log.warning(f"[CLEANUP] REMOVING dead session {ws} (age: {age_seconds:.0f}s, pid was: {session.process.pid if session.process else None})")
+                session.cleanup()
                 del _sessions[ws]
 
         # Also clean up any orphaned OS processes

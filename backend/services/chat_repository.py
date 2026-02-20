@@ -124,6 +124,29 @@ class ChatRepository:
         )
         log.info(f"Set streaming_status={status} for chat {self.chat_id}")
 
+    def get_auggie_session_id(self) -> str | None:
+        chat = self.get_chat()
+        if chat:
+            return chat.get('auggie_session_id')
+        return None
+
+    def save_auggie_session_id(self, session_id: str) -> bool:
+        if not self.chat_id or not session_id:
+            return False
+        if self.collection is None:
+            log.warning(f"MongoDB not available, cannot save auggie_session_id for {self.chat_id}")
+            return False
+        try:
+            self.collection.update_one(
+                {'id': self.chat_id},
+                {'$set': {'auggie_session_id': session_id, 'updated_at': datetime.utcnow().isoformat()}}
+            )
+            log.info(f"Saved auggie_session_id={session_id} for chat {self.chat_id}")
+            return True
+        except Exception as e:
+            log.error(f"Failed to save auggie_session_id: {e}")
+            return False
+
     def save_partial_answer(self, message_id: str, partial_content: str) -> bool:
         if not self.chat_id or not message_id:
             return False

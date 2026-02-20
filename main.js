@@ -4,6 +4,27 @@ const { spawn } = require('child_process');
 const http = require('http');
 const fs = require('fs');
 
+// Load .env file
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    envContent.split('\n').forEach(line => {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith('#')) {
+            const [key, ...valueParts] = trimmed.split('=');
+            if (key && valueParts.length > 0) {
+                let value = valueParts.join('=');
+                // Remove surrounding quotes if present
+                if ((value.startsWith('"') && value.endsWith('"')) ||
+                    (value.startsWith("'") && value.endsWith("'"))) {
+                    value = value.slice(1, -1);
+                }
+                process.env[key] = value;
+            }
+        }
+    });
+}
+
 app.commandLine.appendSwitch('no-sandbox');
 
 // Log file for debugging when running from desktop icon
@@ -20,6 +41,7 @@ function log(message) {
 let mainWindow;
 let splashWindow;
 let flaskProcess;
+let slackBotProcess;
 let logsTerminalProcess = null;
 
 function createSplashWindow() {
@@ -78,6 +100,42 @@ function startFlaskServer() {
     flaskProcess.on('close', (code) => { log(`Flask process exited with code ${code}`); flaskProcess = null; });
 
     return new Promise((resolve) => setTimeout(resolve, 2500));
+}
+
+function startSlackBot() {
+    const venvPython = path.join(__dirname, 'venv', 'bin', 'python');
+    const slackScript = path.join(__dirname, 'start_slack.py');
+
+    // Check if Slack tokens are configured
+    if (!process.env.SLACK_BOT_TOKEN || !process.env.SLACK_APP_TOKEN) {
+        log('Slack bot not started: SLACK_BOT_TOKEN or SLACK_APP_TOKEN not set');
+        return;
+    }
+
+    if (!fs.existsSync(slackScript)) {
+        log(`Slack script not found at ${slackScript}`);
+        return;
+    }
+
+    log('Starting Slack bot...');
+    slackBotProcess = spawn(venvPython, [slackScript, '--mode=socket'], {
+        cwd: __dirname,
+        env: { ...process.env },
+        stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    const handlePipeError = (stream, name) => {
+        if (stream) {
+            stream.on('error', (err) => { if (err.code !== 'EPIPE') log(`Slack bot ${name} error: ${err}`); });
+            if (name !== 'stdin') stream.on('data', (data) => log(`[SLACK] ${data.toString().trimEnd()}`));
+        }
+    };
+    handlePipeError(slackBotProcess.stdout, 'stdout');
+    handlePipeError(slackBotProcess.stderr, 'stderr');
+    handlePipeError(slackBotProcess.stdin, 'stdin');
+
+    slackBotProcess.on('error', (err) => log(`Failed to start Slack bot: ${err}`));
+    slackBotProcess.on('close', (code) => { log(`Slack bot exited with code ${code}`); slackBotProcess = null; });
 }
 
 function createWindow() {
@@ -233,6 +291,9 @@ app.whenReady().then(async () => {
     // Start Flask server (don't await)
     startFlaskServer();
 
+    // Start Slack bot in background
+    startSlackBot();
+
     // Wait for server to respond
     console.log('Waiting for Flask server...');
     await waitForServer('http://localhost:5001');
@@ -287,8 +348,10 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 
 app.on('before-quit', () => {
     if (flaskProcess && !flaskProcess.killed) try { flaskProcess.kill('SIGTERM'); } catch (e) {}
+    if (slackBotProcess && !slackBotProcess.killed) try { slackBotProcess.kill('SIGTERM'); } catch (e) {}
 });
 
 app.on('quit', () => {
     if (flaskProcess && !flaskProcess.killed) try { flaskProcess.kill('SIGKILL'); } catch (e) {}
+    if (slackBotProcess && !slackBotProcess.killed) try { slackBotProcess.kill('SIGKILL'); } catch (e) {}
 });

@@ -35,9 +35,16 @@ class AuggieProvider(TerminalAgentProvider):
             re.compile(r'╰─+╯'),
         ]
 
-    def get_command(self, workspace: str, model: Optional[str] = None) -> List[str]:
+    def get_command(self, workspace: str, model: Optional[str] = None, session_id: Optional[str] = None) -> List[str]:
         auggie_cmd = self._find_auggie_binary()
         cmd = [auggie_cmd]
+        if session_id:
+            from backend.services.auggie.session_tracker import session_exists
+            if session_exists(session_id):
+                cmd.extend(['--resume', session_id])
+                log.info(f"Resuming Auggie session: {session_id}")
+            else:
+                log.warning(f"Session {session_id} not found, starting fresh")
         if model:
             auggie_model_id = get_auggie_model_id(model)
             cmd.extend(['-m', auggie_model_id])

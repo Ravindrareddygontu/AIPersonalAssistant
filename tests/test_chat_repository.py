@@ -227,26 +227,125 @@ class TestGenerateTitle:
     def test_short_question(self):
         """Test title generation for short question."""
         from backend.services.chat_repository import ChatRepository
-        
+
         result = ChatRepository._generate_title("What is Python?")
         assert result == "What is Python?"
 
     def test_long_question_truncated(self):
         """Test that long questions are truncated."""
         from backend.services.chat_repository import ChatRepository
-        
+
         long_q = "A" * 100
         result = ChatRepository._generate_title(long_q)
-        
+
         assert len(result) == 53  # 50 + "..."
         assert result.endswith("...")
 
     def test_custom_max_length(self):
         """Test custom max length."""
         from backend.services.chat_repository import ChatRepository
-        
+
         result = ChatRepository._generate_title("A" * 50, max_length=20)
         assert len(result) == 23  # 20 + "..."
+
+
+class TestAuggieSessionId:
+    """Test auggie_session_id methods for session persistence."""
+
+    @patch('backend.services.chat_repository.get_chats_collection')
+    def test_get_auggie_session_id_exists(self, mock_collection_fn):
+        """Test getting existing auggie_session_id."""
+        from backend.services.chat_repository import ChatRepository
+
+        mock_col = MagicMock()
+        mock_col.find_one.return_value = {
+            'id': 'chat-1',
+            'auggie_session_id': 'session-abc-123'
+        }
+        mock_collection_fn.return_value = mock_col
+
+        repo = ChatRepository("chat-1")
+        result = repo.get_auggie_session_id()
+
+        assert result == 'session-abc-123'
+
+    @patch('backend.services.chat_repository.get_chats_collection')
+    def test_get_auggie_session_id_none(self, mock_collection_fn):
+        """Test getting auggie_session_id when not set."""
+        from backend.services.chat_repository import ChatRepository
+
+        mock_col = MagicMock()
+        mock_col.find_one.return_value = {'id': 'chat-1'}
+        mock_collection_fn.return_value = mock_col
+
+        repo = ChatRepository("chat-1")
+        result = repo.get_auggie_session_id()
+
+        assert result is None
+
+    @patch('backend.services.chat_repository.get_chats_collection')
+    def test_get_auggie_session_id_no_chat(self, mock_collection_fn):
+        """Test getting auggie_session_id when chat doesn't exist."""
+        from backend.services.chat_repository import ChatRepository
+
+        mock_col = MagicMock()
+        mock_col.find_one.return_value = None
+        mock_collection_fn.return_value = mock_col
+
+        repo = ChatRepository("nonexistent")
+        result = repo.get_auggie_session_id()
+
+        assert result is None
+
+    @patch('backend.services.chat_repository.get_chats_collection')
+    def test_save_auggie_session_id_success(self, mock_collection_fn):
+        """Test saving auggie_session_id successfully."""
+        from backend.services.chat_repository import ChatRepository
+
+        mock_col = MagicMock()
+        mock_collection_fn.return_value = mock_col
+
+        repo = ChatRepository("chat-1")
+        result = repo.save_auggie_session_id("session-xyz-789")
+
+        assert result is True
+        mock_col.update_one.assert_called_once()
+        call_args = mock_col.update_one.call_args
+        update_data = call_args[0][1]['$set']
+        assert update_data['auggie_session_id'] == 'session-xyz-789'
+        assert 'updated_at' in update_data
+
+    def test_save_auggie_session_id_no_chat_id(self):
+        """Test save_auggie_session_id with no chat ID."""
+        from backend.services.chat_repository import ChatRepository
+
+        repo = ChatRepository("")
+        result = repo.save_auggie_session_id("session-123")
+
+        assert result is False
+
+    def test_save_auggie_session_id_no_session_id(self):
+        """Test save_auggie_session_id with no session ID."""
+        from backend.services.chat_repository import ChatRepository
+
+        repo = ChatRepository("chat-1")
+        result = repo.save_auggie_session_id("")
+
+        assert result is False
+
+    @patch('backend.services.chat_repository.get_chats_collection')
+    def test_save_auggie_session_id_db_error(self, mock_collection_fn):
+        """Test save_auggie_session_id handles DB errors."""
+        from backend.services.chat_repository import ChatRepository
+
+        mock_col = MagicMock()
+        mock_col.update_one.side_effect = Exception("DB connection lost")
+        mock_collection_fn.return_value = mock_col
+
+        repo = ChatRepository("chat-1")
+        result = repo.save_auggie_session_id("session-123")
+
+        assert result is False
 
 
 if __name__ == '__main__':

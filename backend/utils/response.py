@@ -51,22 +51,22 @@ class ResponseExtractor:
             continuation_marker = ResponseExtractor.DEFAULT_CONTINUATION_MARKER
 
         text = _CTRL_CHARS_RE.sub('', TextCleaner.strip_ansi(raw_output))
+        full_message = user_message.strip()
 
-        msg_prefix = user_message[:30] if len(user_message) > 30 else user_message
-        msg_pos = text.rfind(msg_prefix)
+        # Build pattern to filter exact Auggie message history lines (e.g., "1. user's question")
+        # Only filters exact matches to preserve legitimate content like "1. list databases - shows all DBs"
+        msg_history_pattern = None
+        if len(full_message) >= 5:
+            msg_history_pattern = re.compile(r'^\d+\.\s+' + re.escape(full_message) + r'\s*$', re.IGNORECASE)
 
-        if msg_pos < 0:
-            log.debug(f"[EXTRACT] Message not found: {repr(msg_prefix[:20])}")
-            return ""
-
-        after_msg = text[msg_pos + len(msg_prefix):]
-        marker_pos = after_msg.find(response_marker)
-
+        # Simple approach: Find the first response marker (●) and extract from there
+        # Everything before ● is echo/UI noise, everything after is the response
+        marker_pos = text.find(response_marker)
         if marker_pos < 0:
-            log.debug(f"[EXTRACT] No {response_marker} marker found after message")
+            log.debug(f"[EXTRACT] No {response_marker} marker found in output")
             return ""
 
-        content_start = after_msg[marker_pos:]
+        content_start = text[marker_pos:]
         lines = []
         found = False
 
@@ -85,6 +85,10 @@ class ResponseExtractor:
             if any(p in s for p in SKIP_PATTERNS):
                 continue
             if any(p in s for p in _STATUS_PATTERNS):
+                continue
+
+            # Skip Auggie message history lines (e.g., "1. user's question")
+            if msg_history_pattern and msg_history_pattern.match(s):
                 continue
 
             if thinking_marker and s.startswith(thinking_marker):

@@ -17,7 +17,7 @@ class MockProvider(TerminalAgentProvider):
         config = TerminalAgentConfig(name='mock', command='echo')
         super().__init__(config)
 
-    def get_command(self, workspace: str, model: Optional[str] = None) -> List[str]:
+    def get_command(self, workspace: str, model: Optional[str] = None, session_id: Optional[str] = None) -> List[str]:
         return ['echo', 'test']
 
     def get_prompt_patterns(self) -> List[Pattern]:

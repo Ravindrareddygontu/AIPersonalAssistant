@@ -8,6 +8,10 @@ log = logging.getLogger('chat.stream')
 # Pattern to match auggie status lines ending with "(Xs • esc to interrupt)"
 _STATUS_LINE_RE = re.compile(r'\(\d+s\s*[•·]\s*esc to interrupt\)')
 
+# Pattern to match Auggie's message history list items: "1. message", "2. message", etc.
+# These are UI elements that get redrawn during streaming and should be filtered out
+_MESSAGE_HISTORY_RE = re.compile(r'^\d+\.\s+')
+
 
 class StreamProcessor:
     # Patterns for detecting end of response
@@ -28,6 +32,16 @@ class StreamProcessor:
     def __init__(self, user_message: str):
         self.user_message = user_message
         self._update_pattern(user_message)
+        self._message_history_pattern = self._build_message_history_pattern(user_message)
+
+    def _build_message_history_pattern(self, message: str) -> re.Pattern | None:
+        message = message.strip()
+        if len(message) < 5:
+            return None
+        escaped = re.escape(message)
+        # Only match EXACT lines: "N. <full_message>" with nothing after
+        # This avoids filtering legitimate content like "1. list databases - shows all DBs"
+        return re.compile(r'^\d+\.\s+' + escaped + r'\s*$', re.IGNORECASE)
 
     def _update_pattern(self, message: str):
         # Use shorter prefix for matching (terminal may wrap long messages)
@@ -138,6 +152,11 @@ class StreamProcessor:
 
             # Skip status lines containing "(Xs • esc to interrupt)"
             if _STATUS_LINE_RE.search(stripped):
+                continue
+
+            # Skip Auggie message history lines (e.g., "1. user's question")
+            # These get redrawn during streaming and pollute the output
+            if self._message_history_pattern and self._message_history_pattern.match(stripped):
                 continue
 
             # Regular content lines (after we've seen ● marker)

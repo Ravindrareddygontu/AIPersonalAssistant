@@ -165,7 +165,13 @@ class AuggieExecutor:
 
                 # Process content
                 if state.saw_message_echo:
-                    self.processor.process_chunk(clean, state)
+                    content = self.processor.process_chunk(clean, state)
+
+                    # Update streamed content length (needed for end pattern detection)
+                    if content:
+                        state.update_streamed_content(content)
+                        if not state.streaming_started:
+                            state.mark_streaming_started()
 
                     # Check for end pattern (empty prompt) - exits immediately like main app
                     if self.processor.check_end_pattern(clean, state):

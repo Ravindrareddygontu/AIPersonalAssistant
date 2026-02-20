@@ -97,13 +97,14 @@ class SSEFormatter:
 
 
 class SessionHandler:
-    def __init__(self, workspace: str, model: str):
+    def __init__(self, workspace: str, model: str, session_id: str = None):
         self.workspace = workspace if os.path.isdir(workspace) else os.path.expanduser('~')
         self.model = model
+        self.session_id = session_id
         self._status_queue = []  # Queue for status messages from callback
 
     def get_session(self):
-        return SessionManager.get_or_create(self.workspace, self.model)
+        return SessionManager.get_or_create(self.workspace, self.model, self.session_id)
 
     def _status_callback(self, message: str):
         self._status_queue.append(message)
@@ -287,7 +288,16 @@ class StreamGenerator:
 
         # Initialize components - only create repository if history is enabled
         self.repository = ChatRepository(chat_id) if (chat_id and settings.history_enabled) else None
-        self.session_handler = SessionHandler(workspace, settings.model)
+
+        # Get existing auggie session_id for resumption
+        auggie_session_id = None
+        if self.repository:
+            auggie_session_id = self.repository.get_auggie_session_id()
+            if auggie_session_id:
+                log.info(f"Found existing Auggie session_id: {auggie_session_id}")
+
+        self.session_handler = SessionHandler(workspace, settings.model, auggie_session_id)
+        self._auggie_session_id = auggie_session_id  # Track if we already have one
         # Initialize processor with sanitized message since that's what's actually sent to terminal
         self.processor = StreamProcessor(_sanitize_message(message))
         self.sse = SSEFormatter()
@@ -774,6 +784,10 @@ class StreamGenerator:
                 self.repository.save_answer(self.message_id, final_content)
             self.repository.set_streaming_status(None)  # Clear streaming status
 
+            # Detect and save Auggie session_id for session resumption
+            if not self._auggie_session_id and final_content:
+                self._detect_and_save_session_id()
+
         # Send Slack notification for completed request
         execution_time = time.time() - self.start_time
         has_error = not final_content or "Couldn't extract response" in (final_content or "")
@@ -794,6 +808,20 @@ class StreamGenerator:
             'workspace': self.workspace
         })
         yield self.sse.send({'type': 'done'})
+
+    def _detect_and_save_session_id(self):
+        from datetime import datetime, timedelta
+        from backend.services.auggie.session_tracker import get_latest_session_for_workspace
+
+        try:
+            after_time = datetime.fromtimestamp(self.start_time) - timedelta(seconds=5)
+            session_id = get_latest_session_for_workspace(self.workspace, after_time)
+            if session_id:
+                self.repository.save_auggie_session_id(session_id)
+                self._auggie_session_id = session_id
+                log.info(f"Saved new Auggie session_id: {session_id}")
+        except Exception as e:
+            log.warning(f"Failed to detect Auggie session_id: {e}")
 
 
 class OpenAIStreamGenerator:

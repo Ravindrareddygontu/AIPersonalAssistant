@@ -185,6 +185,71 @@ class TestSessionManagerReset:
             assert workspace not in _sessions
 
 
+class TestAuggieSessionId:
+    """Test AuggieSession session_id for session persistence."""
+
+    def test_session_init_with_session_id(self):
+        """Test that session_id is stored on init."""
+        session = AuggieSession('/tmp/test', model='test', session_id='abc-123')
+        assert session.session_id == 'abc-123'
+
+    def test_session_init_without_session_id(self):
+        """Test that session_id defaults to None."""
+        session = AuggieSession('/tmp/test')
+        assert session.session_id is None
+
+
+class TestSessionManagerWithSessionId:
+    """Test SessionManager passes session_id correctly."""
+
+    def setup_method(self):
+        with _lock:
+            _sessions.clear()
+
+    def teardown_method(self):
+        with _lock:
+            for session in _sessions.values():
+                try:
+                    session.cleanup()
+                except:
+                    pass
+            _sessions.clear()
+
+    def test_get_or_create_stores_session_id(self):
+        """Test that get_or_create stores session_id in new session."""
+        workspace = '/tmp/test-session-id'
+
+        with patch('backend.session.start_cleanup_thread'):
+            session, is_new = SessionManager.get_or_create(
+                workspace, model='test', session_id='xyz-789'
+            )
+
+        assert is_new is True
+        assert session.session_id == 'xyz-789'
+
+    def test_get_or_create_reuses_existing_session(self):
+        """Test that get_or_create reuses existing session."""
+        workspace = '/tmp/test-reuse'
+
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+        mock_process.pid = 12345
+
+        existing = AuggieSession(workspace, session_id='existing-123')
+        existing.process = mock_process
+
+        with _lock:
+            _sessions[workspace] = existing
+
+        with patch('backend.session.start_cleanup_thread'):
+            session, is_new = SessionManager.get_or_create(
+                workspace, session_id='new-456'
+            )
+
+        assert is_new is False
+        assert session.session_id == 'existing-123'
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
 
