@@ -59,8 +59,8 @@ class CodeProvider(BaseProvider, StreamingMixin):
     async def generate_code_stream(
         self,
         prompt: str,
-        language: str = "python",
-        **kwargs: Any,
+        _language: str = "python",
+        **_kwargs: Any,
     ) -> AsyncIterator[CodeStreamChunk]:
         raise NotImplementedError("Streaming code generation not supported")
         yield  # Make this a generator

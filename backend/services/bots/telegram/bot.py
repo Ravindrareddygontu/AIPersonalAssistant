@@ -5,7 +5,7 @@ from typing import Optional
 from dataclasses import dataclass
 
 from backend.services.bots.base import BaseBot, BaseBotConfig
-from backend.config import DEFAULT_WORKSPACE_PATH
+from backend.config import DEFAULT_WORKSPACE_PATH, BOT_MAX_MESSAGE_LENGTH_TELEGRAM
 
 log = logging.getLogger('telegram.bot')
 
@@ -21,7 +21,7 @@ class TelegramBotConfig(BaseBotConfig):
 
 class TelegramBot(BaseBot):
 
-    MAX_MESSAGE_LENGTH = 4000  # Telegram limit is 4096
+    MAX_MESSAGE_LENGTH = BOT_MAX_MESSAGE_LENGTH_TELEGRAM
     PLATFORM = "telegram"
 
     def __init__(self, config: TelegramBotConfig = None, repository=None):
@@ -57,7 +57,7 @@ class TelegramBot(BaseBot):
 
         log.info("[TELEGRAM BOT] Handlers registered")
 
-    async def _handle_start(self, update, context):
+    async def _handle_start(self, update, _context):
         await update.message.reply_text(
             "👋 Hi! I'm Auggie Bot.\n\n"
             "Send me any coding question or task, and I'll help you out!\n\n"
@@ -66,10 +66,10 @@ class TelegramBot(BaseBot):
             "/status - Check bot status"
         )
 
-    async def _handle_help(self, update, context):
+    async def _handle_help(self, update, _context):
         await update.message.reply_text(self.get_help_text(), parse_mode='Markdown')
 
-    async def _handle_status(self, update, context):
+    async def _handle_status(self, update, _context):
         status = self.get_status_text() + f"\n🔧 Model: {self.config.model or 'default'}"
         await update.message.reply_text(status, parse_mode='Markdown')
 
@@ -84,7 +84,7 @@ class TelegramBot(BaseBot):
             except Exception:
                 break
 
-    async def _handle_message(self, update, context):
+    async def _handle_message(self, update, _context):
         text = update.message.text.strip()
         chat_id = update.effective_chat.id
         user_id = str(update.effective_user.id)

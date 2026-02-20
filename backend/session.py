@@ -7,7 +7,7 @@ import subprocess
 import threading
 import logging
 
-from backend.config import get_auggie_model_id
+from backend.config import get_auggie_model_id, BOT_SESSION_TIMEOUT_MINUTES
 
 log = logging.getLogger('session')
 
@@ -17,7 +17,7 @@ _cleanup_thread = None
 _cleanup_stop_event = threading.Event()
 
 # Configuration for stale process cleanup
-STALE_PROCESS_AGE_MINUTES = 30  # Kill auggie processes older than this
+STALE_PROCESS_AGE_MINUTES = BOT_SESSION_TIMEOUT_MINUTES  # Kill auggie processes older than this
 CLEANUP_INTERVAL_SECONDS = 300  # Run cleanup every 5 minutes
 MAX_AUGGIE_PROCESSES = 3  # Maximum number of auggie processes allowed
 

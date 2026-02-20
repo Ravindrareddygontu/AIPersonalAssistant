@@ -7,7 +7,7 @@ from typing import Optional, Callable
 from dataclasses import dataclass
 
 from backend.services.bots.base import BaseBot, BaseBotConfig
-from backend.config import DEFAULT_WORKSPACE_PATH
+from backend.config import DEFAULT_WORKSPACE_PATH, BOT_MAX_MESSAGE_LENGTH_SLACK
 
 log = logging.getLogger('slack.bot')
 
@@ -31,7 +31,7 @@ class SlackBotConfig(BaseBotConfig):
 
 class SlackBot(BaseBot):
 
-    MAX_MESSAGE_LENGTH = 2900  # Slack limit is ~3000
+    MAX_MESSAGE_LENGTH = BOT_MAX_MESSAGE_LENGTH_SLACK
     PLATFORM = "slack"
 
     def __init__(self, config: SlackBotConfig = None, repository=None):

@@ -3,6 +3,8 @@ import logging
 from typing import Optional, Any
 from dataclasses import dataclass, field
 
+from backend.config import BOT_MAX_MESSAGE_LENGTH_DEFAULT
+
 log = logging.getLogger('bots.base')
 
 
@@ -40,7 +42,7 @@ class BotResponse:
 
 class BaseBot:
 
-    MAX_MESSAGE_LENGTH: int = 4000
+    MAX_MESSAGE_LENGTH: int = BOT_MAX_MESSAGE_LENGTH_DEFAULT
     PLATFORM: str = "unknown"
     ANIMATION_FRAMES: list = ["⏳ Executing.", "⏳ Executing..", "⏳ Executing..."]
     ANIMATION_INTERVAL: float = 0.2

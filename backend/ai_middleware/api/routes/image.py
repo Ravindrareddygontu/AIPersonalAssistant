@@ -81,7 +81,7 @@ async def analyze_image(
     provider: ProviderDep,
     image: UploadFile = File(...),
     prompt: Optional[str] = Form(None),
-    detail: str = Form("auto"),
+    _detail: str = Form("auto"),
 ) -> ImageAnalysisResponse:
     if not provider:
         raise HTTPException(

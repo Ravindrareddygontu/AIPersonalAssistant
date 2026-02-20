@@ -65,7 +65,7 @@ class BaseProvider(ABC):
 
 class StreamingMixin:
 
-    async def stream_response(self, *args: Any, **kwargs: Any) -> AsyncIterator[str]:
+    async def stream_response(self, *_args: Any, **_kwargs: Any) -> AsyncIterator[str]:
         raise NotImplementedError("Streaming not implemented")
         yield  # Make this a generator
 

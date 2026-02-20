@@ -192,11 +192,6 @@ export function toggleSettings() {
     toggleModal(modal);
 }
 
-export function toggleBrowser() {
-    const modal = DOM.get('browserModal');
-    toggleModal(modal);
-}
-
 export function toggleDevTools() {
     const modal = DOM.get('devToolsModal');
     toggleModal(modal);

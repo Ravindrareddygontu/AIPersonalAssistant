@@ -107,7 +107,7 @@ async def analyze_video(
     video: UploadFile = File(...),
     prompt: Optional[str] = Form(None),
     include_timestamps: bool = Form(False),
-    include_transcript: bool = Form(False),
+    _include_transcript: bool = Form(False),
 ) -> VideoAnalysisResponse:
     if not provider:
         raise HTTPException(

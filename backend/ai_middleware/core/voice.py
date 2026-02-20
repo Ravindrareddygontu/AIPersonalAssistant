@@ -48,10 +48,10 @@ class VoiceProvider(BaseProvider, StreamingMixin):
 
     async def voice_to_text_stream(
         self,
-        audio_stream: AsyncIterator[bytes],
-        audio_format: str = "wav",
-        language: Optional[str] = None,
-        **kwargs: Any,
+        _audio_stream: AsyncIterator[bytes],
+        _audio_format: str = "wav",
+        _language: Optional[str] = None,
+        **_kwargs: Any,
     ) -> AsyncIterator[VoiceToTextResponse]:
         raise NotImplementedError("Streaming STT not supported by this provider")
         yield  # Make this a generator

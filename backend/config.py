@@ -46,6 +46,24 @@ TERMINAL_COMMAND_INDICATORS: List[str] = [
 # Used to filter out terminal UI borders and decorations
 BOX_CHARS_PATTERN = re.compile(r'^[╭╮╯╰│─╗╔║╚╝═█▇▆▅▄▃▂▁░▒▓\s]+$')
 
+# Default workspace path for bots and terminal sessions
+DEFAULT_WORKSPACE_PATH = os.environ.get('DEFAULT_WORKSPACE', os.path.expanduser("~/Projects/POC'S/ai-chat-app"))
+
+# =============================================================================
+# Bot Configuration
+# =============================================================================
+
+# Session timeout - kill idle sessions and reset session tracking after this time
+BOT_SESSION_TIMEOUT_MINUTES = 30
+
+# Maximum title length for chat titles
+BOT_TITLE_MAX_LENGTH = 50
+
+# Maximum message length per platform
+BOT_MAX_MESSAGE_LENGTH_SLACK = 2900    # Slack limit is ~3000
+BOT_MAX_MESSAGE_LENGTH_TELEGRAM = 4000  # Telegram limit is 4096
+BOT_MAX_MESSAGE_LENGTH_DEFAULT = 4000   # Default for other platforms
+
 # MongoDB Configuration
 MONGODB_URI = os.environ.get('MONGODB_URI', 'mongodb://localhost:27017')
 MONGODB_DB_NAME = os.environ.get('MONGODB_DB_NAME', 'ai_chat_app')

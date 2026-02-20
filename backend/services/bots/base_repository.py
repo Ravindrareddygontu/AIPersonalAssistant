@@ -5,13 +5,11 @@ from datetime import datetime, timedelta
 from typing import Optional
 from dataclasses import dataclass
 
+from backend.config import BOT_SESSION_TIMEOUT_MINUTES, BOT_TITLE_MAX_LENGTH
 from backend.database import get_bot_chats_collection
 from backend.services.base_repository import BaseRepository
 
 log = logging.getLogger('bots.base_repository')
-
-TITLE_MAX_LENGTH = 50
-SESSION_TIMEOUT_MINUTES = 30
 
 
 @dataclass
@@ -55,13 +53,13 @@ class BaseBotChatRepository(BaseRepository):
             return True
         try:
             last_update = datetime.fromisoformat(updated_at)
-            timeout_threshold = datetime.utcnow() - timedelta(minutes=SESSION_TIMEOUT_MINUTES)
+            timeout_threshold = datetime.utcnow() - timedelta(minutes=BOT_SESSION_TIMEOUT_MINUTES)
             return last_update < timeout_threshold
         except (ValueError, TypeError):
             return True
 
     @abstractmethod
-    def _make_lookup_key(self, *args, **kwargs) -> str:
+    def _make_lookup_key(self, **kwargs) -> str:
         pass
 
     @abstractmethod
@@ -80,17 +78,6 @@ class BaseBotChatRepository(BaseRepository):
         try:
             chat_id = str(uuid.uuid4())[:8]
             now = datetime.utcnow().isoformat()
-
-            existing_chat = self.collection.find_one({'lookup_key': lookup_key})
-            session_expired = existing_chat and self._is_session_expired(existing_chat)
-
-            if session_expired:
-                log.info(f"[{self.PLATFORM.upper()}] Session expired for chat {existing_chat.get('id')}, resetting auggie_session_id")
-                self.collection.update_one(
-                    {'lookup_key': lookup_key},
-                    {'$set': {'auggie_session_id': None, 'updated_at': now}}
-                )
-
             insert_fields = self._get_insert_fields(chat_id, lookup_key, now, **context_kwargs)
 
             chat = self.collection.find_one_and_update(
@@ -103,8 +90,18 @@ class BaseBotChatRepository(BaseRepository):
                 return_document=True
             )
 
-            if chat.get('created_at') == now:
+            is_new = chat.get('created_at') == now
+            if is_new:
                 log.info(f"[{self.PLATFORM.upper()}] Created chat: {chat['id']}")
+
+            session_expired = not is_new and self._is_session_expired(chat)
+            if session_expired:
+                log.info(f"[{self.PLATFORM.upper()}] Session expired for chat {chat.get('id')}, resetting auggie_session_id")
+                self.collection.update_one(
+                    {'lookup_key': lookup_key},
+                    {'$set': {'auggie_session_id': None}}
+                )
+                chat['auggie_session_id'] = None
 
             return self._create_context(chat, session_expired, **context_kwargs)
 
@@ -143,7 +140,7 @@ class BaseBotChatRepository(BaseRepository):
 
             self.collection.update_one(
                 {'id': chat_id, 'title': self.DEFAULT_TITLE},
-                {'$set': {'title': self.generate_title(question, TITLE_MAX_LENGTH)}}
+                {'$set': {'title': self.generate_title(question, BOT_TITLE_MAX_LENGTH)}}
             )
 
             log.info(f"[{self.PLATFORM.upper()}] Saved message to chat {chat_id}")

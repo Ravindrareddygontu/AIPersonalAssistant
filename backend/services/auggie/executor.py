@@ -120,7 +120,6 @@ class AuggieExecutor:
     
     def _send_and_wait(self, session, message: str, source: str = 'app') -> AuggieResponse:
         session.drain_output(timeout=0.2)
-        session.drain_output(timeout=0.2)
 
         # Prepend source context for bot messages
         if source == 'bot':

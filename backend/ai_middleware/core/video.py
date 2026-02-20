@@ -37,27 +37,27 @@ class VideoProvider(BaseProvider, StreamingMixin):
 
     async def analyze_video(
         self,
-        video_data: bytes,
-        prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        timestamps: bool = False,
-        **kwargs: Any,
+        _video_data: bytes,
+        _prompt: Optional[str] = None,
+        _model: Optional[str] = None,
+        _timestamps: bool = False,
+        **_kwargs: Any,
     ) -> VideoAnalysisResponse:
         raise NotImplementedError("Video analysis not supported by this provider")
 
     async def analyze_video_stream(
         self,
-        video_stream: AsyncIterator[bytes],
-        prompt: Optional[str] = None,
-        **kwargs: Any,
+        _video_stream: AsyncIterator[bytes],
+        _prompt: Optional[str] = None,
+        **_kwargs: Any,
     ) -> AsyncIterator[VideoAnalysisResponse]:
         raise NotImplementedError("Video stream analysis not supported")
         yield  # Make this a generator
 
     async def stream_video_generation(
         self,
-        prompt: str,
-        **kwargs: Any,
+        _prompt: str,
+        **_kwargs: Any,
     ) -> AsyncIterator[VideoStreamChunk]:
         raise NotImplementedError("Streaming video generation not supported")
         yield  # Make this a generator

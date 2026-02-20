@@ -101,11 +101,11 @@ def create_app() -> FastAPI:
 
     # Exception handlers
     @app.exception_handler(BrokenPipeError)
-    async def handle_broken_pipe(request: Request, exc: BrokenPipeError):
+    async def handle_broken_pipe(_request: Request, _exc: BrokenPipeError):
         return Response(status_code=499)
 
     @app.exception_handler(ConnectionResetError)
-    async def handle_connection_reset(request: Request, exc: ConnectionResetError):
+    async def handle_connection_reset(_request: Request, _exc: ConnectionResetError):
         return Response(status_code=499)
 
     return app
