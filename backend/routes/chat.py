@@ -433,7 +433,7 @@ class StreamGenerator:
                     log.info("Session start failed")
                     return False
         elif not session.is_alive():
-            log.info("Session dead, reconnecting...")
+            log.warning(f"Session dead (pid={session.process.pid if session.process else None}), reconnecting...")
             session.cleanup()
             for item in self.session_handler.start_session(session, 'Reconnecting to Augment...'):
                 if isinstance(item, str):

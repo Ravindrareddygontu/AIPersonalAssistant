@@ -238,7 +238,7 @@ class SlackBot:
 
     def _extract_summary(self, content: str) -> tuple[str, str | None]:
         """Extract summary from content. Returns (content_without_summary, summary)"""
-        pattern = r'---SUMMARY---\s*(.*?)\s*---END_SUMMARY---'
+        pattern = r'-{2,3}SUMMARY-{2,3}\s*(.*?)\s*-{2,3}END_SUMMARY-{2,3}'
         match = re.search(pattern, content, re.DOTALL)
         if match:
             summary = match.group(1).strip()

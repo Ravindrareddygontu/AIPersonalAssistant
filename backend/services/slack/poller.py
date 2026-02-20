@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import logging
 import threading
@@ -6,6 +7,17 @@ from typing import Optional, Set
 from dataclasses import dataclass, field
 
 log = logging.getLogger('slack.poller')
+
+
+def _extract_summary(content: str) -> tuple[str, str | None]:
+    """Extract summary from content. Returns (content_without_summary, summary)"""
+    pattern = r'-{2,3}SUMMARY-{2,3}\s*(.*?)\s*-{2,3}END_SUMMARY-{2,3}'
+    match = re.search(pattern, content, re.DOTALL)
+    if match:
+        summary = match.group(1).strip()
+        clean_content = re.sub(pattern, '', content, flags=re.DOTALL).strip()
+        return clean_content, summary
+    return content, None
 
 
 @dataclass
@@ -118,7 +130,12 @@ class SlackPoller:
             )
 
             if response.success:
-                summary = self._summarizer.summarize(response.content)
+                content = response.content or ""
+                clean_content, summary = _extract_summary(content)
+
+                if not summary:
+                    summary = self._summarizer.summarize(clean_content)
+
                 self._send_reply(
                     f"{summary}\n\n⏱️ _Completed in {response.execution_time:.1f}s_",
                     thread_ts=ts

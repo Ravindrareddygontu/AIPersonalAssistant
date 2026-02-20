@@ -1,4 +1,5 @@
 import os
+import re
 import hmac
 import hashlib
 import time
@@ -10,6 +11,17 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 log = logging.getLogger('slack.routes')
+
+
+def _extract_summary(content: str) -> tuple[str, str | None]:
+    """Extract summary from content. Returns (content_without_summary, summary)"""
+    pattern = r'-{2,3}SUMMARY-{2,3}\s*(.*?)\s*-{2,3}END_SUMMARY-{2,3}'
+    match = re.search(pattern, content, re.DOTALL)
+    if match:
+        summary = match.group(1).strip()
+        clean_content = re.sub(pattern, '', content, flags=re.DOTALL).strip()
+        return clean_content, summary
+    return content, None
 
 slack_router = APIRouter(prefix="/api/slack", tags=["Slack"])
 
@@ -144,10 +156,15 @@ async def _process_message_event(event: dict, payload: dict):
         )
 
         if response.success:
-            content = response.content
-            if len(content) > 2900:
-                content = content[:2900] + "\n\n... (truncated)"
-            reply = f"{content}\n\n⏱️ _{response.execution_time:.1f}s_"
+            content = response.content or ""
+            clean_content, summary = _extract_summary(content)
+
+            if summary:
+                reply = f"{summary}\n\n⏱️ _{response.execution_time:.1f}s_"
+            elif len(clean_content) > 2900:
+                reply = f"{clean_content[:2900]}\n\n... _(truncated)_\n\n⏱️ _{response.execution_time:.1f}s_"
+            else:
+                reply = f"{clean_content}\n\n⏱️ _{response.execution_time:.1f}s_"
         else:
             reply = f"❌ Error: {response.error}"
 

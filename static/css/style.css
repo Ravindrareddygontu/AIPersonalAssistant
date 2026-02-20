@@ -826,7 +826,7 @@ body.theme-transitioning *::after {
     align-items: center;
     gap: 10px;
     font-size: 0.78rem;
-    transition: all 0.25s ease;
+    transition: all var(--transition-slow) ease;
     position: relative;
     overflow: hidden;
 }
@@ -840,7 +840,7 @@ body.theme-transitioning *::after {
     bottom: 0;
     background: linear-gradient(135deg, rgba(43, 122, 201, 0.1) 0%, rgba(74, 159, 232, 0.06) 100%);
     opacity: 0;
-    transition: opacity 0.25s ease;
+    transition: opacity var(--transition-slow) ease;
 }
 
 .action-btn:hover {
@@ -862,7 +862,7 @@ body.theme-transitioning *::after {
 .action-btn i {
     color: var(--jay-blue-bright);
     font-size: 1.4rem;
-    transition: all 0.25s ease;
+    transition: all var(--transition-slow) ease;
     position: relative;
     z-index: 1;
 }
@@ -2464,7 +2464,7 @@ body.theme-transitioning *::after {
     color: var(--text-muted);
     font-size: 12px;
     cursor: pointer;
-    transition: color 0.2s, background 0.2s;
+    transition: all var(--transition-slow) ease;
 }
 
 .add-shortcut-btn:hover {
@@ -2527,7 +2527,7 @@ body.theme-transitioning *::after {
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all var(--transition-slow) ease;
 }
 
 .save-shortcut-btn:hover {
@@ -2545,7 +2545,7 @@ body.theme-transitioning *::after {
     color: var(--text-muted);
     font-size: 12px;
     cursor: pointer;
-    transition: color 0.2s, background 0.2s;
+    transition: all var(--transition-slow) ease;
 }
 
 .shortcut-btn:hover {
@@ -2592,6 +2592,7 @@ body.theme-transitioning *::after {
     color: var(--text-muted);
     cursor: pointer;
     padding: 2px;
+    transition: color var(--transition-slow) ease;
 }
 
 .custom-shortcut .shortcut-edit:hover {

@@ -119,7 +119,12 @@ class AuggieSession:
         return self.master_fd
 
     def is_alive(self):
-        return self.process and self.process.poll() is None
+        if not self.process:
+            return False
+        exit_code = self.process.poll()
+        if exit_code is not None:
+            log.warning(f"[SESSION] Process {self.process.pid} exited with code {exit_code}")
+        return exit_code is None
 
     def cleanup(self):
         if self.process:
