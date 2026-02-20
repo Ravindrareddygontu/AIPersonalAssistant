@@ -1276,12 +1276,21 @@ body.theme-transitioning *::after {
 .message-content td > code,
 .message-content h3 > code,
 .message-content h4 > code {
-    background: var(--bg);
+    background: rgba(128, 128, 128, 0.15);
     padding: 2px 7px;
     border-radius: 4px;
-    font-size: 0.85em;
+    font-size: 0.95em;
     border: 1px solid var(--border);
     font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+    color: #1a1a1a;
+}
+
+.light-theme .message-content p > code,
+.light-theme .message-content li > code,
+.light-theme .message-content td > code,
+.light-theme .message-content h3 > code,
+.light-theme .message-content h4 > code {
+    color: #0a0a0a;
 }
 
 /* Table wrapper with copy button */
