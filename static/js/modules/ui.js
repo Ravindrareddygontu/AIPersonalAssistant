@@ -63,13 +63,19 @@ export function updateTypingIndicatorText(text) {
         const statusIcon = streamingStatus.querySelector('.streaming-status-icon');
 
         if (statusText) {
-            statusText.classList.remove('fade-in');
-            void statusText.offsetWidth;
+            // Only animate if text actually changed
+            if (statusText.textContent !== text) {
+                statusText.classList.remove('fade-in');
+                void statusText.offsetWidth;
 
-            statusText.textContent = text;
-            statusText.classList.add('shimmer', 'fade-in');
+                statusText.textContent = text;
+                statusText.classList.add('shimmer', 'fade-in');
 
-            setTimeout(() => statusText.classList.remove('fade-in'), 250);
+                setTimeout(() => statusText.classList.remove('fade-in'), 250);
+            } else {
+                // Same text - just ensure shimmer is active
+                statusText.classList.add('shimmer');
+            }
         }
 
         if (statusIcon) {
