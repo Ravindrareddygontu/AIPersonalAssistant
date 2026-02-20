@@ -386,12 +386,12 @@ def start_cleanup_thread():
 
 class SessionManager:
     @staticmethod
-    def get_or_create(workspace, model=None, session_id=None):
+    def get_or_create(workspace, model=None, session_id=None, force_new=False):
         # Ensure cleanup thread is running
         start_cleanup_thread()
 
         with _lock:
-            log.info(f"[SESSION] get_or_create called for workspace={workspace}, model={model}, session_id={session_id}")
+            log.info(f"[SESSION] get_or_create called for workspace={workspace}, model={model}, session_id={session_id}, force_new={force_new}")
             log.info(f"[SESSION] Current sessions: {list(_sessions.keys())}")
 
             if workspace in _sessions:
@@ -400,6 +400,12 @@ class SessionManager:
                 log.info(f"[SESSION] Found existing session: is_alive={is_alive}, pid={session.process.pid if session.process else None}, last_used={time.time() - session.last_used:.1f}s ago")
 
                 if is_alive:
+                    # Force new session if requested (new chat wants fresh context)
+                    if force_new:
+                        log.info(f"[SESSION] Force new session requested (new chat), killing existing session")
+                        session.cleanup()
+                        _sessions[workspace] = AuggieSession(workspace, model, session_id)
+                        return _sessions[workspace], True
                     # If model changed, restart the session
                     if model and session.model != model:
                         log.info(f"[SESSION] Model changed from {session.model} to {model}, restarting session")

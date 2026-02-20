@@ -97,14 +97,15 @@ class SSEFormatter:
 
 
 class SessionHandler:
-    def __init__(self, workspace: str, model: str, session_id: str = None):
+    def __init__(self, workspace: str, model: str, session_id: str = None, force_new: bool = False):
         self.workspace = workspace if os.path.isdir(workspace) else os.path.expanduser('~')
         self.model = model
         self.session_id = session_id
+        self.force_new = force_new
         self._status_queue = []  # Queue for status messages from callback
 
     def get_session(self):
-        return SessionManager.get_or_create(self.workspace, self.model, self.session_id)
+        return SessionManager.get_or_create(self.workspace, self.model, self.session_id, self.force_new)
 
     def _status_callback(self, message: str):
         self._status_queue.append(message)
@@ -296,7 +297,9 @@ class StreamGenerator:
             if auggie_session_id:
                 log.info(f"Found existing Auggie session_id: {auggie_session_id}")
 
-        self.session_handler = SessionHandler(workspace, settings.model, auggie_session_id)
+        # New chat (no session_id) should start fresh Auggie session
+        force_new_session = auggie_session_id is None
+        self.session_handler = SessionHandler(workspace, settings.model, auggie_session_id, force_new_session)
         self._auggie_session_id = auggie_session_id  # Track if we already have one
         # Initialize processor with sanitized message since that's what's actually sent to terminal
         self.processor = StreamProcessor(_sanitize_message(message))

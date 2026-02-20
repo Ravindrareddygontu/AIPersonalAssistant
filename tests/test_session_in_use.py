@@ -249,6 +249,64 @@ class TestSessionManagerWithSessionId:
         assert is_new is False
         assert session.session_id == 'existing-123'
 
+    def test_force_new_kills_existing_session(self):
+        """Test that force_new=True kills existing session and creates new one."""
+        workspace = '/tmp/test-force-new'
+
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+        mock_process.pid = 12345
+
+        existing = AuggieSession(workspace, session_id='old-session')
+        existing.process = mock_process
+
+        with _lock:
+            _sessions[workspace] = existing
+
+        with patch('backend.session.start_cleanup_thread'):
+            with patch.object(existing, 'cleanup') as mock_cleanup:
+                session, is_new = SessionManager.get_or_create(
+                    workspace, session_id='new-session', force_new=True
+                )
+
+        assert is_new is True
+        assert session.session_id == 'new-session'
+        mock_cleanup.assert_called_once()
+
+    def test_force_new_false_reuses_existing_session(self):
+        """Test that force_new=False (default) reuses existing session."""
+        workspace = '/tmp/test-force-new-false'
+
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+        mock_process.pid = 12345
+
+        existing = AuggieSession(workspace, session_id='existing-session')
+        existing.process = mock_process
+
+        with _lock:
+            _sessions[workspace] = existing
+
+        with patch('backend.session.start_cleanup_thread'):
+            session, is_new = SessionManager.get_or_create(
+                workspace, session_id='ignored-session', force_new=False
+            )
+
+        assert is_new is False
+        assert session.session_id == 'existing-session'
+
+    def test_force_new_creates_session_when_none_exists(self):
+        """Test that force_new=True creates new session when no existing session."""
+        workspace = '/tmp/test-force-new-no-existing'
+
+        with patch('backend.session.start_cleanup_thread'):
+            session, is_new = SessionManager.get_or_create(
+                workspace, session_id='brand-new', force_new=True
+            )
+
+        assert is_new is True
+        assert session.session_id == 'brand-new'
+
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
