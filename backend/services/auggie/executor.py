@@ -23,6 +23,7 @@ class AuggieResponse:
     error: Optional[str] = None
     execution_time: float = 0.0
     session_id: Optional[str] = None
+    source: Optional[str] = None
 
 
 class AuggieExecutor:
@@ -35,7 +36,7 @@ class AuggieExecutor:
     def __init__(self):
         self.processor = None
     
-    def execute(self, message: str, workspace: str, model: str = None) -> AuggieResponse:
+    def execute(self, message: str, workspace: str, model: str = None, source: str = 'app') -> AuggieResponse:
         start_time = time.time()
         workspace = os.path.expanduser(workspace)
         
@@ -77,8 +78,9 @@ class AuggieExecutor:
                         session.initialized = True
                     
                     # Send message and get response
-                    response = self._send_and_wait(session, message)
+                    response = self._send_and_wait(session, message, source)
                     response.execution_time = time.time() - start_time
+                    response.source = source
 
                     # Get the auggie session ID
                     if response.success and not session.session_id:
@@ -116,12 +118,18 @@ class AuggieExecutor:
             .replace('│', '|')
             .replace('─', '-'))
     
-    def _send_and_wait(self, session, message: str) -> AuggieResponse:
+    def _send_and_wait(self, session, message: str, source: str = 'app') -> AuggieResponse:
         session.drain_output(timeout=0.2)
         session.drain_output(timeout=0.2)
 
+        # Prepend source context for bot messages
+        if source == 'bot':
+            message_with_context = f"[SOURCE:bot] {message}"
+        else:
+            message_with_context = message
+
         # Send message
-        sanitized = self._sanitize_message(message)
+        sanitized = self._sanitize_message(message_with_context)
         try:
             os.write(session.master_fd, sanitized.encode('utf-8'))
             time.sleep(0.1)
@@ -137,7 +145,7 @@ class AuggieExecutor:
         start_time = time.time()
         last_data_time = time.time()
 
-        log.info(f"[EXECUTOR] Waiting for response to: {message[:50]}...")
+        log.info(f"[EXECUTOR] Waiting for response to: {message[:50]}... (source={source})")
 
         # Read loop - wait for complete response
         while True:

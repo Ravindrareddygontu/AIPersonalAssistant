@@ -139,7 +139,8 @@ async def _process_message_event(event: dict, payload: dict):
         response = bot._executor.execute(
             message=text,
             workspace=bot.config.workspace,
-            model=bot.config.model
+            model=bot.config.model,
+            source='bot'
         )
 
         if response.success:
@@ -224,7 +225,8 @@ async def _process_slash_command(text: str, response_url: str):
         response = bot._executor.execute(
             message=text,
             workspace=bot.config.workspace,
-            model=bot.config.model
+            model=bot.config.model,
+            source='bot'
         )
 
         if response.success:

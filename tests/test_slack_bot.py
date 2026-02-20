@@ -129,7 +129,8 @@ class TestSlackBotHandleMessage:
         self.bot._executor.execute.assert_called_once_with(
             message="Test question",
             workspace='/test/workspace',
-            model=None
+            model=None,
+            source='bot'
         )
         assert self.say.call_count == 2  # thinking + response
 
@@ -220,7 +221,8 @@ class TestSlackBotHandleSlashCommand:
         self.bot._executor.execute.assert_called_once_with(
             message="list files",
             workspace='/test/workspace',
-            model=None
+            model=None,
+            source='bot'
         )
 
     def test_command_error_response(self):

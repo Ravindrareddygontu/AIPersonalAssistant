@@ -113,7 +113,8 @@ class SlackPoller:
             response = self._executor.execute(
                 message=text,
                 workspace=self.workspace,
-                model=self.model
+                model=self.model,
+                source='bot'
             )
 
             if response.success:

@@ -121,7 +121,8 @@ class SlackBot:
             response = self._executor.execute(
                 message=text,
                 workspace=self.config.workspace,
-                model=self.config.model
+                model=self.config.model,
+                source='bot'
             )
 
             log.info(f"[SLACK BOT] Response received - success: {response.success}, "
@@ -191,7 +192,8 @@ class SlackBot:
             response = self._executor.execute(
                 message=text,
                 workspace=self.config.workspace,
-                model=self.config.model
+                model=self.config.model,
+                source='bot'
             )
 
             log.info(f"[SLACK BOT] Slash response - success: {response.success}, "

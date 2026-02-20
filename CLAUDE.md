@@ -61,8 +61,9 @@
 - Follow existing patterns in the codebase
 - Prefer small, focused functions
 
-## Slack Bot Responses
-When responding to messages from the Slack bot (identified by short, direct questions typically without code context):
+## Bot Responses
+When a message starts with `[SOURCE:bot]`, it comes from an external bot integration (Slack, Discord, etc.):
+- Keep responses concise and mobile-friendly
 - At the END of your response, always include a summary section
 - Use this exact format:
 ```
@@ -74,3 +75,4 @@ Your casual, human-friendly summary here (1-3 short points max)
 - For simple actions (commits, file changes): "Done! Committed with message 'xyz'"
 - For multiple items: use bullet points (max 3)
 - No formal language - be direct and friendly
+- Avoid long code blocks when possible - bots often have message length limits

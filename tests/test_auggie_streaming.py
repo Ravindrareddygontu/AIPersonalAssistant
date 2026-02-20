@@ -577,3 +577,66 @@ if __name__ == "__main__":
         print("  python test_auggie_streaming.py --full           # Full test suite")
         print("\nOr use pytest:")
         print("  pytest tests/test_auggie_streaming.py -v -s")
+
+
+class TestAuggieExecutorSource:
+
+    def test_response_includes_source_field(self):
+        from backend.services.auggie.executor import AuggieResponse
+        response = AuggieResponse(success=True, content="test", source='bot')
+        assert response.source == 'bot'
+
+    def test_response_source_defaults_to_none(self):
+        from backend.services.auggie.executor import AuggieResponse
+        response = AuggieResponse(success=True, content="test")
+        assert response.source is None
+
+    def test_executor_sanitize_message(self):
+        from backend.services.auggie.executor import AuggieExecutor
+        executor = AuggieExecutor()
+        sanitized = executor._sanitize_message("hello\nworld")
+        assert '\n' not in sanitized
+        assert "hello world" == sanitized
+
+    def test_executor_bot_source_prepends_tag(self):
+        from backend.services.auggie.executor import AuggieExecutor
+        from unittest.mock import MagicMock, patch
+
+        executor = AuggieExecutor()
+
+        with patch.object(executor, '_sanitize_message', wraps=executor._sanitize_message) as mock_sanitize:
+            mock_session = MagicMock()
+            mock_session.drain_output = MagicMock()
+            mock_session.master_fd = -1
+            mock_session.last_response = ""
+
+            try:
+                executor._send_and_wait(mock_session, "test message", source='bot')
+            except (OSError, Exception):
+                pass
+
+            mock_sanitize.assert_called_once()
+            call_arg = mock_sanitize.call_args[0][0]
+            assert call_arg.startswith("[SOURCE:bot]")
+
+    def test_executor_app_source_no_prefix(self):
+        from backend.services.auggie.executor import AuggieExecutor
+        from unittest.mock import MagicMock, patch
+
+        executor = AuggieExecutor()
+
+        with patch.object(executor, '_sanitize_message', wraps=executor._sanitize_message) as mock_sanitize:
+            mock_session = MagicMock()
+            mock_session.drain_output = MagicMock()
+            mock_session.master_fd = -1
+            mock_session.last_response = ""
+
+            try:
+                executor._send_and_wait(mock_session, "test message", source='app')
+            except (OSError, Exception):
+                pass
+
+            mock_sanitize.assert_called_once()
+            call_arg = mock_sanitize.call_args[0][0]
+            assert not call_arg.startswith("[SOURCE:")
+            assert call_arg == "test message"
