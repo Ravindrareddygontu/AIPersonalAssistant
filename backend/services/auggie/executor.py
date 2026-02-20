@@ -22,6 +22,7 @@ class AuggieResponse:
     content: str
     error: Optional[str] = None
     execution_time: float = 0.0
+    session_id: Optional[str] = None
 
 
 class AuggieExecutor:
@@ -78,6 +79,12 @@ class AuggieExecutor:
                     # Send message and get response
                     response = self._send_and_wait(session, message)
                     response.execution_time = time.time() - start_time
+
+                    # Get the auggie session ID
+                    if response.success and not session.session_id:
+                        from backend.services.auggie.session_tracker import get_latest_session_for_workspace
+                        session.session_id = get_latest_session_for_workspace(workspace)
+                    response.session_id = session.session_id
                     return response
                     
                 finally:

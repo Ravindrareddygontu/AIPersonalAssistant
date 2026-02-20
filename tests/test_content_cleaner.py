@@ -182,6 +182,15 @@ class TestIsGarbageLine:
         assert ContentCleaner._is_garbage_line("?25h") == True
         assert ContentCleaner._is_garbage_line("?25l") == True
 
+    def test_partial_escape_cleaning(self):
+        """Test cleaning partial escape sequences from mid-line."""
+        assert ContentCleaner._clean_partial_escapes("Sen[2K") == "Sen"
+        assert ContentCleaner._clean_partial_escapes("text[1A more") == "text more"
+        assert ContentCleaner._clean_partial_escapes("foo[0m bar") == "foo bar"
+        assert ContentCleaner._clean_partial_escapes("[?25h visible") == " visible"
+        assert ContentCleaner._clean_partial_escapes("normal text") == "normal text"
+        assert ContentCleaner._clean_partial_escapes("color[38;2;255;0;0m red") == "color red"
+
     def test_normal_text(self):
         """Test normal text is not garbage."""
         assert ContentCleaner._is_garbage_line("Hello") == False

@@ -147,6 +147,8 @@ class SlackBot:
 
                 if chat_ctx:
                     self._repository.save_message(chat_ctx.chat_id, text, clean_content, response.execution_time)
+                    if response.session_id and response.session_id != chat_ctx.auggie_session_id:
+                        self._repository.save_auggie_session_id(chat_ctx.chat_id, response.session_id)
             else:
                 reply = f"❌ Error: {response.error}"
                 log.error(f"[SLACK BOT] Execution failed: {response.error}")
@@ -215,6 +217,8 @@ class SlackBot:
 
                 if chat_ctx:
                     self._repository.save_message(chat_ctx.chat_id, text, clean_content, response.execution_time)
+                    if response.session_id and response.session_id != chat_ctx.auggie_session_id:
+                        self._repository.save_auggie_session_id(chat_ctx.chat_id, response.session_id)
             else:
                 reply = f"❌ *Error:* {response.error}"
                 log.error(f"[SLACK BOT] Slash execution failed: {response.error}")

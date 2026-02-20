@@ -37,7 +37,11 @@ class ContentCleaner:
             if cls._is_garbage_line(stripped):
                 continue
 
+            # Clean partial escape sequences (e.g., [2K, [1A) from mid-line
+            line = cls._clean_partial_escapes(line)
+
             # Clean trailing garbage characters
+            stripped = line.strip()  # Re-strip after escape removal
             line = cls._clean_trailing_garbage(line, stripped)
             cleaned_lines.append(line)
 
@@ -98,6 +102,15 @@ class ContentCleaner:
         r')$'
     )
 
+    # Partial escape sequence remnants that appear mid-line when chunks split
+    # Matches patterns like: [2K, [1A, [?25h, [0m, [38;2;...m etc
+    _PARTIAL_ESCAPE_RE = re.compile(
+        r'\[(?:'
+        r'[0-9;]*[A-Za-z]|'           # CSI sequences: [2K, [1A, [0m, [38;2;255;255;255m
+        r'\?[0-9]+[hl]'               # DEC mode: [?25h, [?25l
+        r')'
+    )
+
     @classmethod
     def _is_garbage_line(cls, stripped: str) -> bool:
         if not stripped:
@@ -107,6 +120,10 @@ class ContentCleaner:
         if cls._GARBAGE_PATTERNS.match(stripped):
             return True
         return False
+
+    @classmethod
+    def _clean_partial_escapes(cls, line: str) -> str:
+        return cls._PARTIAL_ESCAPE_RE.sub('', line)
 
     @classmethod
     def _clean_trailing_garbage(cls, line: str, stripped: str) -> str:

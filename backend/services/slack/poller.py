@@ -126,6 +126,8 @@ class SlackPoller:
 
                 if chat_ctx:
                     self.repository.save_message(chat_ctx.chat_id, text, response.content, response.execution_time)
+                    if response.session_id and response.session_id != chat_ctx.auggie_session_id:
+                        self.repository.save_auggie_session_id(chat_ctx.chat_id, response.session_id)
             else:
                 error_reply = f"❌ Error: {response.error}"
                 self._send_reply(error_reply, thread_ts=ts)
