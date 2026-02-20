@@ -61,7 +61,17 @@ export function updateTypingIndicatorText(text) {
     if (streamingStatus) {
         const statusText = streamingStatus.querySelector('.streaming-status-text');
         const statusIcon = streamingStatus.querySelector('.streaming-status-icon');
-        if (statusText) statusText.textContent = text;
+
+        if (statusText) {
+            statusText.classList.remove('fade-in');
+            void statusText.offsetWidth;
+
+            statusText.textContent = text;
+            statusText.classList.add('shimmer', 'fade-in');
+
+            setTimeout(() => statusText.classList.remove('fade-in'), 250);
+        }
+
         if (statusIcon) {
             const iconClass = getStatusIcon(text);
             statusIcon.className = `fas ${iconClass} fa-spin streaming-status-icon`;
@@ -73,6 +83,10 @@ export function hideTypingIndicator() {
     const streamingStatus = document.querySelector('.message.streaming .streaming-status');
     if (streamingStatus) {
         streamingStatus.style.display = 'none';
+        const statusText = streamingStatus.querySelector('.streaming-status-text');
+        if (statusText) {
+            statusText.classList.remove('shimmer', 'fade-in');
+        }
     }
 }
 

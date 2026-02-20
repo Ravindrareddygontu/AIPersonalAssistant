@@ -41,7 +41,9 @@ class BaseStreamProcessor:
                     state.mark_response_marker_seen()
                     c = stripped[len(marker):].strip()
                     if c:
-                        content.append(c)
+                        c = self._truncate_at_end_pattern(c, skip_patterns)
+                        if c:
+                            content.append(c)
                     break
             else:
                 if in_response and self._is_stop_condition(stripped):
@@ -51,9 +53,24 @@ class BaseStreamProcessor:
                     continue
 
                 if in_response and stripped:
-                    content.append(stripped)
+                    truncated = self._truncate_at_end_pattern(stripped, skip_patterns)
+                    if truncated:
+                        content.append(truncated)
 
         return '\n'.join(content) if content else None
+
+    def _truncate_at_end_pattern(self, text: str, skip_patterns: List[str]) -> Optional[str]:
+        end_patterns = self.provider.get_end_patterns()
+        for pattern in end_patterns:
+            match = pattern.search(text)
+            if match:
+                text = text[:match.start()].strip()
+                break
+        for skip in skip_patterns:
+            if skip in text:
+                idx = text.find(skip)
+                text = text[:idx].strip()
+        return text if text else None
 
     def _is_stop_condition(self, stripped: str) -> bool:
         end_patterns = self.provider.get_end_patterns()

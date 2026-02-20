@@ -33,17 +33,22 @@ class ResponseExtractor:
     DEFAULT_THINKING_MARKER = '~'
     DEFAULT_CONTINUATION_MARKER = '⎿'
 
+    _NOT_SET = object()
+
     @staticmethod
     def extract_full(
         raw_output: str,
         user_message: str,
-        response_marker: str = None,
-        thinking_marker: str = None,
-        continuation_marker: str = None,
+        response_marker: str = _NOT_SET,
+        thinking_marker: str = _NOT_SET,
+        continuation_marker: str = _NOT_SET,
     ) -> str:
-        response_marker = response_marker or ResponseExtractor.DEFAULT_RESPONSE_MARKER
-        thinking_marker = thinking_marker or ResponseExtractor.DEFAULT_THINKING_MARKER
-        continuation_marker = continuation_marker or ResponseExtractor.DEFAULT_CONTINUATION_MARKER
+        if response_marker is ResponseExtractor._NOT_SET:
+            response_marker = ResponseExtractor.DEFAULT_RESPONSE_MARKER
+        if thinking_marker is ResponseExtractor._NOT_SET:
+            thinking_marker = ResponseExtractor.DEFAULT_THINKING_MARKER
+        if continuation_marker is ResponseExtractor._NOT_SET:
+            continuation_marker = ResponseExtractor.DEFAULT_CONTINUATION_MARKER
 
         text = _CTRL_CHARS_RE.sub('', TextCleaner.strip_ansi(raw_output))
 
@@ -82,16 +87,16 @@ class ResponseExtractor:
             if any(p in s for p in _STATUS_PATTERNS):
                 continue
 
-            if s.startswith(thinking_marker):
+            if thinking_marker and s.startswith(thinking_marker):
                 c = s[len(thinking_marker):].strip()
                 if c:
                     lines.append(f"*{c}*")
-            elif s.startswith(response_marker):
+            elif response_marker and s.startswith(response_marker):
                 found = True
                 c = s[len(response_marker):].strip()
                 if c:
                     lines.append(c)
-            elif s.startswith(continuation_marker):
+            elif continuation_marker and s.startswith(continuation_marker):
                 c = s[len(continuation_marker):].strip()
                 if c:
                     lines.append(f"  ↳ {c}")

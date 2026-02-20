@@ -1227,12 +1227,13 @@ body.theme-transitioning *::after {
 /* Code blocks */
 .message-content pre {
     background: var(--bg);
-    padding: 12px;
-    border-radius: 6px;
+    padding: 14px 16px;
+    border-radius: 8px;
     overflow-x: auto;
-    margin: 8px 0;
+    margin: 14px 0;
     border: 1px solid var(--border);
     position: relative;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .message-content pre .copy-code-btn {
@@ -1272,12 +1273,15 @@ body.theme-transitioning *::after {
 /* Inline code styling */
 .message-content p > code,
 .message-content li > code,
-.message-content td > code {
+.message-content td > code,
+.message-content h3 > code,
+.message-content h4 > code {
     background: var(--bg);
-    padding: 2px 6px;
+    padding: 2px 7px;
     border-radius: 4px;
-    font-size: 0.85rem;
+    font-size: 0.85em;
     border: 1px solid var(--border);
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
 }
 
 /* Table wrapper with copy button */
@@ -1393,16 +1397,28 @@ body.theme-transitioning *::after {
 
 /* Markdown Lists - Enhanced styling */
 .message-content .md-list {
-    margin: 10px 0;
-    padding-left: 16px;
+    margin: 12px 0;
+    padding-left: 18px;
 }
 
 .message-content .md-list li {
-    margin: 4px 0;
-    line-height: 1.55;
+    margin: 6px 0;
+    line-height: 1.6;
     color: var(--text);
     padding-left: 4px;
     position: relative;
+}
+
+/* Better spacing when list follows heading */
+.message-content h2 + .md-list,
+.message-content h3 + .md-list,
+.message-content h4 + .md-list {
+    margin-top: 8px;
+}
+
+/* Better spacing when list follows code block */
+.message-content pre + .md-list {
+    margin-top: 16px;
 }
 
 .message-content .md-list li::marker {
@@ -1559,8 +1575,8 @@ body.theme-transitioning *::after {
 
 /* Generic paragraph text improvements */
 .message-content p {
-    margin: 8px 0;
-    line-height: 1.55;
+    margin: 10px 0;
+    line-height: 1.6;
     color: var(--text);
 }
 
@@ -1570,6 +1586,19 @@ body.theme-transitioning *::after {
 
 .message-content p:last-child {
     margin-bottom: 0;
+}
+
+/* Spacing after headings - paragraphs that follow */
+.message-content h2 + p,
+.message-content h3 + p,
+.message-content h4 + p {
+    margin-top: 0;
+}
+
+/* Spacing before headings - paragraphs that precede */
+.message-content p + h2,
+.message-content p + h3 {
+    margin-top: 28px;
 }
 
 /* Sub-items (↳) - treated as generic text */
@@ -2272,24 +2301,40 @@ body.theme-transitioning *::after {
 .message-content h2 {
     font-size: 1.3rem;
     font-weight: 600;
-    margin: 20px 0 12px 0;
+    margin: 24px 0 14px 0;
     color: var(--text);
     border-bottom: 1px solid var(--border);
     padding-bottom: 8px;
 }
 
+.message-content h2:first-child {
+    margin-top: 0;
+}
+
 .message-content h3 {
-    font-size: 1.15rem;
+    font-size: 1.1rem;
     font-weight: 600;
-    margin: 16px 0 10px 0;
+    margin: 20px 0 10px 0;
     color: var(--text);
+    padding-left: 10px;
+    border-left: 3px solid var(--primary);
+}
+
+.message-content h3:first-child {
+    margin-top: 0;
 }
 
 .message-content h4 {
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 600;
-    margin: 12px 0 8px 0;
+    margin: 16px 0 8px 0;
     color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.message-content h4:first-child {
+    margin-top: 0;
 }
 
 /* Chat Input */
@@ -3094,6 +3139,53 @@ body.theme-transitioning *::after {
 
 .streaming-status-text {
     font-weight: 400;
+    position: relative;
+    min-width: 50px;
+    color: var(--text-muted);
+    overflow: hidden;
+}
+
+.streaming-status-text.shimmer::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0, 0, 0, 0.4) 40%,
+        rgba(0, 0, 0, 0.6) 50%,
+        rgba(0, 0, 0, 0.4) 60%,
+        transparent 100%
+    );
+    animation: status-slide 1.2s ease-in-out infinite;
+}
+
+.light-theme .streaming-status-text.shimmer::after {
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.5) 40%,
+        rgba(255, 255, 255, 0.8) 50%,
+        rgba(255, 255, 255, 0.5) 60%,
+        transparent 100%
+    );
+}
+
+@keyframes status-slide {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+.streaming-status-text.fade-in {
+    animation: status-fade-in 0.25s ease-out;
+}
+
+@keyframes status-fade-in {
+    from { opacity: 0; transform: translateX(-5px); }
+    to { opacity: 1; transform: translateX(0); }
 }
 
 /* Streaming code block styles */

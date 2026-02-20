@@ -1,7 +1,8 @@
 import os
 import re
+import json
 import logging
-from typing import List, Optional, Pattern
+from typing import List, Optional, Pattern, Dict
 
 from backend.services.terminal_agent.base import (
     TerminalAgentProvider,
@@ -25,11 +26,17 @@ CODEX_SKIP_PATTERNS: List[str] = [
     'gpt-5',
     'Processing',
     'Thinking',
+    'Tip:',
     '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏',
 ]
 
+CODEX_RESPONSE_MARKER = '•'
+CODEX_USER_INPUT_MARKER = '›'
+CODEX_TOOL_CONNECTOR = '└'
+
 
 class CodexProvider(TerminalAgentProvider):
+    _session_ids: Dict[str, str] = {}
 
     def __init__(self):
         config = TerminalAgentConfig(
@@ -49,23 +56,49 @@ class CodexProvider(TerminalAgentProvider):
             re.compile(r'OpenAI Codex'),
         ]
         self._end_patterns = [
-            re.compile(r'›'),
-            re.compile(r'context left'),
+            re.compile(r'turn\.completed'),
             re.compile(r'Done\.'),
             re.compile(r'Finished'),
         ]
 
     def get_command(self, workspace: str, model: Optional[str] = None, message: str = None) -> List[str]:
         codex_cmd = self._find_codex_binary()
-        cmd = [codex_cmd, 'exec']
+        session_key = f"{workspace}:{model or 'default'}"
+        session_id = self._session_ids.get(session_key)
+
+        if session_id:
+            cmd = [codex_cmd, 'exec', '--json', 'resume', session_id]
+        else:
+            cmd = [codex_cmd, 'exec', '--json']
+
         if model:
             cmd.extend(['--model', model])
         if message:
             cmd.append(message)
         return cmd
 
+    def get_session_id(self, workspace: str, model: Optional[str] = None) -> Optional[str]:
+        session_key = f"{workspace}:{model or 'default'}"
+        return self._session_ids.get(session_key)
+
+    def store_session_id(self, workspace: str, model: Optional[str], session_id: str):
+        session_key = f"{workspace}:{model or 'default'}"
+        if self._session_ids.get(session_key) != session_id:
+            self._session_ids[session_key] = session_id
+            log.info(f"[CODEX] Stored session ID {session_id} for {session_key}")
+
+    def clear_session(self, workspace: str, model: Optional[str] = None):
+        session_key = f"{workspace}:{model or 'default'}"
+        if session_key in self._session_ids:
+            del self._session_ids[session_key]
+            log.info(f"[CODEX] Cleared session for {session_key}")
+
     @property
     def is_exec_mode(self) -> bool:
+        return True
+
+    @property
+    def uses_json_output(self) -> bool:
         return True
 
     def _find_codex_binary(self) -> str:
@@ -93,7 +126,13 @@ class CodexProvider(TerminalAgentProvider):
         return self._end_patterns
 
     def get_response_markers(self) -> List[str]:
-        return ['▸', '→', '•']
+        return [CODEX_RESPONSE_MARKER]
+
+    def get_thinking_marker(self) -> Optional[str]:
+        return None
+
+    def get_continuation_marker(self) -> Optional[str]:
+        return CODEX_TOOL_CONNECTOR
 
     def get_activity_indicators(self) -> List[str]:
         return [
@@ -111,15 +150,19 @@ class CodexProvider(TerminalAgentProvider):
 
     def get_tool_executing_patterns(self) -> List[str]:
         return [
+            'i\'m checking',
+            'explored',
+            CODEX_TOOL_CONNECTOR,
             'reading file',
             'writing file',
             'searching',
             'running command',
             'executing',
-            'shell:',
-            'edit:',
-            'read:',
         ]
+
+    def get_status_patterns(self) -> List[str]:
+        # Codex status lines start with • - we detect by prefix and stream as-is
+        return ['•']
 
     def sanitize_message(self, message: str) -> str:
         sanitized = message.replace('\n', ' ').replace('\r', ' ')
@@ -144,6 +187,12 @@ class CodexProvider(TerminalAgentProvider):
                         content.append(c)
                     break
             else:
+                if stripped.startswith(CODEX_TOOL_CONNECTOR) and in_response:
+                    c = stripped[len(CODEX_TOOL_CONNECTOR):].strip()
+                    if c:
+                        content.append(f"↳ {c}")
+                    continue
+
                 if any(skip in stripped for skip in CODEX_SKIP_PATTERNS):
                     continue
 

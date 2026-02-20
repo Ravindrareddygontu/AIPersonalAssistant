@@ -70,6 +70,12 @@ class AuggieProvider(TerminalAgentProvider):
     def get_response_markers(self) -> List[str]:
         return ['●']
 
+    def get_thinking_marker(self) -> Optional[str]:
+        return '~'
+
+    def get_continuation_marker(self) -> Optional[str]:
+        return '⎿'
+
     def get_activity_indicators(self) -> List[str]:
         return [
             'Receiving response...',
@@ -96,6 +102,18 @@ class AuggieProvider(TerminalAgentProvider):
             '↳ search',
             'reading file',
             'searching',
+        ]
+
+    def get_status_patterns(self) -> List[str]:
+        return [
+            'Summarizing conversation history',
+            'Processing response',
+            'Sending request',
+            'Receiving response',
+            'Codebase search',
+            'Executing tools',
+            'Reading file',
+            'Searching',
         ]
 
     def sanitize_message(self, message: str) -> str:

@@ -42,6 +42,7 @@ class ChatStreamRequest(BaseModel):
 
 class ChatResetRequest(BaseModel):
     workspace: Optional[str] = None
+    provider: Optional[str] = None
 
 
 # Braille spinner characters used by auggie for status indicators
@@ -274,6 +275,8 @@ class StreamGenerator:
     WAIT_FOR_MARKER_TIMEOUT = 45.0      # Max wait for first response marker
 
     def __init__(self, message: str, workspace: str, chat_id: str = None):
+        from backend.services.auggie.provider import AuggieProvider
+
         self.message = message
         self.workspace = workspace
         self.chat_id = chat_id
@@ -288,6 +291,7 @@ class StreamGenerator:
         # Initialize processor with sanitized message since that's what's actually sent to terminal
         self.processor = StreamProcessor(_sanitize_message(message))
         self.sse = SSEFormatter()
+        self.provider = AuggieProvider()
 
     def generate(self):
         log.info(f"Starting generate for: {self.message[:50]}...")
@@ -529,36 +533,27 @@ class StreamGenerator:
         return None
 
     def _detect_activity(self, output: str) -> str | None:
-        # Activity patterns to look for
-        activity_patterns = [
-            'Summarizing conversation history',
-            'Processing response',
-            'Sending request',
-            'Receiving response',
-            'Codebase search',
-            'Executing tools',
-            'Reading file',
-            'Searching',
-        ]
+        activity_patterns = self.provider.get_status_patterns()
+        if not activity_patterns:
+            return None
 
-        lines = [line.strip() for line in output.splitlines() if line.strip()]
-        for line in reversed(lines):
+        # Only look at the LAST ~500 chars to avoid re-detecting old status messages
+        recent_output = output[-500:] if len(output) > 500 else output
+        lines = [line.strip() for line in recent_output.splitlines() if line.strip()]
+
+        # Only check the last few lines (status messages are transient)
+        for line in reversed(lines[-5:]):
+            line_lower = line.lower()
             for pattern in activity_patterns:
-                if pattern in line:
-                    # Return the actual line (includes elapsed time like "(5s)")
-                    # Remove ANSI escape codes
+                if pattern.lower() in line_lower:
                     clean_line = re.sub(r'\x1b\[[0-9;]*m', '', line)
-                    # Remove box drawing characters
                     clean_line = re.sub(r'[│╭╮╯╰─┌┐└┘├┤┬┴┼]', '', clean_line)
-                    # Remove "esc to interrupt" text but keep elapsed time
-                    # Handle formats like "(5s • esc to interrupt)" -> "(5s)"
                     clean_line = re.sub(r'\s*[•·\-–—]\s*esc to interrupt', '', clean_line, flags=re.IGNORECASE)
-                    # Clean up any double parentheses
                     clean_line = re.sub(r'\(\)', '', clean_line)
-                    # Transform "(5s)", "(5s.)", "(5s •)" to "5s" - remove parentheses, dot, and bullet
-                    clean_line = re.sub(r'\((\d+)s\.?\s*[•·\-–—]?\s*\)', r'\1s', clean_line)
-                    clean_line = clean_line.strip()
-                    if clean_line:
+                    # Normalize timing to avoid "5s" vs "6s" causing re-triggers
+                    clean_line = re.sub(r'\(?\d+s\.?\)?', '', clean_line)
+                    clean_line = re.sub(r'\s+', ' ', clean_line).strip()
+                    if clean_line and len(clean_line) > 3:
                         return clean_line
 
         return None
@@ -731,9 +726,15 @@ class StreamGenerator:
         log.info(f"[DEBUG_FINAL] state.current_full_content: {repr(state.current_full_content[:300] if state.current_full_content else 'None')}")
         log.info(f"[DEBUG_FINAL] state.last_streamed_content: {repr(state.last_streamed_content[:300] if state.last_streamed_content else 'None')}")
 
-        # Use sanitized message for extraction since that's what was actually sent to terminal
         sanitized_message = _sanitize_message(self.message)
-        response_text = ResponseExtractor.extract_full(relevant_output, sanitized_message)
+        markers = self.provider.get_response_markers()
+        response_marker = markers[0] if markers else None
+        response_text = ResponseExtractor.extract_full(
+            relevant_output, sanitized_message,
+            response_marker=response_marker,
+            thinking_marker=self.provider.get_thinking_marker(),
+            continuation_marker=self.provider.get_continuation_marker(),
+        )
         log.info(f"[DEBUG_FINAL] Extracted response_text: {repr(response_text[:200] if response_text else 'None')}")
 
         # Use current_full_content (includes partial last line) over last_streamed_content
@@ -1025,6 +1026,48 @@ class TerminalAgentStreamGenerator:
             yield self.sse.send({'type': 'error', 'message': str(e)})
             yield self.sse.send({'type': 'done'})
 
+    def _get_status_message(self, state) -> str | None:
+        activity_patterns = self.provider.get_status_patterns()
+
+        if activity_patterns:
+            output_tail = state.all_output[-3000:] if len(state.all_output) > 3000 else state.all_output
+            return self._detect_activity(output_tail)
+
+        # No patterns defined - use last streamed content as status (e.g., Codex)
+        content = state.last_streamed_content or state.current_full_content
+        if content:
+            lines = [l.strip() for l in content.strip().split('\n') if l.strip()]
+            if lines:
+                last_line = lines[-1][:80]
+                if last_line and len(last_line) > 3:
+                    return last_line
+        return None
+
+    def _detect_activity(self, output: str) -> str | None:
+        activity_patterns = self.provider.get_status_patterns()
+        if not activity_patterns:
+            return None
+
+        # Only look at the LAST ~500 chars to avoid re-detecting old status messages
+        recent_output = output[-500:] if len(output) > 500 else output
+        clean_output = TextCleaner.strip_ansi(recent_output)
+        lines = [line.strip() for line in clean_output.splitlines() if line.strip()]
+
+        # Only check the last few lines (status messages are transient)
+        for line in reversed(lines[-5:]):
+            line_lower = line.lower()
+            for pattern in activity_patterns:
+                if pattern.lower() in line_lower:
+                    clean_line = re.sub(r'[│╭╮╯╰─┌┐└┘├┤┬┴┼]', '', line)
+                    clean_line = re.sub(r'\s*[•·\-–—]\s*esc to interrupt', '', clean_line, flags=re.IGNORECASE)
+                    clean_line = re.sub(r'\(\)', '', clean_line)
+                    # Normalize timing to avoid "5s" vs "6s" causing re-triggers
+                    clean_line = re.sub(r'\(?\d+s\.?\)?', '', clean_line)
+                    clean_line = re.sub(r'\s+', ' ', clean_line).strip()
+                    if clean_line and len(clean_line) > 3:
+                        return clean_line
+        return None
+
     def _stream_response(self, session, sanitized_message: str, ProcessorClass):
         from backend.models.stream_state import StreamState
 
@@ -1034,6 +1077,8 @@ class TerminalAgentStreamGenerator:
             tool_patterns=self.provider.get_tool_executing_patterns()
         )
         fd = session.master_fd
+        last_status_time = time.time()
+        last_status_msg = None
 
         log.info(f"[{self.provider.name.upper()}] Streaming response, fd={fd}")
 
@@ -1108,6 +1153,17 @@ class TerminalAgentStreamGenerator:
                     if processor.check_end_pattern(clean, state):
                         state.end_pattern_seen = True
 
+            # Periodic status updates
+            now = time.time()
+            if now - last_status_time >= 0.3:
+                status_msg = self._get_status_message(state)
+                if status_msg and status_msg != last_status_msg:
+                    log.debug(f"[STATUS] {status_msg}")
+                    yield self.sse.send({'type': 'status', 'message': status_msg})
+                    last_status_msg = status_msg
+                    state.update_activity(status_msg)
+                last_status_time = now
+
             if not ready:
                 if state.end_pattern_seen and state.elapsed_since_data > self.END_PATTERN_SILENCE:
                     break
@@ -1126,7 +1182,10 @@ class TerminalAgentStreamGenerator:
         markers = self.provider.get_response_markers()
         response_marker = markers[0] if markers else None
         response_text = ResponseExtractor.extract_full(
-            relevant, sanitized_message, response_marker=response_marker
+            relevant, sanitized_message,
+            response_marker=response_marker,
+            thinking_marker=self.provider.get_thinking_marker(),
+            continuation_marker=self.provider.get_continuation_marker(),
         )
 
         raw_content = state.current_full_content or state.last_streamed_content or response_text
@@ -1171,6 +1230,10 @@ class TerminalAgentStreamGenerator:
 
     def _generate_exec_mode(self):
         import subprocess
+
+        if self.provider.uses_json_output:
+            yield from self._generate_exec_mode_json()
+            return
 
         try:
             yield self.sse.send({'type': 'status', 'message': f'Running {self.provider.name}...'})
@@ -1254,6 +1317,120 @@ class TerminalAgentStreamGenerator:
 
         except Exception as e:
             log.exception(f"[{self.provider.name.upper()}] Exec mode exception: {e}")
+            if self.repository:
+                self.repository.set_streaming_status(None)
+            notify_completion(
+                question=self.message, content="", success=False, error=str(e),
+                stopped=False, execution_time=time.time() - self.start_time
+            )
+            yield self.sse.send({'type': 'error', 'message': str(e)})
+            yield self.sse.send({'type': 'done'})
+
+    def _generate_exec_mode_json(self):
+        import subprocess
+        import json
+
+        try:
+            yield self.sse.send({'type': 'status', 'message': f'Running {self.provider.name}...'})
+
+            if self.repository:
+                self.message_id = self.repository.save_question(self.message)
+
+            sanitized = self.provider.sanitize_message(self.message)
+            cmd = self.provider.get_command(self.workspace, self.model, sanitized)
+            env = self.provider.get_env()
+
+            log.info(f"[{self.provider.name.upper()}] JSON exec command: {' '.join(cmd)}")
+
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=self.workspace,
+                env=env,
+                text=True,
+                bufsize=1
+            )
+
+            yield self.sse.send({'type': 'stream_start'})
+
+            response_parts = []
+            session_id = None
+            if hasattr(self.provider, 'get_session_id'):
+                session_id = self.provider.get_session_id(self.workspace, self.model)
+
+            for line in iter(process.stdout.readline, ''):
+                if _abort_flag.is_set():
+                    _abort_flag.clear()
+                    process.kill()
+                    yield self.sse.send({'type': 'aborted', 'message': 'Request aborted'})
+                    yield self.sse.send({'type': 'done'})
+                    return
+
+                stripped = line.strip()
+                if not stripped:
+                    continue
+
+                try:
+                    data = json.loads(stripped)
+                except json.JSONDecodeError:
+                    log.debug(f"[{self.provider.name.upper()}] Non-JSON line: {stripped[:80]}")
+                    continue
+
+                event_type = data.get('type', '')
+                log.debug(f"[{self.provider.name.upper()}] JSON event: {event_type}")
+
+                if event_type == 'thread.started':
+                    new_session_id = data.get('thread_id')
+                    if new_session_id and new_session_id != session_id:
+                        session_id = new_session_id
+                        if hasattr(self.provider, 'store_session_id'):
+                            self.provider.store_session_id(self.workspace, self.model, session_id)
+
+                elif event_type == 'turn.started':
+                    yield self.sse.send({'type': 'status', 'message': 'Thinking...'})
+
+                elif event_type == 'item.completed':
+                    item = data.get('item', {})
+                    item_type = item.get('type', '')
+                    text = item.get('text', '')
+
+                    if item_type == 'agent_message' and text:
+                        response_parts.append(text)
+                        yield self.sse.send({'type': 'stream', 'content': text + '\n'})
+                    elif item_type == 'reasoning' and text:
+                        status_text = text.replace('**', '').strip()[:100]
+                        yield self.sse.send({'type': 'status', 'message': status_text})
+
+                elif event_type == 'turn.completed':
+                    log.info(f"[{self.provider.name.upper()}] Turn completed")
+
+            process.wait()
+            log.info(f"[{self.provider.name.upper()}] Process finished with code: {process.returncode}")
+
+            final_content = '\n'.join(response_parts)
+
+            if self.repository and final_content and self.message_id:
+                self.repository.save_answer(self.message_id, final_content)
+            if self.repository:
+                self.repository.set_streaming_status(None)
+
+            notify_completion(
+                question=self.message, content=final_content or "", success=bool(final_content),
+                error=None if final_content else "No response received",
+                stopped=False, execution_time=time.time() - self.start_time
+            )
+
+            yield self.sse.send({'type': 'stream_end', 'content': final_content or ''})
+            yield self.sse.send({
+                'type': 'response',
+                'message': final_content or "No response received. Please try again.",
+                'workspace': self.workspace
+            })
+            yield self.sse.send({'type': 'done'})
+
+        except Exception as e:
+            log.exception(f"[{self.provider.name.upper()}] JSON exec mode exception: {e}")
             if self.repository:
                 self.repository.set_streaming_status(None)
             notify_completion(
@@ -1419,10 +1596,18 @@ async def chat_abort():
 async def chat_reset(data: Optional[ChatResetRequest] = None):
     workspace = data.workspace if data and data.workspace else settings.workspace
     workspace = os.path.expanduser(workspace)
+    provider_name = data.provider if data and data.provider else None
 
-    log.info(f"[REQUEST] POST /api/chat/reset | workspace: '{workspace}'")
+    log.info(f"[REQUEST] POST /api/chat/reset | workspace: '{workspace}' | provider: '{provider_name}'")
 
     reset_success = SessionManager.reset(workspace)
+
+    if provider_name:
+        from backend.services.terminal_agent.registry import TerminalAgentRegistry
+        provider = TerminalAgentRegistry.get(provider_name)
+        if provider and hasattr(provider, 'clear_session'):
+            provider.clear_session(workspace)
+            log.info(f"[RESET] Cleared {provider_name} session for workspace: {workspace}")
 
     if not reset_success:
         response_data = {'status': 'error', 'message': 'Cannot reset: terminal is currently in use'}

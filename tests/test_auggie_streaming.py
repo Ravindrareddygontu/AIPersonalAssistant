@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 from datetime import datetime
 
+import pytest
+
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -425,6 +427,8 @@ if PYTEST_AVAILABLE:
         # Don't teardown between tests - reuse session
 
 
+@pytest.mark.slow
+@pytest.mark.integration
 def test_simple_question(tester=None):
     """Test simple arithmetic question - fast response expected."""
     if tester is None:
@@ -436,6 +440,8 @@ def test_simple_question(tester=None):
     assert result.total_time < 30, "Simple question should complete in under 30s"
 
 
+@pytest.mark.slow
+@pytest.mark.integration
 def test_codebase_search(tester=None):
     """Test codebase search functionality."""
     if tester is None:
@@ -448,6 +454,8 @@ def test_codebase_search(tester=None):
     assert len(result.tool_blocks_detected) > 0, "Expected tool blocks for search"
 
 
+@pytest.mark.slow
+@pytest.mark.integration
 def test_terminal_command(tester=None):
     """Test terminal command execution."""
     if tester is None:
@@ -460,6 +468,8 @@ def test_terminal_command(tester=None):
         "Expected backend files in response"
 
 
+@pytest.mark.slow
+@pytest.mark.integration
 def test_long_response(tester=None):
     """Test that long responses stream completely without cutoff."""
     if tester is None:
@@ -476,6 +486,8 @@ def test_long_response(tester=None):
     assert last_char in '.!?)`"\'', f"Response may be cut off, ends with: {repr(last_char)}"
 
 
+@pytest.mark.slow
+@pytest.mark.integration
 def test_complex_multi_tool(tester=None):
     """Test complex query requiring multiple tool uses."""
     if tester is None:
@@ -488,6 +500,8 @@ def test_complex_multi_tool(tester=None):
     assert len(result.tool_blocks_detected) >= 1, "Expected at least one tool block"
 
 
+@pytest.mark.slow
+@pytest.mark.integration
 def test_streaming_timing(tester=None):
     """Test that streaming starts promptly."""
     if tester is None:

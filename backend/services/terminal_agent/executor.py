@@ -186,7 +186,10 @@ class TerminalAgentExecutor:
         markers = self.provider.get_response_markers()
         response_marker = markers[0] if markers else None
         response_text = ResponseExtractor.extract_full(
-            relevant, sanitized, response_marker=response_marker
+            relevant, sanitized,
+            response_marker=response_marker,
+            thinking_marker=self.provider.get_thinking_marker(),
+            continuation_marker=self.provider.get_continuation_marker(),
         )
 
         content = state.current_full_content or state.last_streamed_content or ""

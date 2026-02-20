@@ -10,6 +10,7 @@ from backend.utils.text import TextCleaner
 from backend.utils.response import ResponseExtractor
 from backend.utils.content_cleaner import ContentCleaner
 from backend.services.stream_processor import StreamProcessor
+from backend.services.auggie.provider import AuggieProvider
 from backend.models.stream_state import StreamState
 
 log = logging.getLogger('auggie.executor')
@@ -194,8 +195,15 @@ class AuggieExecutor:
         clean_all = TextCleaner.strip_ansi(state.all_output)
         relevant = clean_all[state.output_start_pos:] if state.output_start_pos > 0 else clean_all
 
-        # Use sanitized message for extraction since that's what was sent to terminal
-        response_text = ResponseExtractor.extract_full(relevant, sanitized)
+        provider = AuggieProvider()
+        markers = provider.get_response_markers()
+        response_marker = markers[0] if markers else None
+        response_text = ResponseExtractor.extract_full(
+            relevant, sanitized,
+            response_marker=response_marker,
+            thinking_marker=provider.get_thinking_marker(),
+            continuation_marker=provider.get_continuation_marker(),
+        )
 
         # Debug logging
         log.debug(f"[EXECUTOR] state.current_full_content: {repr(state.current_full_content[:200] if state.current_full_content else None)}")

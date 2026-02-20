@@ -56,6 +56,12 @@ function startStreamingMessage(requestId) {
     streamingContent = '';
     streamingFinalized = false;
     streamingRequestId = requestId;
+    displayedContent = '';
+    typingQueue = [];
+    if (typingTimer) {
+        clearTimeout(typingTimer);
+        typingTimer = null;
+    }
     resetIncrementalFormatCache();
 
     const container = DOM.get('chatMessages');
@@ -82,18 +88,26 @@ function startStreamingMessage(requestId) {
 }
 
 let scrollTimeout = null;
+let typingQueue = [];
+let typingTimer = null;
+let displayedContent = '';
+const TYPING_SPEED_MS = 8;
+const BATCH_SIZE = 3;
 
-function appendStreamingContent(content, requestId) {
-    if (requestId !== streamingRequestId || !streamingMessageDiv) return;
+function processTypingQueue() {
+    if (typingQueue.length === 0 || !streamingMessageDiv) {
+        typingTimer = null;
+        return;
+    }
 
-    streamingContent += content;
+    const batch = typingQueue.splice(0, BATCH_SIZE).join('');
+    displayedContent += batch;
 
     const textDiv = streamingMessageDiv.querySelector('.message-text');
     if (textDiv) {
-        textDiv.innerHTML = formatMessageIncremental(streamingContent);
+        textDiv.innerHTML = formatMessageIncremental(displayedContent);
     }
 
-    // Smooth scroll with throttling to avoid jitter
     if (!scrollTimeout) {
         scrollTimeout = setTimeout(() => {
             const container = DOM.get('chatMessages');
@@ -106,11 +120,45 @@ function appendStreamingContent(content, requestId) {
             scrollTimeout = null;
         }, 50);
     }
+
+    if (typingQueue.length > 0) {
+        const dynamicSpeed = typingQueue.length > 50 ? TYPING_SPEED_MS / 2 : TYPING_SPEED_MS;
+        typingTimer = setTimeout(processTypingQueue, dynamicSpeed);
+    } else {
+        typingTimer = null;
+    }
+}
+
+function appendStreamingContent(content, requestId) {
+    if (requestId !== streamingRequestId || !streamingMessageDiv) return;
+
+    streamingContent += content;
+
+    for (const char of content) {
+        typingQueue.push(char);
+    }
+
+    if (!typingTimer) {
+        processTypingQueue();
+    }
+}
+
+function flushTypingQueue() {
+    if (typingTimer) {
+        clearTimeout(typingTimer);
+        typingTimer = null;
+    }
+    if (typingQueue.length > 0) {
+        displayedContent += typingQueue.join('');
+        typingQueue = [];
+    }
 }
 
 function finalizeStreamingMessage(finalContent, requestId) {
     if (streamingFinalized) return;
     streamingFinalized = true;
+
+    flushTypingQueue();
 
     const content = finalContent || streamingContent;
     const messageId = generateMessageId(state.currentChatId, state.chatHistory.length, content);
@@ -145,6 +193,8 @@ function finalizeStreamingMessage(finalContent, requestId) {
 
     streamingMessageDiv = null;
     streamingContent = '';
+    displayedContent = '';
+    typingQueue = [];
     state.streamingMessageDiv = null;
     const providerDropdown = document.getElementById('providerDropdown');
     if (providerDropdown) providerDropdown.classList.remove('disabled');

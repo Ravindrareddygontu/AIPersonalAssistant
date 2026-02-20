@@ -86,9 +86,28 @@ class TerminalAgentProvider(ABC):
             'Searching',
         ]
 
+    def get_status_patterns(self) -> List[str]:
+        """Patterns to detect for frontend status display.
+        Override in subclass to provide provider-specific patterns.
+        """
+        return []
+
+    def get_thinking_marker(self) -> Optional[str]:
+        """Marker for internal reasoning/thinking (e.g., '~' for Auggie)."""
+        return None
+
+    def get_continuation_marker(self) -> Optional[str]:
+        """Marker for tool results/continuations (e.g., '⎿' for Auggie, '└' for Codex)."""
+        return None
+
     @property
     def is_exec_mode(self) -> bool:
         """Return True if provider uses exec mode (one-shot command per message)."""
+        return False
+
+    @property
+    def uses_json_output(self) -> bool:
+        """Return True if provider outputs JSONL format."""
         return False
 
     def get_env(self) -> dict:

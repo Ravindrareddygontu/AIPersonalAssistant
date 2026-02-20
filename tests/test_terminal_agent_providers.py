@@ -103,7 +103,7 @@ class TestCodexProvider:
         provider = CodexProvider()
         markers = provider.get_response_markers()
         assert len(markers) > 0
-        assert '▸' in markers or '→' in markers
+        assert '•' in markers
 
     def test_sanitize_message(self):
         provider = CodexProvider()
@@ -116,9 +116,9 @@ class TestCodexProvider:
     def test_extract_response(self):
         provider = CodexProvider()
         output = '''Question text
-▸ This is the response
+• This is the response
 More content
->'''
+›'''
         result = provider.extract_response(output, 'Question text')
         assert result is not None
         assert 'This is the response' in result
