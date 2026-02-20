@@ -1029,7 +1029,10 @@ class TerminalAgentStreamGenerator:
         from backend.models.stream_state import StreamState
 
         processor = ProcessorClass(self.provider, sanitized_message)
-        state = StreamState(prev_response=session.last_response or "")
+        state = StreamState(
+            prev_response=session.last_response or "",
+            tool_patterns=self.provider.get_tool_executing_patterns()
+        )
         fd = session.master_fd
 
         log.info(f"[{self.provider.name.upper()}] Streaming response, fd={fd}")
@@ -1120,7 +1123,11 @@ class TerminalAgentStreamGenerator:
         session.drain_output(0.5)
         clean_all = TextCleaner.strip_ansi(state.all_output)
         relevant = clean_all[state.output_start_pos:] if state.output_start_pos > 0 else clean_all
-        response_text = ResponseExtractor.extract_full(relevant, sanitized_message)
+        markers = self.provider.get_response_markers()
+        response_marker = markers[0] if markers else None
+        response_text = ResponseExtractor.extract_full(
+            relevant, sanitized_message, response_marker=response_marker
+        )
 
         raw_content = state.current_full_content or state.last_streamed_content or response_text
         raw_content = ContentCleaner.strip_previous_response(raw_content, state.prev_response)

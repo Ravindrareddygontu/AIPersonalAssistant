@@ -1,5 +1,23 @@
 import time
 from dataclasses import dataclass, field
+from typing import List, Optional
+
+
+# Default tool patterns (Auggie-style)
+DEFAULT_TOOL_PATTERNS: List[str] = [
+    'Executing tools',
+    'executing tools',
+    '- read file',
+    '- read directory',
+    '- search',
+    'Codebase search',
+    'Terminal -',
+    '↳ Read',
+    '↳ Command',
+    '↳ Search',
+    'Reading file',
+    'Searching',
+]
 
 
 @dataclass
@@ -7,7 +25,7 @@ class StreamState:
     # Raw output accumulator
     all_output: str = ''
     clean_output: str = ''
-    
+
     # Timing
     last_data_time: float = field(default_factory=time.time)
     message_sent_time: float = field(default_factory=time.time)
@@ -16,23 +34,26 @@ class StreamState:
 
     # Activity tracking (for extended timeouts during processing)
     current_activity: str = ''
-    
+
     # Processing flags
     saw_message_echo: bool = False
     saw_response_marker: bool = False
     streaming_started: bool = False
     end_pattern_seen: bool = False
     aborted: bool = False
-    
+
     # Content tracking
     last_streamed_content: str = ''
-    current_full_content: str = ''  # Full content from process_chunk (may include partial last line)
+    current_full_content: str = ''
     streamed_length: int = 0
     output_start_pos: int = 0
-    
+
     # Previous response for de-duplication
     prev_response: str = ''
-    
+
+    # Provider-specific tool patterns (defaults to Auggie patterns)
+    tool_patterns: Optional[List[str]] = None
+
     # Debug flags (to avoid repeated logging)
     _logged_no_match: bool = False
     _logged_no_echo: bool = False
@@ -135,29 +156,14 @@ class StreamState:
     def has_substantial_content(self, min_length: int = 50, min_time: float = 5.0) -> bool:
         return self.streamed_length > min_length and self.elapsed_since_message > min_time
 
-    # Patterns indicating tools are executing (need extended timeout)
-    TOOL_EXECUTING_PATTERNS = [
-        'Executing tools',
-        'executing tools',
-        '- read file',
-        '- read directory',
-        '- search',
-        'Codebase search',
-        'Terminal -',
-        '↳ Read',
-        '↳ Command',
-        '↳ Search',
-        'Reading file',
-        'Searching',
-    ]
-
     def is_tool_executing(self) -> bool:
         content = self.last_streamed_content
         if not content:
             return False
 
+        patterns = self.tool_patterns if self.tool_patterns is not None else DEFAULT_TOOL_PATTERNS
         content_end = content[-150:] if len(content) > 150 else content
-        for pattern in self.TOOL_EXECUTING_PATTERNS:
+        for pattern in patterns:
             if pattern.lower() in content_end.lower():
                 return True
         return False

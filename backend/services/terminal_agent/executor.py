@@ -121,7 +121,10 @@ class TerminalAgentExecutor:
             return TerminalAgentResponse(success=False, content="", error="Write error")
 
         processor = BaseStreamProcessor(self.provider, sanitized)
-        state = StreamState(prev_response=session.last_response or "")
+        state = StreamState(
+            prev_response=session.last_response or "",
+            tool_patterns=self.provider.get_tool_executing_patterns()
+        )
 
         fd = session.master_fd
         start_time = time.time()
@@ -180,7 +183,11 @@ class TerminalAgentExecutor:
         clean_all = TextCleaner.strip_ansi(state.all_output)
         relevant = clean_all[state.output_start_pos:] if state.output_start_pos > 0 else clean_all
 
-        response_text = ResponseExtractor.extract_full(relevant, sanitized)
+        markers = self.provider.get_response_markers()
+        response_marker = markers[0] if markers else None
+        response_text = ResponseExtractor.extract_full(
+            relevant, sanitized, response_marker=response_marker
+        )
 
         content = state.current_full_content or state.last_streamed_content or ""
         if response_text and len(response_text) > len(content):
