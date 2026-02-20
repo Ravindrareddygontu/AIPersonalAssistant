@@ -227,8 +227,8 @@ class TestSessionManagerWithSessionId:
         assert is_new is True
         assert session.session_id == 'xyz-789'
 
-    def test_get_or_create_reuses_existing_session(self):
-        """Test that get_or_create reuses existing session."""
+    def test_get_or_create_reuses_existing_session_same_id(self):
+        """Test that get_or_create reuses existing session when session_id matches."""
         workspace = '/tmp/test-reuse'
 
         mock_process = MagicMock()
@@ -243,7 +243,7 @@ class TestSessionManagerWithSessionId:
 
         with patch('backend.session.start_cleanup_thread'):
             session, is_new = SessionManager.get_or_create(
-                workspace, session_id='new-456'
+                workspace, session_id='existing-123'
             )
 
         assert is_new is False
@@ -273,15 +273,15 @@ class TestSessionManagerWithSessionId:
         assert session.session_id == 'new-session'
         mock_cleanup.assert_called_once()
 
-    def test_force_new_false_reuses_existing_session(self):
-        """Test that force_new=False (default) reuses existing session."""
+    def test_force_new_false_reuses_existing_session_same_id(self):
+        """Test that force_new=False reuses existing session when session_id matches."""
         workspace = '/tmp/test-force-new-false'
 
         mock_process = MagicMock()
         mock_process.poll.return_value = None
         mock_process.pid = 12345
 
-        existing = AuggieSession(workspace, session_id='existing-session')
+        existing = AuggieSession(workspace, session_id='same-session')
         existing.process = mock_process
 
         with _lock:
@@ -289,11 +289,11 @@ class TestSessionManagerWithSessionId:
 
         with patch('backend.session.start_cleanup_thread'):
             session, is_new = SessionManager.get_or_create(
-                workspace, session_id='ignored-session', force_new=False
+                workspace, session_id='same-session', force_new=False
             )
 
         assert is_new is False
-        assert session.session_id == 'existing-session'
+        assert session.session_id == 'same-session'
 
     def test_force_new_creates_session_when_none_exists(self):
         """Test that force_new=True creates new session when no existing session."""
@@ -306,6 +306,77 @@ class TestSessionManagerWithSessionId:
 
         assert is_new is True
         assert session.session_id == 'brand-new'
+
+    def test_session_id_change_restarts_session(self):
+        """Test that switching to a different session_id restarts the session."""
+        workspace = '/tmp/test-session-switch'
+
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+        mock_process.pid = 12345
+
+        existing = AuggieSession(workspace, session_id='session-A')
+        existing.process = mock_process
+
+        with _lock:
+            _sessions[workspace] = existing
+
+        with patch('backend.session.start_cleanup_thread'):
+            with patch.object(existing, 'cleanup') as mock_cleanup:
+                session, is_new = SessionManager.get_or_create(
+                    workspace, session_id='session-B', force_new=False
+                )
+
+        assert is_new is True
+        assert session.session_id == 'session-B'
+        mock_cleanup.assert_called_once()
+
+    def test_session_id_none_to_specific_restarts(self):
+        """Test switching from no session_id to specific session_id restarts."""
+        workspace = '/tmp/test-none-to-specific'
+
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+        mock_process.pid = 12345
+
+        existing = AuggieSession(workspace, session_id=None)
+        existing.process = mock_process
+
+        with _lock:
+            _sessions[workspace] = existing
+
+        with patch('backend.session.start_cleanup_thread'):
+            with patch.object(existing, 'cleanup') as mock_cleanup:
+                session, is_new = SessionManager.get_or_create(
+                    workspace, session_id='new-session-id', force_new=False
+                )
+
+        assert is_new is True
+        assert session.session_id == 'new-session-id'
+        mock_cleanup.assert_called_once()
+
+    def test_session_id_none_reuses_existing_none(self):
+        """Test that session_id=None reuses existing session with session_id=None."""
+        workspace = '/tmp/test-none-reuses-none'
+
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+        mock_process.pid = 12345
+
+        existing = AuggieSession(workspace, session_id=None)
+        existing.process = mock_process
+
+        with _lock:
+            _sessions[workspace] = existing
+
+        with patch('backend.session.start_cleanup_thread'):
+            session, is_new = SessionManager.get_or_create(
+                workspace, session_id=None, force_new=False
+            )
+
+        # session_id=None doesn't trigger restart (handled by force_new instead)
+        assert is_new is False
+        assert session is existing
 
 
 if __name__ == '__main__':
