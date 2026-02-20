@@ -115,3 +115,10 @@ def get_reminders_collection():
     if db is None:
         return None
     return db['reminders']
+
+
+def get_bot_chats_collection():
+    db = get_db()
+    if db is None:
+        return None
+    return db['bot_chats']

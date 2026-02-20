@@ -33,34 +33,38 @@ class SlackBotConfig:
 
 class SlackBot:
 
-    def __init__(self, config: SlackBotConfig = None):
+    def __init__(self, config: SlackBotConfig = None, repository=None):
         self.config = config or SlackBotConfig()
         self._app = None
         self._handler = None
         self._executor = None
         self._summarizer = None
+        self._repository = repository
         self._thread: Optional[threading.Thread] = None
         self._running = False
-    
+
     def _ensure_initialized(self):
         if self._app is not None:
             return
-        
+
         try:
             from slack_bolt import App
             from slack_bolt.adapter.socket_mode import SocketModeHandler
         except ImportError:
             raise ImportError("Run: pip install slack-bolt")
-        
-        # Initialize Slack Bolt app
+
         self._app = App(
             token=self.config.bot_token,
             signing_secret=self.config.signing_secret,
         )
-        
+
         from backend.services.auggie import AuggieExecutor, ResponseSummarizer
         self._executor = AuggieExecutor()
         self._summarizer = ResponseSummarizer
+
+        if self._repository is None:
+            from backend.services.slack.bot_chat_repository import BotChatRepository
+            self._repository = BotChatRepository()
 
         self._register_handlers()
 
@@ -97,18 +101,21 @@ class SlackBot:
         text = self._extract_message_text(event)
         channel = event.get("channel")
         thread_ts = event.get("thread_ts") or event.get("ts")
+        user_id = event.get("user")
 
         if not text:
             say("Please provide a message!", thread_ts=thread_ts)
             return
 
         log.info(f"[SLACK BOT] Processing: {text[:50]}...")
-        log.info(f"[SLACK BOT] Channel: {channel}, Thread: {thread_ts}")
+        log.info(f"[SLACK BOT] Channel: {channel}, Thread: {thread_ts}, User: {user_id}")
 
-        # Send thinking indicator
+        chat_ctx = None
+        if self._repository and user_id:
+            chat_ctx = self._repository.get_or_create_chat(user_id, channel, thread_ts)
+
         say("⏳ Working on it...", thread_ts=thread_ts)
 
-        # Execute via Auggie
         try:
             log.info(f"[SLACK BOT] Executing with workspace: {self.config.workspace}")
             response = self._executor.execute(
@@ -137,9 +144,15 @@ class SlackBot:
                     reply = f"{clean_content}\n\n⏱️ _{response.execution_time:.1f}s_"
 
                 log.info(f"[SLACK BOT] Reply length: {len(reply)} chars")
+
+                if chat_ctx:
+                    self._repository.save_message(chat_ctx.chat_id, text, clean_content, response.execution_time)
             else:
                 reply = f"❌ Error: {response.error}"
                 log.error(f"[SLACK BOT] Execution failed: {response.error}")
+
+                if chat_ctx:
+                    self._repository.save_message(chat_ctx.chat_id, text, reply, response.execution_time)
 
             log.info(f"[SLACK BOT] Sending reply to Slack...")
             say(reply, thread_ts=thread_ts)
@@ -151,25 +164,26 @@ class SlackBot:
 
     def _handle_slash_command(self, respond: Callable, command: dict):
         text = command.get("text", "").strip()
+        user_id = command.get("user_id", "unknown")
         user = command.get("user_name", "user")
         channel = command.get("channel_id", "unknown")
 
-        # Handle help command
         if not text or text.lower() == "help":
             respond(self._get_help_text())
             return
 
-        # Handle status command
         if text.lower() == "status":
             respond(f"🤖 Auggie Bot is running\n📁 Workspace: `{self.config.workspace}`")
             return
 
         log.info(f"[SLACK BOT] Slash command from {user} in {channel}: {text[:50]}...")
 
-        # Send acknowledgment
+        chat_ctx = None
+        if self._repository and user_id:
+            chat_ctx = self._repository.get_or_create_chat(user_id, channel)
+
         respond("⏳ Processing your request...")
 
-        # Execute via Auggie
         try:
             log.info(f"[SLACK BOT] Executing slash command with workspace: {self.config.workspace}")
             response = self._executor.execute(
@@ -198,9 +212,15 @@ class SlackBot:
                     reply = f"✅ *Result:*\n{clean_content}\n\n⏱️ _{response.execution_time:.1f}s_"
 
                 log.info(f"[SLACK BOT] Slash reply length: {len(reply)} chars")
+
+                if chat_ctx:
+                    self._repository.save_message(chat_ctx.chat_id, text, clean_content, response.execution_time)
             else:
                 reply = f"❌ *Error:* {response.error}"
                 log.error(f"[SLACK BOT] Slash execution failed: {response.error}")
+
+                if chat_ctx:
+                    self._repository.save_message(chat_ctx.chat_id, text, reply, response.execution_time)
 
             log.info(f"[SLACK BOT] Sending slash reply...")
             respond(reply)

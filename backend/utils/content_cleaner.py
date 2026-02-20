@@ -86,11 +86,25 @@ class ContentCleaner:
     def _is_box_only_line(cls, stripped: str) -> bool:
         return stripped and all(c in cls.BOX_CHARS for c in stripped)
 
+    # Terminal UI garbage patterns (escape code remnants, status area artifacts)
+    _GARBAGE_PATTERNS = re.compile(
+        r'^(?:'
+        r'[;0-9]{1,5}|'              # Escape code number remnants (;38, 255, etc)
+        r'SA|'                        # Scroll/Status Area remnants from Auggie UI
+        r'[A-Z]{1,2}|'                # Single/double uppercase (cursor codes: A, H, K, SA, etc)
+        r'[0-9]+;[0-9]+|'             # Coordinate remnants (row;col)
+        r'm|'                         # SGR terminator remnant
+        r'\?[0-9]+[hl]'               # DEC mode remnants (?25h, ?25l)
+        r')$'
+    )
+
     @classmethod
     def _is_garbage_line(cls, stripped: str) -> bool:
         if not stripped:
             return False
         if len(stripped) <= 5 and stripped.lstrip(';').isdigit():
+            return True
+        if cls._GARBAGE_PATTERNS.match(stripped):
             return True
         return False
 

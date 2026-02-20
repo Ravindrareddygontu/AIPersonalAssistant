@@ -171,10 +171,23 @@ class TestIsGarbageLine:
         assert ContentCleaner._is_garbage_line(";123") == True
         assert ContentCleaner._is_garbage_line("45") == True
 
+    def test_terminal_ui_garbage(self):
+        """Test terminal UI artifact detection (SA, cursor codes, etc)."""
+        assert ContentCleaner._is_garbage_line("SA") == True
+        assert ContentCleaner._is_garbage_line("A") == True
+        assert ContentCleaner._is_garbage_line("H") == True
+        assert ContentCleaner._is_garbage_line("K") == True
+        assert ContentCleaner._is_garbage_line("m") == True
+        assert ContentCleaner._is_garbage_line("1;5") == True
+        assert ContentCleaner._is_garbage_line("?25h") == True
+        assert ContentCleaner._is_garbage_line("?25l") == True
+
     def test_normal_text(self):
         """Test normal text is not garbage."""
         assert ContentCleaner._is_garbage_line("Hello") == False
         assert ContentCleaner._is_garbage_line("Code 42") == False
+        assert ContentCleaner._is_garbage_line("Save the file") == False
+        assert ContentCleaner._is_garbage_line("USA") == False
 
     def test_empty_string(self):
         """Test empty string is not garbage."""

@@ -1270,27 +1270,29 @@ body.theme-transitioning *::after {
     font-size: 0.85rem;
 }
 
-/* Inline code styling */
+/* Inline code styling - default is dark theme (white text) */
 .message-content p > code,
 .message-content li > code,
 .message-content td > code,
 .message-content h3 > code,
 .message-content h4 > code {
-    background: rgba(128, 128, 128, 0.15);
+    background: rgba(255, 255, 255, 0.1);
     padding: 2px 7px;
     border-radius: 4px;
     font-size: 0.95em;
     border: 1px solid var(--border);
     font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
-    color: #1a1a1a;
+    color: #ffffff;
 }
 
+/* Light theme inline code - dark text */
 .light-theme .message-content p > code,
 .light-theme .message-content li > code,
 .light-theme .message-content td > code,
 .light-theme .message-content h3 > code,
 .light-theme .message-content h4 > code {
     color: #0a0a0a;
+    background: rgba(128, 128, 128, 0.15);
 }
 
 /* Table wrapper with copy button */
@@ -1631,7 +1633,7 @@ body.theme-transitioning *::after {
    TOOL BLOCKS - Terminal, Read File, etc.
    ============================================================================ */
 .tool-block {
-    display: inline-block;
+    display: block;
     max-width: 100%;
     margin: 8px 0;
     border-radius: 8px;

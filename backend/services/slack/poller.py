@@ -12,28 +12,28 @@ log = logging.getLogger('slack.poller')
 class SlackPoller:
 
     bot_token: str = None
-    channel_id: str = None  # DM channel with the bot
+    channel_id: str = None
     workspace: str = None
     model: str = None
-    poll_interval: float = 2.0  # seconds
-    
-    # Internal state
+    poll_interval: float = 2.0
+    repository: object = None
+
     _processed_messages: Set[str] = field(default_factory=set)
     _running: bool = False
     _thread: Optional[threading.Thread] = None
     _client = None
     _executor = None
     _summarizer = None
-    
+
     def __post_init__(self):
         self.bot_token = self.bot_token or os.environ.get('SLACK_BOT_TOKEN')
         self.channel_id = self.channel_id or os.environ.get('SLACK_CHANNEL_ID')
         self.workspace = self.workspace or os.environ.get(
-            'SLACK_WORKSPACE', 
+            'SLACK_WORKSPACE',
             os.path.expanduser("~/Projects/POC'S/ai-chat-app")
         )
         self.model = self.model or os.environ.get('SLACK_MODEL')
-    
+
     def _ensure_client(self):
         if self._client is None:
             try:
@@ -41,11 +41,15 @@ class SlackPoller:
                 self._client = WebClient(token=self.bot_token)
             except ImportError:
                 raise ImportError("Run: pip install slack-sdk")
-        
+
         if self._executor is None:
             from backend.services.auggie import AuggieExecutor, ResponseSummarizer
             self._executor = AuggieExecutor()
             self._summarizer = ResponseSummarizer
+
+        if self.repository is None:
+            from backend.services.slack.bot_chat_repository import BotChatRepository
+            self.repository = BotChatRepository()
     
     def _get_bot_user_id(self) -> str:
         response = self._client.auth_test()
@@ -93,23 +97,25 @@ class SlackPoller:
     def _process_message(self, msg: dict):
         ts = msg['ts']
         text = msg['text']
-        
+        user_id = msg.get('user')
+
         log.info(f"[SLACK] Processing: {text[:50]}...")
-        
-        # Mark as processed immediately to avoid duplicates
+
         self._processed_messages.add(ts)
-        
-        # Send acknowledgment
+
+        chat_ctx = None
+        if self.repository and user_id:
+            chat_ctx = self.repository.get_or_create_chat(user_id, self.channel_id, ts)
+
         self._send_reply("⏳ Working on it...", thread_ts=ts)
-        
-        # Execute via Auggie
+
         try:
             response = self._executor.execute(
                 message=text,
                 workspace=self.workspace,
                 model=self.model
             )
-            
+
             if response.success:
                 summary = self._summarizer.summarize(response.content)
                 self._send_reply(
@@ -117,9 +123,16 @@ class SlackPoller:
                     thread_ts=ts
                 )
                 log.info(f"[SLACK] Responded: {summary[:100]}...")
+
+                if chat_ctx:
+                    self.repository.save_message(chat_ctx.chat_id, text, response.content, response.execution_time)
             else:
-                self._send_reply(f"❌ Error: {response.error}", thread_ts=ts)
-                
+                error_reply = f"❌ Error: {response.error}"
+                self._send_reply(error_reply, thread_ts=ts)
+
+                if chat_ctx:
+                    self.repository.save_message(chat_ctx.chat_id, text, error_reply, response.execution_time)
+
         except Exception as e:
             log.exception(f"[SLACK] Execution error: {e}")
             self._send_reply(f"❌ Error: {str(e)}", thread_ts=ts)
