@@ -147,7 +147,7 @@ class SlackBot:
                 log.info(f"[SLACK BOT] Reply length: {len(reply)} chars")
 
                 if chat_ctx:
-                    self._repository.save_message(chat_ctx.chat_id, text, clean_content, response.execution_time)
+                    self._repository.save_message(chat_ctx.chat_id, text, content, response.execution_time)
                     if response.session_id and response.session_id != chat_ctx.auggie_session_id:
                         self._repository.save_auggie_session_id(chat_ctx.chat_id, response.session_id)
             else:
@@ -218,7 +218,7 @@ class SlackBot:
                 log.info(f"[SLACK BOT] Slash reply length: {len(reply)} chars")
 
                 if chat_ctx:
-                    self._repository.save_message(chat_ctx.chat_id, text, clean_content, response.execution_time)
+                    self._repository.save_message(chat_ctx.chat_id, text, content, response.execution_time)
                     if response.session_id and response.session_id != chat_ctx.auggie_session_id:
                         self._repository.save_auggie_session_id(chat_ctx.chat_id, response.session_id)
             else:
@@ -238,12 +238,23 @@ class SlackBot:
 
     def _extract_summary(self, content: str) -> tuple[str, str | None]:
         """Extract summary from content. Returns (content_without_summary, summary)"""
-        pattern = r'-{2,3}SUMMARY-{2,3}\s*(.*?)\s*-{2,3}END_SUMMARY-{2,3}'
-        match = re.search(pattern, content, re.DOTALL)
-        if match:
-            summary = match.group(1).strip()
-            clean_content = re.sub(pattern, '', content, flags=re.DOTALL).strip()
+        # Try with END_SUMMARY tag first - must be at start of line
+        pattern = r'(?:^|\n)-{2,3}SUMMARY-{2,3}\s*(.*?)\s*-{2,3}END_SUMMARY-{2,3}'
+        matches = re.findall(pattern, content, re.DOTALL)
+        if matches:
+            summary = matches[-1].strip()
+            clean_content = re.sub(pattern, '', content, count=1, flags=re.DOTALL).strip()
             return clean_content, summary
+
+        # Fallback: SUMMARY tag at start of line without END_SUMMARY - find last occurrence
+        pattern_no_end = r'(?:^|\n)-{2,3}SUMMARY-{2,3}\s*'
+        all_matches = list(re.finditer(pattern_no_end, content))
+        if all_matches:
+            last_match = all_matches[-1]
+            summary = content[last_match.end():].strip()
+            clean_content = content[:last_match.start()].strip()
+            return clean_content, summary
+
         return content, None
 
     def _get_help_text(self) -> str:
