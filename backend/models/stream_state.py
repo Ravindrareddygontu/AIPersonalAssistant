@@ -185,7 +185,8 @@ class StreamState:
         if not content:
             return False
 
-        if self.is_tool_executing():
+        # If there's recent activity, content is not complete
+        if self.has_recent_activity(timeout=5.0):
             return False
 
         last_chars = content.rstrip()[-30:] if len(content) > 30 else content.rstrip()

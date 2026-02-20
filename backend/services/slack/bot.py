@@ -39,6 +39,7 @@ class SlackBot:
         self._handler = None
         self._executor = None
         self._summarizer = None
+        self._ai_summarizer = None
         self._thread: Optional[threading.Thread] = None
         self._running = False
     
@@ -58,14 +59,14 @@ class SlackBot:
             signing_secret=self.config.signing_secret,
         )
         
-        # Initialize Auggie executor
         from backend.services.auggie import AuggieExecutor, ResponseSummarizer
+        from backend.services.auggie.summarizer import AISummarizer
         self._executor = AuggieExecutor()
         self._summarizer = ResponseSummarizer
-        
-        # Register event handlers
+        self._ai_summarizer = AISummarizer
+
         self._register_handlers()
-        
+
         log.info("[SLACK BOT] Initialized")
     
     def _register_handlers(self):
@@ -126,16 +127,12 @@ class SlackBot:
             if response.success:
                 content = response.content or ""
 
-                # Debug: log first 500 chars of content
                 log.info(f"[SLACK BOT] Content preview: {repr(content[:500])}")
 
-                # Always prefer full content up to Slack's limit (3000 chars for safety)
                 if len(content) > 2900:
-                    # For long responses, truncate and add summary
                     summary = self._summarizer.summarize(content)
                     reply = f"{content[:2500]}\n\n... _(truncated)_\n\n📝 *Summary:* {summary}\n\n⏱️ _{response.execution_time:.1f}s_"
                 else:
-                    # For shorter responses, send full content
                     reply = f"{content}\n\n⏱️ _{response.execution_time:.1f}s_"
 
                 log.info(f"[SLACK BOT] Reply length: {len(reply)} chars")
@@ -146,6 +143,9 @@ class SlackBot:
             log.info(f"[SLACK BOT] Sending reply to Slack...")
             say(reply, thread_ts=thread_ts)
             log.info(f"[SLACK BOT] ✅ Reply sent successfully ({len(reply)} chars)")
+
+            if response.success and content:
+                self._send_ai_summary(text, content, say, thread_ts)
 
         except Exception as e:
             log.exception(f"[SLACK BOT] Execution error: {e}")
@@ -187,10 +187,8 @@ class SlackBot:
             if response.success:
                 content = response.content or ""
 
-                # Debug: log first 500 chars of content
                 log.info(f"[SLACK BOT] Content preview: {repr(content[:500])}")
 
-                # Truncate if needed
                 if len(content) > 2900:
                     summary = self._summarizer.summarize(content)
                     content = f"{content[:2500]}\n\n... _(truncated)_\n\n📝 *Summary:* {summary}"
@@ -205,9 +203,40 @@ class SlackBot:
             respond(reply)
             log.info(f"[SLACK BOT] ✅ Slash reply sent successfully")
 
+            if response.success and content:
+                self._send_ai_summary_respond(text, content, respond)
+
         except Exception as e:
             log.exception(f"[SLACK BOT] Slash command error: {e}")
             respond(f"❌ Error: {str(e)}")
+
+    def _send_ai_summary(self, question: str, answer: str, say: Callable, thread_ts: str):
+        try:
+            log.info("[SLACK BOT] Generating AI summary...")
+            summary = self._ai_summarizer.summarize(question, answer, max_points=3)
+
+            if summary:
+                summary_msg = f"📋 *AI Summary (3 key points):*\n{summary}"
+                say(summary_msg, thread_ts=thread_ts)
+                log.info("[SLACK BOT] ✅ AI summary sent")
+            else:
+                log.info("[SLACK BOT] AI summary skipped (no API key or error)")
+        except Exception as e:
+            log.error(f"[SLACK BOT] AI summary failed: {e}")
+
+    def _send_ai_summary_respond(self, question: str, answer: str, respond: Callable):
+        try:
+            log.info("[SLACK BOT] Generating AI summary for slash command...")
+            summary = self._ai_summarizer.summarize(question, answer, max_points=3)
+
+            if summary:
+                summary_msg = f"📋 *AI Summary (3 key points):*\n{summary}"
+                respond(summary_msg)
+                log.info("[SLACK BOT] ✅ AI summary sent")
+            else:
+                log.info("[SLACK BOT] AI summary skipped (no API key or error)")
+        except Exception as e:
+            log.error(f"[SLACK BOT] AI summary failed: {e}")
 
     def _get_help_text(self) -> str:
         return """🤖 *Auggie Bot - AI Code Assistant*

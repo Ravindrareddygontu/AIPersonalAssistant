@@ -658,16 +658,14 @@ class StreamGenerator:
         # FALLBACK EXITS: Only used when end pattern detection might have failed
         # These should be generous to avoid cutting off responses
 
-        # Tools executing - use very long timeout
-        if state.is_tool_executing():
-            if state.elapsed_since_content > self.CONTENT_SILENCE_EXTENDED:
-                _log(f"Exit: tool execution, {state.elapsed_since_content:.1f}s extended silence")
-                return True
-            return False  # Keep waiting for tools
-
         # Response started but no end pattern yet - wait for signal
         if state.saw_response_marker:
-            # If no new data for a while, end it (fallback for missed end pattern)
+            # If there's recent activity (status indicators), use extended timeout
+            if state.has_recent_activity(timeout=self.CONTENT_SILENCE_EXTENDED):
+                # Activity detected recently - keep waiting
+                return False
+
+            # No recent activity - check for completion
             if state.content_looks_complete() and state.elapsed_since_data > 1.5:
                 _log(f"Exit: {state.elapsed_since_data:.1f}s data silence - content looks complete")
                 return True
@@ -1186,6 +1184,9 @@ class TerminalAgentStreamGenerator:
                 if state.end_pattern_seen and state.elapsed_since_data > self.END_PATTERN_SILENCE:
                     break
                 if state.saw_response_marker:
+                    # If there's recent activity (status indicators), keep waiting
+                    if state.has_recent_activity(timeout=self.CONTENT_SILENCE_EXTENDED):
+                        continue
                     if state.content_looks_complete() and state.elapsed_since_data > 1.5:
                         break
                     if state.elapsed_since_data > 12.0:

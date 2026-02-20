@@ -1,6 +1,8 @@
 import re
+import os
 import logging
-from typing import List
+import httpx
+from typing import List, Optional
 
 log = logging.getLogger('auggie.summarizer')
 
@@ -163,4 +165,73 @@ class ResponseSummarizer:
                 # Clean up and return
                 return line[:200]
         return "Task completed"
+
+
+class AISummarizer:
+
+    DEFAULT_MODEL = "gpt-5.2"
+    OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+
+    @classmethod
+    def summarize(
+        cls,
+        question: str,
+        answer: str,
+        model: Optional[str] = None,
+        max_points: int = 3
+    ) -> Optional[str]:
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            log.warning("[AI_SUMMARIZER] OPENAI_API_KEY not set, skipping AI summary")
+            return None
+
+        model = model or os.environ.get("SLACK_SUMMARY_MODEL", cls.DEFAULT_MODEL)
+
+        prompt = f"""Summarize the following Q&A in exactly {max_points} bullet points.
+Be concise and focus on key actions/outcomes.
+
+Question: {question}
+
+Answer: {answer[:4000]}
+
+Provide exactly {max_points} bullet points, each starting with "•"."""
+
+        try:
+            summary = cls._call_openai(api_key, model, prompt)
+            return summary
+        except Exception as e:
+            log.error(f"[AI_SUMMARIZER] Failed to generate summary: {e}")
+            return None
+
+    @classmethod
+    def _call_openai(cls, api_key: str, model: str, prompt: str) -> str:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a concise summarizer. Always respond with exactly the requested number of bullet points."
+                },
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.3,
+            "max_tokens": 200
+        }
+
+        log.info(f"[AI_SUMMARIZER] Requesting summary from {model}")
+
+        with httpx.Client(timeout=30.0) as client:
+            response = client.post(cls.OPENAI_API_URL, headers=headers, json=payload)
+            response.raise_for_status()
+
+        result = response.json()
+        content = result["choices"][0]["message"]["content"].strip()
+
+        log.info(f"[AI_SUMMARIZER] Generated summary: {len(content)} chars")
+        return content
 
