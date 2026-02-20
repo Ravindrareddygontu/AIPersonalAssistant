@@ -537,12 +537,8 @@ class StreamGenerator:
         if not activity_patterns:
             return None
 
-        # Only look at the LAST ~500 chars to avoid re-detecting old status messages
-        recent_output = output[-500:] if len(output) > 500 else output
-        lines = [line.strip() for line in recent_output.splitlines() if line.strip()]
-
-        # Only check the last few lines (status messages are transient)
-        for line in reversed(lines[-5:]):
+        lines = [line.strip() for line in output.splitlines() if line.strip()]
+        for line in reversed(lines):
             line_lower = line.lower()
             for pattern in activity_patterns:
                 if pattern.lower() in line_lower:
@@ -550,10 +546,9 @@ class StreamGenerator:
                     clean_line = re.sub(r'[│╭╮╯╰─┌┐└┘├┤┬┴┼]', '', clean_line)
                     clean_line = re.sub(r'\s*[•·\-–—]\s*esc to interrupt', '', clean_line, flags=re.IGNORECASE)
                     clean_line = re.sub(r'\(\)', '', clean_line)
-                    # Normalize timing to avoid "5s" vs "6s" causing re-triggers
-                    clean_line = re.sub(r'\(?\d+s\.?\)?', '', clean_line)
-                    clean_line = re.sub(r'\s+', ' ', clean_line).strip()
-                    if clean_line and len(clean_line) > 3:
+                    clean_line = re.sub(r'\((\d+)s\.?\s*[•·\-–—]?\s*\)', r'\1s', clean_line)
+                    clean_line = clean_line.strip()
+                    if clean_line:
                         return clean_line
 
         return None
@@ -1048,23 +1043,18 @@ class TerminalAgentStreamGenerator:
         if not activity_patterns:
             return None
 
-        # Only look at the LAST ~500 chars to avoid re-detecting old status messages
-        recent_output = output[-500:] if len(output) > 500 else output
-        clean_output = TextCleaner.strip_ansi(recent_output)
+        clean_output = TextCleaner.strip_ansi(output)
         lines = [line.strip() for line in clean_output.splitlines() if line.strip()]
-
-        # Only check the last few lines (status messages are transient)
-        for line in reversed(lines[-5:]):
+        for line in reversed(lines):
             line_lower = line.lower()
             for pattern in activity_patterns:
                 if pattern.lower() in line_lower:
                     clean_line = re.sub(r'[│╭╮╯╰─┌┐└┘├┤┬┴┼]', '', line)
                     clean_line = re.sub(r'\s*[•·\-–—]\s*esc to interrupt', '', clean_line, flags=re.IGNORECASE)
                     clean_line = re.sub(r'\(\)', '', clean_line)
-                    # Normalize timing to avoid "5s" vs "6s" causing re-triggers
-                    clean_line = re.sub(r'\(?\d+s\.?\)?', '', clean_line)
-                    clean_line = re.sub(r'\s+', ' ', clean_line).strip()
-                    if clean_line and len(clean_line) > 3:
+                    clean_line = re.sub(r'\((\d+)s\.?\s*[•·\-–—]?\s*\)', r'\1s', clean_line)
+                    clean_line = clean_line.strip()
+                    if clean_line:
                         return clean_line
         return None
 
