@@ -187,14 +187,24 @@ class AISummarizer:
 
         model = model or os.environ.get("SLACK_SUMMARY_MODEL", cls.DEFAULT_MODEL)
 
-        prompt = f"""Summarize the following Q&A in exactly {max_points} bullet points.
-Be concise and focus on key actions/outcomes.
+        prompt = f"""You're a friendly assistant. Give a quick, human summary of what happened.
 
-Question: {question}
+User asked: {question}
 
-Answer: {answer[:4000]}
+Bot responded: {answer[:4000]}
 
-Provide exactly {max_points} bullet points, each starting with "•"."""
+Rules:
+- Be casual and conversational, like talking to a coworker
+- For simple actions (commits, file changes, commands), just say what was done in 1-2 sentences
+- Only use bullet points (max {max_points}) if there are multiple distinct things to mention
+- Skip unnecessary details, focus on what matters
+- No formal language, no "The assistant..." - just be direct
+
+Example good responses:
+- "Done! Committed your changes with message 'Fix login bug'"
+- "Created the new component and added it to the main page"
+- "Found 3 issues: auth token expired, missing env var, and a typo in the config"
+"""
 
         try:
             summary = cls._call_openai(api_key, model, prompt)
@@ -215,18 +225,20 @@ Provide exactly {max_points} bullet points, each starting with "•"."""
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a concise summarizer. Always respond with exactly the requested number of bullet points."
+                    "content": "You're a friendly, casual assistant. Keep responses short and human. No formal language."
                 },
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.3,
-            "max_tokens": 200
+            "temperature": 0.5,
+            "max_completion_tokens": 150
         }
 
         log.info(f"[AI_SUMMARIZER] Requesting summary from {model}")
 
         with httpx.Client(timeout=30.0) as client:
             response = client.post(cls.OPENAI_API_URL, headers=headers, json=payload)
+            if response.status_code != 200:
+                log.error(f"[AI_SUMMARIZER] API error {response.status_code}: {response.text}")
             response.raise_for_status()
 
         result = response.json()

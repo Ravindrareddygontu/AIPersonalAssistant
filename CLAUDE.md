@@ -61,3 +61,16 @@
 - Follow existing patterns in the codebase
 - Prefer small, focused functions
 
+## Slack Bot Responses
+When responding to messages from the Slack bot (identified by short, direct questions typically without code context):
+- At the END of your response, always include a summary section
+- Use this exact format:
+```
+---SUMMARY---
+Your casual, human-friendly summary here (1-3 short points max)
+---END_SUMMARY---
+```
+- Keep the summary conversational, like talking to a coworker
+- For simple actions (commits, file changes): "Done! Committed with message 'xyz'"
+- For multiple items: use bullet points (max 3)
+- No formal language - be direct and friendly
