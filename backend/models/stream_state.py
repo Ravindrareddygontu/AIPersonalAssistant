@@ -3,21 +3,27 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 
-# Default tool patterns (Auggie-style)
+# Default tool patterns (Auggie-style) - pre-lowercased for performance
 DEFAULT_TOOL_PATTERNS: List[str] = [
-    'Executing tools',
     'executing tools',
     '- read file',
     '- read directory',
     '- search',
-    'Codebase search',
-    'Terminal -',
-    '↳ Read',
-    '↳ Command',
-    '↳ Search',
-    'Reading file',
-    'Searching',
+    'codebase search',
+    'terminal -',
+    '↳ read',
+    '↳ command',
+    '↳ search',
+    'reading file',
+    'searching',
 ]
+
+# Incomplete sentence indicators for content_looks_complete() - module level for performance
+INCOMPLETE_WORDS = frozenset({
+    'the', 'a', 'an', 'to', 'of', 'for', 'in', 'on', 'at', 'by', 'with',
+    'and', 'or', 'but', 'if', 'is', 'are', 'was', 'were', 'be', 'been',
+    'this', 'that', 'these', 'those', 'e.g.', 'i.e.', 'etc'
+})
 
 
 @dataclass
@@ -163,41 +169,29 @@ class StreamState:
 
         patterns = self.tool_patterns if self.tool_patterns is not None else DEFAULT_TOOL_PATTERNS
         content_end = content[-150:] if len(content) > 150 else content
+        content_lower = content_end.lower()
         for pattern in patterns:
-            if pattern.lower() in content_end.lower():
+            if pattern in content_lower:
                 return True
         return False
 
     def content_looks_complete(self) -> bool:
-        # Use current_full_content (most recent full content) if available,
-        # otherwise fall back to last_streamed_content
         content = self.current_full_content or self.last_streamed_content
         if not content:
             return False
 
-        # If tools are executing, not complete
         if self.is_tool_executing():
             return False
 
-        # Get last part of content for analysis
         last_chars = content.rstrip()[-30:] if len(content) > 30 else content.rstrip()
-        last_word = last_chars.split()[-1] if last_chars.split() else ''
+        words = last_chars.split()
+        last_word = words[-1] if words else ''
 
-        # Check for common incomplete sentence indicators (articles, prepositions, etc.)
-        incomplete_words = {'the', 'a', 'an', 'to', 'of', 'for', 'in', 'on', 'at', 'by', 'with',
-                           'and', 'or', 'but', 'if', 'is', 'are', 'was', 'were', 'be', 'been',
-                           'this', 'that', 'these', 'those', 'e.g.', 'i.e.', 'etc'}
-        if last_word.lower().rstrip('.,?!') in incomplete_words:
+        if last_word.lower().rstrip('.,?!') in INCOMPLETE_WORDS:
             return False
 
-        # Colon at end typically means more content is coming (e.g., "Let me check:")
-        # Don't consider this complete
         if last_chars.endswith(':'):
             return False
 
-        # Has proper ending punctuation at the end (not just anywhere)
-        has_ending = any(last_chars.endswith(c) for c in ['.', '!', '?', ')', ']', '`', '"', "'"])
-
-        # Require proper ending punctuation - length alone is not enough
-        # This prevents cutting off responses that are mid-sentence
+        has_ending = any(last_chars.endswith(c) for c in '.!?)]`"\'')
         return has_ending

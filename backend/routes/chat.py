@@ -1121,7 +1121,7 @@ class TerminalAgentStreamGenerator:
                         break
 
         session.drain_output(0.5)
-        clean_all = TextCleaner.strip_ansi(state.all_output)
+        clean_all = state.clean_output
         relevant = clean_all[state.output_start_pos:] if state.output_start_pos > 0 else clean_all
         markers = self.provider.get_response_markers()
         response_marker = markers[0] if markers else None

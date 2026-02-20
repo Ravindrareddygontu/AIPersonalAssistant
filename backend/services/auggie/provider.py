@@ -85,18 +85,17 @@ class AuggieProvider(TerminalAgentProvider):
 
     def get_tool_executing_patterns(self) -> List[str]:
         return [
-            'Executing tools',
             'executing tools',
             '- read file',
             '- read directory',
             '- search',
-            'Codebase search',
-            'Terminal -',
-            '↳ Read',
-            '↳ Command',
-            '↳ Search',
-            'Reading file',
-            'Searching',
+            'codebase search',
+            'terminal -',
+            '↳ read',
+            '↳ command',
+            '↳ search',
+            'reading file',
+            'searching',
         ]
 
     def sanitize_message(self, message: str) -> str:

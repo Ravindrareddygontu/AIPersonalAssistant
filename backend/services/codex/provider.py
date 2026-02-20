@@ -111,11 +111,11 @@ class CodexProvider(TerminalAgentProvider):
 
     def get_tool_executing_patterns(self) -> List[str]:
         return [
-            'Reading file',
-            'Writing file',
-            'Searching',
-            'Running command',
-            'Executing',
+            'reading file',
+            'writing file',
+            'searching',
+            'running command',
+            'executing',
             'shell:',
             'edit:',
             'read:',
