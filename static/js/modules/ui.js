@@ -1,6 +1,10 @@
 import { DOM } from './dom.js';
 import { state } from './state.js';
 
+let statusStartTime = null;
+let statusTimerInterval = null;
+let currentBaseStatus = '';
+
 export function showNotification(message, type = 'info') {
     console.log('[UI] showNotification:', type, message);
     const existing = document.querySelector('.notification');
@@ -57,8 +61,45 @@ export function showTypingIndicator(statusMessage = 'Thinking...') {
 }
 
 function normalizeStatusText(text) {
-    // Remove timing like "(5s)", "(12s)" for comparison purposes
-    return text.replace(/\s*\(?\d+s\.?\)?/g, '').trim();
+    // Remove spinner chars, timing like "(5s)", and trailing dots for comparison
+    return text
+        .replace(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠛⠓⠚⠖⠲⠳⠞⣾⣽⣻⢿⡿⣟⣯⣷●○◐◑◒◓◔◕◴◵◶◷⬤]/g, '')
+        .replace(/\s*\(?\d+s\.?\)?/g, '')
+        .replace(/\.+$/g, '')
+        .trim();
+}
+
+function hasTimingInText(text) {
+    return /\d+s/.test(text);
+}
+
+function startStatusTimer() {
+    if (statusTimerInterval) return;
+    statusStartTime = Date.now();
+    statusTimerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - statusStartTime) / 1000);
+        updateStatusDisplay(`${currentBaseStatus}... ${elapsed}s`);
+    }, 1000);
+}
+
+function stopStatusTimer() {
+    if (statusTimerInterval) {
+        clearInterval(statusTimerInterval);
+        statusTimerInterval = null;
+    }
+    statusStartTime = null;
+    currentBaseStatus = '';
+}
+
+function updateStatusDisplay(text) {
+    const streamingStatus = document.querySelector('.message.streaming .streaming-status');
+    if (streamingStatus) {
+        const statusText = streamingStatus.querySelector('.streaming-status-text');
+        if (statusText) {
+            statusText.textContent = text;
+            statusText.classList.add('shimmer');
+        }
+    }
 }
 
 export function updateTypingIndicatorText(text) {
@@ -68,22 +109,37 @@ export function updateTypingIndicatorText(text) {
         const statusIcon = streamingStatus.querySelector('.streaming-status-icon');
 
         if (statusText) {
-            // Compare without timing component to avoid blinking on "5s" → "6s"
             const currentNormalized = normalizeStatusText(statusText.textContent);
             const newNormalized = normalizeStatusText(text);
+            const incomingHasTiming = hasTimingInText(text);
 
             if (currentNormalized !== newNormalized) {
-                // Different status message - animate
+                // Different status message - animate and reset timer
+                stopStatusTimer();
+                currentBaseStatus = newNormalized;
+
                 statusText.classList.remove('fade-in');
                 void statusText.offsetWidth;
 
-                statusText.textContent = text;
-                statusText.classList.add('shimmer', 'fade-in');
+                if (incomingHasTiming) {
+                    // Backend sends timing - just display it
+                    statusText.textContent = text;
+                } else {
+                    // No timing from backend - start our own timer
+                    statusText.textContent = `${newNormalized}... 0s`;
+                    startStatusTimer();
+                }
 
+                statusText.classList.add('shimmer', 'fade-in');
                 setTimeout(() => statusText.classList.remove('fade-in'), 250);
             } else {
-                // Same base message, just update the text (with new timing) without animation
-                statusText.textContent = text;
+                // Same base message - update timing without animation
+                if (incomingHasTiming) {
+                    // Backend sends timing - use it and stop our timer
+                    stopStatusTimer();
+                    statusText.textContent = text;
+                }
+                // If no timing and timer running, timer handles updates
                 statusText.classList.add('shimmer');
             }
         }
@@ -96,6 +152,7 @@ export function updateTypingIndicatorText(text) {
 }
 
 export function hideTypingIndicator() {
+    stopStatusTimer();
     const streamingStatus = document.querySelector('.message.streaming .streaming-status');
     if (streamingStatus) {
         streamingStatus.style.display = 'none';
