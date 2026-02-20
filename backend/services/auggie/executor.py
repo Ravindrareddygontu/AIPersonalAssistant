@@ -27,8 +27,8 @@ class AuggieResponse:
 class AuggieExecutor:
 
     MAX_EXECUTION_TIME = 300
-    SILENCE_TIMEOUT = 10.0    # No data for 10s after response = done
-    DATA_SILENCE_TIMEOUT = 3.0  # No data for 3s = check completion
+    SILENCE_TIMEOUT = 5.0     # No data for 5s after response = done
+    DATA_SILENCE_TIMEOUT = 5.0  # No data for 5s = check completion
     PROMPT_WAIT_TIMEOUT = 60  # Wait for initial prompt
     
     def __init__(self):
@@ -142,24 +142,6 @@ class AuggieExecutor:
                 log.warning(f"[EXECUTOR] Max execution time reached ({elapsed:.1f}s)")
                 break
 
-            # After response marker, use shorter timeout
-            if state.saw_response_marker:
-                # If tools are executing, use longer timeout
-                if state.is_tool_executing():
-                    if silence > 60.0:  # 60s timeout for tool execution
-                        log.info(f"[EXECUTOR] Tool execution timeout ({silence:.1f}s)")
-                        break
-                    continue  # Keep waiting
-
-                # If content looks complete and no data for a bit, we're done
-                if state.content_looks_complete() and silence > self.DATA_SILENCE_TIMEOUT:
-                    log.info(f"[EXECUTOR] Content complete + {silence:.1f}s silence")
-                    break
-                # Fallback: no data for longer period
-                if silence > self.SILENCE_TIMEOUT:
-                    log.info(f"[EXECUTOR] Silence timeout after response ({silence:.1f}s)")
-                    break
-
             # Read from terminal
             ready = select.select([fd], [], [], 0.1)[0]
             if ready:
@@ -171,7 +153,7 @@ class AuggieExecutor:
                 except (BlockingIOError, OSError):
                     pass
 
-            # Check for end pattern
+            # Check for end pattern (primary exit - same as main app)
             if state.all_output:
                 clean = TextCleaner.strip_ansi(state.all_output)
 
@@ -185,10 +167,24 @@ class AuggieExecutor:
                 if state.saw_message_echo:
                     self.processor.process_chunk(clean, state)
 
-                    # Check for end pattern (empty prompt)
+                    # Check for end pattern (empty prompt) - exits immediately like main app
                     if self.processor.check_end_pattern(clean, state):
                         log.info(f"[EXECUTOR] End pattern detected")
                         break
+
+            # Fallback timeout checks (only if end pattern not detected)
+            if state.saw_response_marker:
+                # If tools are executing, use longer timeout
+                if state.is_tool_executing():
+                    if silence > 60.0:
+                        log.info(f"[EXECUTOR] Tool execution timeout ({silence:.1f}s)")
+                        break
+                    continue
+
+                # Fallback: silence timeout
+                if silence > self.SILENCE_TIMEOUT:
+                    log.info(f"[EXECUTOR] Silence timeout after response ({silence:.1f}s)")
+                    break
 
         # Extract final response
         session.drain_output(0.3)
