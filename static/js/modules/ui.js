@@ -56,6 +56,11 @@ export function showTypingIndicator(statusMessage = 'Thinking...') {
     }
 }
 
+function normalizeStatusText(text) {
+    // Remove timing like "(5s)", "(12s)" for comparison purposes
+    return text.replace(/\s*\(?\d+s\.?\)?/g, '').trim();
+}
+
 export function updateTypingIndicatorText(text) {
     const streamingStatus = document.querySelector('.message.streaming .streaming-status');
     if (streamingStatus) {
@@ -63,8 +68,12 @@ export function updateTypingIndicatorText(text) {
         const statusIcon = streamingStatus.querySelector('.streaming-status-icon');
 
         if (statusText) {
-            // Only animate if text actually changed
-            if (statusText.textContent !== text) {
+            // Compare without timing component to avoid blinking on "5s" → "6s"
+            const currentNormalized = normalizeStatusText(statusText.textContent);
+            const newNormalized = normalizeStatusText(text);
+
+            if (currentNormalized !== newNormalized) {
+                // Different status message - animate
                 statusText.classList.remove('fade-in');
                 void statusText.offsetWidth;
 
@@ -73,7 +82,8 @@ export function updateTypingIndicatorText(text) {
 
                 setTimeout(() => statusText.classList.remove('fade-in'), 250);
             } else {
-                // Same text - just ensure shimmer is active
+                // Same base message, just update the text (with new timing) without animation
+                statusText.textContent = text;
                 statusText.classList.add('shimmer');
             }
         }
