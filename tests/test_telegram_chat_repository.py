@@ -104,14 +104,16 @@ class TestGetOrCreateChat:
         assert call_kwargs['upsert'] is True
 
     @patch('backend.services.base_repository.is_db_available_cached')
-    def test_get_or_create_db_unavailable(self, mock_cached):
+    def test_get_or_create_db_unavailable_uses_memory(self, mock_cached):
         from backend.services.bots.telegram.bot_chat_repository import TelegramChatRepository
 
         mock_cached.return_value = False
         repo = TelegramChatRepository()
         ctx = repo.get_or_create_chat("123456", "789012")
 
-        assert ctx is None
+        assert ctx is not None
+        assert ctx.user_id == "123456"
+        assert ctx.telegram_chat_id == "789012"
 
 
 class TestSaveMessage:

@@ -20,7 +20,7 @@ from backend.utils.content_cleaner import ContentCleaner
 from backend.models.stream_state import StreamState
 from backend.services.chat_repository import ChatRepository
 from backend.services.stream_processor import StreamProcessor
-from backend.services.slack.notifier import notify_completion
+from backend.services.bots.slack.notifier import notify_completion
 
 from backend.ai_middleware.config import get_settings as get_middleware_settings
 from backend.ai_middleware.providers.openai.chat import OpenAIChatProvider
@@ -467,9 +467,9 @@ class StreamGenerator:
                 yield from self._handle_abort(session, state)
                 return
 
-            # Read from terminal with short timeout for responsiveness
-            # Use 0.01s (10ms) for quick response while still being efficient
-            ready = select.select([fd], [], [], 0.01)[0]
+            # Read from terminal with timeout balancing responsiveness vs CPU
+            # Use 0.05s (50ms) - good balance between response time and CPU usage
+            ready = select.select([fd], [], [], 0.05)[0]
 
             if ready:
                 # Read all available data in a loop for better throughput
@@ -1118,7 +1118,7 @@ class TerminalAgentStreamGenerator:
                 yield self.sse.send({'type': 'done'})
                 return
 
-            ready = select.select([fd], [], [], 0.01)[0]
+            ready = select.select([fd], [], [], 0.05)[0]
             if ready:
                 while True:
                     try:

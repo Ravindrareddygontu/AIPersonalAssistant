@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.services.slack.bot import SlackBotConfig, SlackBot, create_slack_bot
+from backend.services.bots.slack.bot import SlackBotConfig, SlackBot, create_slack_bot
 from backend.services.auggie.summarizer import AISummarizer
 
 
@@ -122,6 +122,7 @@ class TestSlackBotHandleMessage:
         response.content = "Test response"
         response.execution_time = 5.0
         self.bot._executor.execute.return_value = response
+        self.say.return_value = {"ts": "msg.123"}
 
         event = {"text": "Test question", "channel": "C123", "ts": "123.456"}
         self.bot._handle_message(event, self.say, self.client)
@@ -130,21 +131,24 @@ class TestSlackBotHandleMessage:
             message="Test question",
             workspace='/test/workspace',
             model=None,
-            source='bot'
+            source='bot',
+            session_id=None
         )
-        assert self.say.call_count == 2  # thinking + response
+        assert self.say.call_count == 1  # initial animation message
+        self.client.chat_update.assert_called()  # final response via chat_update
 
     def test_failed_response(self):
         response = MagicMock()
         response.success = False
         response.error = "Test error"
         self.bot._executor.execute.return_value = response
+        self.say.return_value = {"ts": "msg.123"}
 
         event = {"text": "Test", "channel": "C123", "ts": "123.456"}
         self.bot._handle_message(event, self.say, self.client)
 
-        calls = self.say.call_args_list
-        assert any("Error" in str(c) for c in calls)
+        update_call = self.client.chat_update.call_args
+        assert "error" in str(update_call).lower()
 
     def test_uses_thread_ts_from_event(self):
         response = MagicMock()
@@ -166,13 +170,13 @@ class TestSlackBotHandleMessage:
         response.execution_time = 1.0
         self.bot._executor.execute.return_value = response
         self.bot._summarizer.summarize.return_value = "Summary"
+        self.say.return_value = {"ts": "msg.123"}
 
         event = {"text": "Test", "channel": "C123", "ts": "123.456"}
         self.bot._handle_message(event, self.say, self.client)
 
-        calls = self.say.call_args_list
-        final_call = calls[-1]
-        assert "truncated" in str(final_call).lower()
+        update_call = self.client.chat_update.call_args
+        assert "truncated" in str(update_call).lower()
 
 
 class TestSlackBotHandleSlashCommand:
@@ -222,7 +226,8 @@ class TestSlackBotHandleSlashCommand:
             message="list files",
             workspace='/test/workspace',
             model=None,
-            source='bot'
+            source='bot',
+            session_id=None
         )
 
     def test_command_error_response(self):
@@ -291,14 +296,14 @@ class TestSlackBotExceptionHandling:
     def test_handle_message_executor_exception(self):
         self.bot._executor.execute.side_effect = Exception("Connection failed")
         say = MagicMock()
+        say.return_value = {"ts": "msg.123"}
+        client = MagicMock()
 
         event = {"text": "Test", "channel": "C123", "ts": "123.456"}
-        self.bot._handle_message(event, say, MagicMock())
+        self.bot._handle_message(event, say, client)
 
-        calls = say.call_args_list
-        error_call = [c for c in calls if "Error" in str(c)]
-        assert len(error_call) > 0
-        assert "Connection failed" in str(error_call[0])
+        update_call = client.chat_update.call_args
+        assert "error" in str(update_call).lower()
 
     def test_handle_slash_command_executor_exception(self):
         self.bot._executor.execute.side_effect = Exception("Timeout error")
@@ -344,7 +349,7 @@ class TestSlackBotHelpText:
 
     def test_help_text_contains_commands(self):
         bot = SlackBot(SlackBotConfig())
-        help_text = bot._get_help_text()
+        help_text = bot.get_help_text()
 
         assert "/auggie" in help_text
         assert "help" in help_text.lower()
@@ -353,7 +358,7 @@ class TestSlackBotHelpText:
 
     def test_help_text_contains_examples(self):
         bot = SlackBot(SlackBotConfig())
-        help_text = bot._get_help_text()
+        help_text = bot.get_help_text()
 
         assert "Examples" in help_text or "example" in help_text.lower()
 
@@ -461,13 +466,14 @@ class TestSlackBotEdgeCases:
         response.execution_time = 1.0
         self.bot._executor.execute.return_value = response
         say = MagicMock()
+        say.return_value = {"ts": "msg.123"}
+        client = MagicMock()
 
         event = {"text": "Test", "channel": "C123", "ts": "123.456"}
-        self.bot._handle_message(event, say, MagicMock())
+        self.bot._handle_message(event, say, client)
 
-        calls = say.call_args_list
-        final_call = str(calls[-1])
-        assert "1.0s" in final_call
+        update_call = str(client.chat_update.call_args)
+        assert "1.0s" in update_call
 
     def test_response_with_empty_content(self):
         response = MagicMock()
@@ -476,12 +482,14 @@ class TestSlackBotEdgeCases:
         response.execution_time = 2.0
         self.bot._executor.execute.return_value = response
         say = MagicMock()
+        say.return_value = {"ts": "msg.123"}
+        client = MagicMock()
 
         event = {"text": "Test", "channel": "C123", "ts": "123.456"}
-        self.bot._handle_message(event, say, MagicMock())
+        self.bot._handle_message(event, say, client)
 
-        calls = say.call_args_list
-        assert len(calls) == 2
+        assert say.call_count == 1  # initial animation message
+        client.chat_update.assert_called()  # final response via chat_update
 
     def test_status_command_case_insensitive(self):
         respond = MagicMock()

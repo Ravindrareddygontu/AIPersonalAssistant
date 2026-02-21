@@ -36,20 +36,20 @@ class AuggieExecutor:
     def __init__(self):
         self.processor = None
     
-    def execute(self, message: str, workspace: str, model: str = None, source: str = 'app') -> AuggieResponse:
+    def execute(self, message: str, workspace: str, model: str = None, source: str = 'app', session_id: str = None) -> AuggieResponse:
         start_time = time.time()
         workspace = os.path.expanduser(workspace)
-        
+
         if not os.path.isdir(workspace):
             return AuggieResponse(
                 success=False,
                 content="",
                 error=f"Workspace not found: {workspace}"
             )
-        
+
         try:
-            # Get or create session
-            session, is_new = SessionManager.get_or_create(workspace, model)
+            # Get or create session (pass session_id to resume existing sessions)
+            session, is_new = SessionManager.get_or_create(workspace, model, session_id=session_id)
             
             with session.lock:
                 session.in_use = True

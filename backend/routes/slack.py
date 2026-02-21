@@ -43,7 +43,7 @@ _slack_bot = None
 def get_slack_bot():
     global _slack_bot
     if _slack_bot is None:
-        from backend.services.slack import create_slack_bot
+        from backend.services.bots.slack import create_slack_bot
         _slack_bot = create_slack_bot()
     return _slack_bot
 
@@ -151,7 +151,7 @@ async def _process_message_event(event: dict, payload: dict):
     try:
         bot._app.client.chat_postMessage(
             channel=channel,
-            text="⏳ Working on it...",
+            text="⏳ Executing...",
             thread_ts=thread_ts
         )
     except Exception as e:

@@ -1,7 +1,7 @@
 import { state, activeRequests } from './state.js';
 import { DOM, escapeHtml, scrollToBottom } from './dom.js';
 import { api } from './api.js';
-import { saveChatToCache, loadChatFromCache, markCacheSynced } from './cache.js';
+import { saveChatToCache, loadChatFromCache, markCacheSynced, clearChatCache } from './cache.js';
 import { formatMessage, addCodeCopyButtons } from './markdown.js';
 import { showNotification, closeModalWithAnimation } from './ui.js';
 
@@ -418,7 +418,15 @@ export async function deleteChat(chatId, event) {
     if (!confirmed) return;
 
     try {
-        await api.deleteChat(chatId);
+        const result = await api.deleteChat(chatId);
+
+        if (result.error) {
+            console.error('Failed to delete chat:', result.error);
+            showNotification('Failed to delete chat', 'error');
+            return;
+        }
+
+        clearChatCache(chatId);
 
         if (state.currentChatId === chatId) {
             await newChat();
@@ -427,6 +435,7 @@ export async function deleteChat(chatId, event) {
         await loadChatList();
     } catch (error) {
         console.error('Failed to delete chat:', error);
+        showNotification('Failed to delete chat', 'error');
     }
 }
 

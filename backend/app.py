@@ -123,12 +123,13 @@ if __name__ == '__main__':
     print("=" * 60 + "\n")
 
     # Run the main app with uvicorn
-    is_production = os.environ.get('FLASK_ENV') == 'production'
+    # Default to no reload unless DEV_RELOAD=true (reload causes high CPU)
+    enable_reload = os.environ.get('DEV_RELOAD', '').lower() == 'true'
     uvicorn.run(
         "backend.app:app",
         host='0.0.0.0',
         port=5001,
-        reload=not is_production,
+        reload=enable_reload,
         log_level='info'
     )
 

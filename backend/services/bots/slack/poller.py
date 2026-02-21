@@ -129,7 +129,7 @@ class SlackPoller:
         if self.repository and user_id:
             chat_ctx = self.repository.get_or_create_chat(user_id, self.channel_id, ts)
 
-        self._send_reply("⏳ Working on it...", thread_ts=ts)
+        self._send_reply("⏳ Executing...", thread_ts=ts)
 
         try:
             response = self._executor.execute(

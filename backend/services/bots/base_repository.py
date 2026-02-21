@@ -1,15 +1,19 @@
 import logging
 import uuid
+import threading
 from abc import abstractmethod
 from datetime import datetime, timedelta
-from typing import Optional
-from dataclasses import dataclass
+from typing import Optional, Dict
+from dataclasses import dataclass, field
 
 from backend.config import BOT_SESSION_TIMEOUT_MINUTES, BOT_TITLE_MAX_LENGTH
 from backend.database import get_bot_chats_collection
 from backend.services.base_repository import BaseRepository
 
 log = logging.getLogger('bots.base_repository')
+
+_memory_store: Dict[str, dict] = {}
+_memory_lock = threading.Lock()
 
 
 @dataclass
@@ -72,8 +76,7 @@ class BaseBotChatRepository(BaseRepository):
 
     def _get_or_create_chat_internal(self, lookup_key: str, **context_kwargs):
         if self.collection is None:
-            log.debug(f"[{self.PLATFORM.upper()}] MongoDB not available")
-            return None
+            return self._get_or_create_chat_memory(lookup_key, **context_kwargs)
 
         try:
             chat_id = str(uuid.uuid4())[:8]
@@ -108,6 +111,27 @@ class BaseBotChatRepository(BaseRepository):
         except Exception as e:
             log.error(f"[{self.PLATFORM.upper()}] Failed to get/create chat: {e}")
             return None
+
+    def _get_or_create_chat_memory(self, lookup_key: str, **context_kwargs):
+        with _memory_lock:
+            now = datetime.utcnow().isoformat()
+
+            if lookup_key in _memory_store:
+                chat = _memory_store[lookup_key]
+                session_expired = self._is_session_expired(chat)
+                if session_expired:
+                    log.info(f"[{self.PLATFORM.upper()}] In-memory session expired for {lookup_key}, resetting auggie_session_id")
+                    chat['auggie_session_id'] = None
+                chat['updated_at'] = now
+                log.debug(f"[{self.PLATFORM.upper()}] Found in-memory chat: {chat['id']}, session_id={chat.get('auggie_session_id')}")
+            else:
+                chat_id = str(uuid.uuid4())[:8]
+                chat = self._get_insert_fields(chat_id, lookup_key, now, **context_kwargs)
+                _memory_store[lookup_key] = chat
+                session_expired = False
+                log.info(f"[{self.PLATFORM.upper()}] Created in-memory chat: {chat_id}")
+
+            return self._create_context(chat, session_expired, **context_kwargs)
 
     def save_message(self, chat_id: str, question: str, answer: str, execution_time: Optional[float] = None) -> bool:
         if self.collection is None or not chat_id:
@@ -151,8 +175,12 @@ class BaseBotChatRepository(BaseRepository):
             return False
 
     def save_auggie_session_id(self, chat_id: str, session_id: str) -> bool:
-        if self.collection is None or not chat_id or not session_id:
+        if not chat_id or not session_id:
             return False
+
+        if self.collection is None:
+            return self._save_auggie_session_id_memory(chat_id, session_id)
+
         try:
             self.collection.update_one(
                 {'id': chat_id},
@@ -164,9 +192,31 @@ class BaseBotChatRepository(BaseRepository):
             log.error(f"[{self.PLATFORM.upper()}] Failed to save auggie_session_id: {e}")
             return False
 
+    def _save_auggie_session_id_memory(self, chat_id: str, session_id: str) -> bool:
+        with _memory_lock:
+            for lookup_key, chat in _memory_store.items():
+                if chat.get('id') == chat_id:
+                    chat['auggie_session_id'] = session_id
+                    chat['updated_at'] = datetime.utcnow().isoformat()
+                    log.info(f"[{self.PLATFORM.upper()}] Saved in-memory auggie_session_id={session_id} for chat {chat_id}")
+                    return True
+            log.warning(f"[{self.PLATFORM.upper()}] Chat {chat_id} not found in memory store")
+            return False
+
     def get_auggie_session_id(self, chat_id: str) -> Optional[str]:
-        if self.collection is None or not chat_id:
+        if not chat_id:
             return None
+
+        if self.collection is None:
+            return self._get_auggie_session_id_memory(chat_id)
+
         chat = self.collection.find_one({'id': chat_id})
         return chat.get('auggie_session_id') if chat else None
+
+    def _get_auggie_session_id_memory(self, chat_id: str) -> Optional[str]:
+        with _memory_lock:
+            for chat in _memory_store.values():
+                if chat.get('id') == chat_id:
+                    return chat.get('auggie_session_id')
+            return None
 

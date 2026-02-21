@@ -1,5 +1,6 @@
 import { DOM } from './dom.js';
 import { state } from './state.js';
+import { api } from './api.js';
 
 let statusStartTime = null;
 let statusTimerInterval = null;
@@ -190,6 +191,9 @@ export function toggleModal(modal) {
 export function toggleSettings() {
     const modal = DOM.get('settingsModal');
     toggleModal(modal);
+    if (modal && modal.classList.contains('active')) {
+        refreshBotStatus();
+    }
 }
 
 export function toggleDevTools() {
@@ -279,6 +283,41 @@ export function showConfirmDialog(message) {
     });
 }
 
+export async function refreshBotStatus() {
+    try {
+        const statuses = await api.getBotStatus();
+        const slackEl = document.getElementById('slackBotStatus');
+        const telegramEl = document.getElementById('telegramBotStatus');
+
+        if (slackEl && statuses.slack) {
+            slackEl.textContent = statuses.slack.running ? 'Running' : 'Stopped';
+            slackEl.className = 'bot-status ' + (statuses.slack.running ? 'running' : 'stopped');
+        }
+        if (telegramEl && statuses.telegram) {
+            telegramEl.textContent = statuses.telegram.running ? 'Running' : 'Stopped';
+            telegramEl.className = 'bot-status ' + (statuses.telegram.running ? 'running' : 'stopped');
+        }
+    } catch (error) {
+        console.error('[UI] Failed to refresh bot status:', error);
+    }
+}
+
+export async function controlBot(bot, action) {
+    try {
+        showNotification(`${action === 'start' ? 'Starting' : 'Stopping'} ${bot}...`, 'info');
+        const result = await api.controlBot(bot, action);
+        if (result.success) {
+            showNotification(`${bot} ${action} successful`, 'success');
+            setTimeout(refreshBotStatus, 500);
+        } else {
+            showNotification(`Failed to ${action} ${bot}: ${result.error || result.message}`, 'error');
+        }
+    } catch (error) {
+        console.error('[UI] Bot control error:', error);
+        showNotification(`Error: ${error.message}`, 'error');
+    }
+}
+
 window.toggleSettings = toggleSettings;
 window.toggleSidebar = toggleSidebar;
 window.toggleDevTools = toggleDevTools;
@@ -286,4 +325,6 @@ window.toggleTheme = toggleTheme;
 window.refreshPage = refreshPage;
 window.openLogsTerminal = openLogsTerminal;
 window.resetSession = resetSession;
+window.controlBot = controlBot;
+window.refreshBotStatus = refreshBotStatus;
 

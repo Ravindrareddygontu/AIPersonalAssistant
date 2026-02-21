@@ -6,6 +6,7 @@ from backend.routes.chat import chat_router
 from backend.routes.notifications import notifications_router
 from backend.routes.speech import speech_router
 from backend.routes.slack import slack_router
+from backend.routes.bots import bots_router
 
 
 def register_routes(app: FastAPI):
@@ -15,3 +16,4 @@ def register_routes(app: FastAPI):
     app.include_router(notifications_router)
     app.include_router(speech_router)
     app.include_router(slack_router)
+    app.include_router(bots_router)

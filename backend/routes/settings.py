@@ -171,7 +171,7 @@ async def list_chats(request: Request):
 
     chats = []
     # Sort by created_at descending (newest first, oldest at bottom)
-    for doc in chats_collection.find().sort('created_at', -1):
+    for doc in chats_collection.find(sort=[('created_at', -1)]):
         db_messages = doc.get('messages', [])
         chats.append({
             'id': doc.get('id'),

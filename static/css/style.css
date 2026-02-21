@@ -4119,6 +4119,141 @@ body:has(.sidebar.collapsed) #browserModal .modal-content {
     padding: 12px;
 }
 
+/* Bot Services Section */
+.bots-section {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.bots-section h3 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.bots-section h3 i {
+    color: var(--primary);
+    font-size: 0.7rem;
+}
+
+.bot-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.bot-control-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    gap: 10px;
+}
+
+.bot-name {
+    flex: 1;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.bot-name i {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.bot-status {
+    font-size: 0.7rem;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 10px;
+    min-width: 60px;
+    text-align: center;
+}
+
+.bot-status.running {
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+}
+
+.bot-status.stopped {
+    background: rgba(231, 76, 60, 0.15);
+    color: #e74c3c;
+}
+
+.bot-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.bot-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    transition: all 0.15s ease;
+}
+
+.bot-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.bot-btn.start-btn:hover {
+    border-color: #2ecc71;
+    color: #2ecc71;
+}
+
+.bot-btn.stop-btn:hover {
+    border-color: #e74c3c;
+    color: #e74c3c;
+}
+
+.bot-bulk-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.bot-bulk-btn {
+    flex: 1;
+    padding: 6px 10px;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.7rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+.bot-bulk-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.bot-bulk-btn i {
+    font-size: 0.6rem;
+}
+
 /* Developer tools buttons */
 .dev-tools-buttons {
     display: flex;

@@ -30,6 +30,9 @@ import signal
 import logging
 import argparse
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -50,7 +53,7 @@ def start_socket_mode():
         print("   Create a token with 'connections:write' scope")
         sys.exit(1)
 
-    from backend.services.slack import create_slack_bot
+    from backend.services.bots.slack import create_slack_bot
 
     bot = create_slack_bot()
 
@@ -85,7 +88,7 @@ def start_poller_mode():
         print("   Or: Open DM in browser, the URL will be like: slack.com/archives/D1234567890")
         sys.exit(1)
 
-    from backend.services.slack import SlackPoller
+    from backend.services.bots.slack import SlackPoller
 
     poller = SlackPoller()
 

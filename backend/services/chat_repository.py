@@ -1,9 +1,14 @@
 import logging
+import threading
 from datetime import datetime
+from typing import Dict, Optional
 from backend.database import get_chats_collection, is_db_available_cached
 from backend.services import message_service as msg_svc
 
 log = logging.getLogger('chat.repository')
+
+_memory_store: Dict[str, dict] = {}
+_memory_lock = threading.Lock()
 
 
 class ChatRepository:
@@ -128,14 +133,27 @@ class ChatRepository:
         chat = self.get_chat()
         if chat:
             return chat.get('auggie_session_id')
+
+        if self.collection is None:
+            return self._get_auggie_session_id_memory()
         return None
+
+    def _get_auggie_session_id_memory(self) -> Optional[str]:
+        with _memory_lock:
+            chat = _memory_store.get(self.chat_id)
+            if chat:
+                session_id = chat.get('auggie_session_id')
+                log.debug(f"Got in-memory auggie_session_id={session_id} for chat {self.chat_id}")
+                return session_id
+            return None
 
     def save_auggie_session_id(self, session_id: str) -> bool:
         if not self.chat_id or not session_id:
             return False
+
         if self.collection is None:
-            log.warning(f"MongoDB not available, cannot save auggie_session_id for {self.chat_id}")
-            return False
+            return self._save_auggie_session_id_memory(session_id)
+
         try:
             self.collection.update_one(
                 {'id': self.chat_id},
@@ -146,6 +164,20 @@ class ChatRepository:
         except Exception as e:
             log.error(f"Failed to save auggie_session_id: {e}")
             return False
+
+    def _save_auggie_session_id_memory(self, session_id: str) -> bool:
+        with _memory_lock:
+            if self.chat_id not in _memory_store:
+                _memory_store[self.chat_id] = {
+                    'id': self.chat_id,
+                    'auggie_session_id': session_id,
+                    'updated_at': datetime.utcnow().isoformat()
+                }
+            else:
+                _memory_store[self.chat_id]['auggie_session_id'] = session_id
+                _memory_store[self.chat_id]['updated_at'] = datetime.utcnow().isoformat()
+            log.info(f"Saved in-memory auggie_session_id={session_id} for chat {self.chat_id}")
+            return True
 
     def save_partial_answer(self, message_id: str, partial_content: str) -> bool:
         if not self.chat_id or not message_id:

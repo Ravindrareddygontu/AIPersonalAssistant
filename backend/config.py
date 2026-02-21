@@ -64,14 +64,23 @@ BOT_MAX_MESSAGE_LENGTH_SLACK = 2900    # Slack limit is ~3000
 BOT_MAX_MESSAGE_LENGTH_TELEGRAM = 4000  # Telegram limit is 4096
 BOT_MAX_MESSAGE_LENGTH_DEFAULT = 4000   # Default for other platforms
 
-# MongoDB Configuration
+# =============================================================================
+# Storage Configuration
+# =============================================================================
+
+# File-based storage (default)
+FILE_STORAGE_BASE_DIR = os.environ.get('FILE_STORAGE_DIR',
+    os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data'))
+FILE_STORAGE_ENABLED = os.environ.get('FILE_STORAGE_ENABLED', 'true').lower() == 'true'
+
+# MongoDB Configuration (legacy, used for migration)
 MONGODB_URI = os.environ.get('MONGODB_URI', 'mongodb://localhost:27017')
 MONGODB_DB_NAME = os.environ.get('MONGODB_DB_NAME', 'ai_chat_app')
 
 # OpenAI API Configuration (for Whisper speech-to-text)
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 
-# Legacy file-based storage (kept for reference, no longer used)
+# Legacy file-based storage (kept for reference)
 CHATS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'chats')
 os.makedirs(CHATS_DIR, exist_ok=True)
 

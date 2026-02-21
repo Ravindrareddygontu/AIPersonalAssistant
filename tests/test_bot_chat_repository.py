@@ -8,10 +8,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 class TestBotChatRepositoryInit:
 
-    @patch('backend.services.slack.bot_chat_repository.get_bot_chats_collection')
+    @patch('backend.services.bots.base_repository.get_bot_chats_collection')
     @patch('backend.services.base_repository.is_db_available_cached')
     def test_init_db_available(self, mock_cached, mock_collection_fn):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
 
         mock_cached.return_value = True
         mock_col = MagicMock()
@@ -21,7 +21,7 @@ class TestBotChatRepositoryInit:
 
     @patch('backend.services.base_repository.is_db_available_cached')
     def test_init_db_not_available(self, mock_cached):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
 
         mock_cached.return_value = False
         repo = BotChatRepository()
@@ -31,34 +31,39 @@ class TestBotChatRepositoryInit:
 class TestMakeLookupKey:
 
     def test_lookup_key_without_thread(self):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
 
-        key = BotChatRepository._make_lookup_key("U123", "C456")
-        assert key == "U123:C456"
+        repo = BotChatRepository()
+        key = repo._make_lookup_key("U123", "C456")
+        assert key == "slack:U123:C456"
 
     def test_lookup_key_with_thread(self):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
 
-        key = BotChatRepository._make_lookup_key("U123", "C456", "1234567890.123")
-        assert key == "U123:C456:1234567890.123"
+        repo = BotChatRepository()
+        key = repo._make_lookup_key("U123", "C456", "1234567890.123")
+        assert key == "slack:U123:C456:1234567890.123"
 
 
 class TestGetOrCreateChat:
 
-    @patch('backend.services.slack.bot_chat_repository.get_bot_chats_collection')
+    @patch('backend.services.bots.base_repository.get_bot_chats_collection')
     @patch('backend.services.base_repository.is_db_available_cached')
     def test_get_existing_chat(self, mock_cached, mock_collection_fn):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
+        from datetime import datetime, timedelta
 
         mock_cached.return_value = True
         mock_col = MagicMock()
+        recent_time = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
         mock_col.find_one_and_update.return_value = {
             'id': 'abc123',
-            'lookup_key': 'U123:C456',
+            'lookup_key': 'slack:U123:C456',
             'user_id': 'U123',
             'channel_id': 'C456',
             'auggie_session_id': 'session-xyz',
-            'created_at': '2025-01-01T00:00:00'
+            'created_at': recent_time,
+            'updated_at': recent_time  # Used by _is_session_expired
         }
         mock_collection_fn.return_value = mock_col
 
@@ -72,10 +77,10 @@ class TestGetOrCreateChat:
         assert ctx.auggie_session_id == 'session-xyz'
         mock_col.find_one_and_update.assert_called_once()
 
-    @patch('backend.services.slack.bot_chat_repository.get_bot_chats_collection')
+    @patch('backend.services.bots.base_repository.get_bot_chats_collection')
     @patch('backend.services.base_repository.is_db_available_cached')
     def test_create_new_chat(self, mock_cached, mock_collection_fn):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
         from datetime import datetime
 
         mock_cached.return_value = True
@@ -103,22 +108,25 @@ class TestGetOrCreateChat:
         assert call_kwargs['upsert'] is True
 
     @patch('backend.services.base_repository.is_db_available_cached')
-    def test_get_or_create_db_unavailable(self, mock_cached):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+    def test_get_or_create_db_unavailable_uses_memory(self, mock_cached):
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
 
         mock_cached.return_value = False
         repo = BotChatRepository()
         ctx = repo.get_or_create_chat("U123", "C456")
 
-        assert ctx is None
+        # Now returns in-memory context instead of None
+        assert ctx is not None
+        assert ctx.user_id == 'U123'
+        assert ctx.channel_id == 'C456'
 
 
 class TestSaveMessage:
 
-    @patch('backend.services.slack.bot_chat_repository.get_bot_chats_collection')
+    @patch('backend.services.bots.base_repository.get_bot_chats_collection')
     @patch('backend.services.base_repository.is_db_available_cached')
     def test_save_message_success(self, mock_cached, mock_collection_fn):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
 
         mock_cached.return_value = True
         mock_col = MagicMock()
@@ -138,10 +146,10 @@ class TestSaveMessage:
         assert first_call_args['$push']['messages']['answer'] == "Python is a language."
         assert first_call_args['$push']['messages']['execution_time'] == 5.2
 
-    @patch('backend.services.slack.bot_chat_repository.get_bot_chats_collection')
+    @patch('backend.services.bots.base_repository.get_bot_chats_collection')
     @patch('backend.services.base_repository.is_db_available_cached')
     def test_save_message_updates_title(self, mock_cached, mock_collection_fn):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
 
         mock_cached.return_value = True
         mock_col = MagicMock()
@@ -157,10 +165,10 @@ class TestSaveMessage:
         assert second_call[0][0] == {'id': 'abc123', 'title': 'Slack Chat'}
         assert second_call[0][1]['$set']['title'] == "What is Python?"
 
-    @patch('backend.services.slack.bot_chat_repository.get_bot_chats_collection')
+    @patch('backend.services.bots.base_repository.get_bot_chats_collection')
     @patch('backend.services.base_repository.is_db_available_cached')
     def test_save_message_chat_not_found(self, mock_cached, mock_collection_fn):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
 
         mock_cached.return_value = True
         mock_col = MagicMock()
@@ -176,7 +184,7 @@ class TestSaveMessage:
 
     @patch('backend.services.base_repository.is_db_available_cached')
     def test_save_message_db_unavailable(self, mock_cached):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
 
         mock_cached.return_value = False
         repo = BotChatRepository()
@@ -187,10 +195,10 @@ class TestSaveMessage:
 
 class TestAuggieSessionId:
 
-    @patch('backend.services.slack.bot_chat_repository.get_bot_chats_collection')
+    @patch('backend.services.bots.base_repository.get_bot_chats_collection')
     @patch('backend.services.base_repository.is_db_available_cached')
     def test_save_auggie_session_id_success(self, mock_cached, mock_collection_fn):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
 
         mock_cached.return_value = True
         mock_col = MagicMock()
@@ -204,10 +212,10 @@ class TestAuggieSessionId:
         call_args = mock_col.update_one.call_args[0][1]['$set']
         assert call_args['auggie_session_id'] == 'session-xyz'
 
-    @patch('backend.services.slack.bot_chat_repository.get_bot_chats_collection')
+    @patch('backend.services.bots.base_repository.get_bot_chats_collection')
     @patch('backend.services.base_repository.is_db_available_cached')
     def test_save_auggie_session_id_no_chat_id(self, mock_cached, mock_collection_fn):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
 
         mock_cached.return_value = True
         mock_collection_fn.return_value = MagicMock()
@@ -216,10 +224,10 @@ class TestAuggieSessionId:
 
         assert result is False
 
-    @patch('backend.services.slack.bot_chat_repository.get_bot_chats_collection')
+    @patch('backend.services.bots.base_repository.get_bot_chats_collection')
     @patch('backend.services.base_repository.is_db_available_cached')
     def test_save_auggie_session_id_no_session_id(self, mock_cached, mock_collection_fn):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
 
         mock_cached.return_value = True
         mock_collection_fn.return_value = MagicMock()
@@ -228,10 +236,10 @@ class TestAuggieSessionId:
 
         assert result is False
 
-    @patch('backend.services.slack.bot_chat_repository.get_bot_chats_collection')
+    @patch('backend.services.bots.base_repository.get_bot_chats_collection')
     @patch('backend.services.base_repository.is_db_available_cached')
     def test_get_auggie_session_id_exists(self, mock_cached, mock_collection_fn):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
 
         mock_cached.return_value = True
         mock_col = MagicMock()
@@ -243,10 +251,10 @@ class TestAuggieSessionId:
 
         assert result == 'session-xyz'
 
-    @patch('backend.services.slack.bot_chat_repository.get_bot_chats_collection')
+    @patch('backend.services.bots.base_repository.get_bot_chats_collection')
     @patch('backend.services.base_repository.is_db_available_cached')
     def test_get_auggie_session_id_not_found(self, mock_cached, mock_collection_fn):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
 
         mock_cached.return_value = True
         mock_col = MagicMock()
@@ -258,10 +266,10 @@ class TestAuggieSessionId:
 
         assert result is None
 
-    @patch('backend.services.slack.bot_chat_repository.get_bot_chats_collection')
+    @patch('backend.services.bots.base_repository.get_bot_chats_collection')
     @patch('backend.services.base_repository.is_db_available_cached')
     def test_get_auggie_session_id_no_chat_id(self, mock_cached, mock_collection_fn):
-        from backend.services.slack.bot_chat_repository import BotChatRepository
+        from backend.services.bots.slack.bot_chat_repository import BotChatRepository
 
         mock_cached.return_value = True
         mock_collection_fn.return_value = MagicMock()
@@ -274,7 +282,7 @@ class TestAuggieSessionId:
 class TestBotChatContext:
 
     def test_dataclass_creation(self):
-        from backend.services.slack.bot_chat_repository import BotChatContext
+        from backend.services.bots.slack.bot_chat_repository import BotChatContext
 
         ctx = BotChatContext(
             chat_id="abc123",
@@ -291,7 +299,7 @@ class TestBotChatContext:
         assert ctx.auggie_session_id == "session-xyz"
 
     def test_dataclass_defaults(self):
-        from backend.services.slack.bot_chat_repository import BotChatContext
+        from backend.services.bots.slack.bot_chat_repository import BotChatContext
 
         ctx = BotChatContext(chat_id="abc123", user_id="U123", channel_id="C456")
 

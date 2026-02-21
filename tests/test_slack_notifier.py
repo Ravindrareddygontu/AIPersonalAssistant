@@ -17,7 +17,7 @@ import json
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.services.slack.notifier import (
+from backend.services.bots.slack.notifier import (
     CompletionStatus, SlackNotification, SlackNotifier,
     _extract_summary, notify_completion
 )

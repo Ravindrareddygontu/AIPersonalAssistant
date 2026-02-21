@@ -56,13 +56,26 @@ describe('API Module', () => {
         test('should fetch chats from /api/chats', async () => {
             const mockChats = [{ id: '1', title: 'Chat 1' }];
             global.fetch.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
                 json: () => Promise.resolve(mockChats)
             });
 
             const result = await api.getChats();
-            
+
             expect(fetch).toHaveBeenCalledWith('/api/chats');
             expect(result).toEqual(mockChats);
+        });
+
+        test('should return empty array on error', async () => {
+            global.fetch.mockResolvedValueOnce({
+                ok: false,
+                status: 500,
+                json: () => Promise.resolve({ error: 'Server error' })
+            });
+
+            const result = await api.getChats();
+            expect(result).toEqual([]);
         });
     });
 
@@ -70,11 +83,13 @@ describe('API Module', () => {
         test('should POST to /api/chats with workspace', async () => {
             const mockChat = { id: 'new-123', title: 'New Chat' };
             global.fetch.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
                 json: () => Promise.resolve(mockChat)
             });
 
             const result = await api.createChat('/home/user');
-            
+
             expect(fetch).toHaveBeenCalledWith('/api/chats', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -88,11 +103,13 @@ describe('API Module', () => {
         test('should PUT messages to /api/chats/:id', async () => {
             const messages = [{ role: 'user', content: 'Hello' }];
             global.fetch.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
                 json: () => Promise.resolve({ status: 'success' })
             });
 
             await api.saveChat('chat-123', messages);
-            
+
             expect(fetch).toHaveBeenCalledWith('/api/chats/chat-123', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -104,11 +121,13 @@ describe('API Module', () => {
     describe('api.deleteChat', () => {
         test('should DELETE /api/chats/:id', async () => {
             global.fetch.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
                 json: () => Promise.resolve({ status: 'deleted' })
             });
 
             await api.deleteChat('chat-123');
-            
+
             expect(fetch).toHaveBeenCalledWith('/api/chats/chat-123', {
                 method: 'DELETE'
             });
@@ -119,6 +138,8 @@ describe('API Module', () => {
         test('should GET /api/chats/:id with cache busting', async () => {
             const mockChat = { id: 'chat-123', messages: [] };
             global.fetch.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
                 json: () => Promise.resolve(mockChat)
             });
 
@@ -135,6 +156,8 @@ describe('API Module', () => {
     describe('api.updateChatProvider', () => {
         test('should PUT provider to /api/chats/:id', async () => {
             global.fetch.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
                 json: () => Promise.resolve({ status: 'success' })
             });
 
@@ -149,6 +172,8 @@ describe('API Module', () => {
 
         test('should update provider to auggie', async () => {
             global.fetch.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
                 json: () => Promise.resolve({ status: 'success' })
             });
 
@@ -164,6 +189,8 @@ describe('API Module', () => {
         test('should return response data', async () => {
             const mockResponse = { status: 'success', provider: 'codex' };
             global.fetch.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
                 json: () => Promise.resolve(mockResponse)
             });
 
@@ -175,6 +202,8 @@ describe('API Module', () => {
     describe('api.resetSession', () => {
         test('should POST to /api/chat/reset with workspace', async () => {
             global.fetch.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
                 json: () => Promise.resolve({ status: 'reset' })
             });
 
@@ -189,6 +218,8 @@ describe('API Module', () => {
 
         test('should POST empty body when no workspace', async () => {
             global.fetch.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
                 json: () => Promise.resolve({ status: 'reset' })
             });
 

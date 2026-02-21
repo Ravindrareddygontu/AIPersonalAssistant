@@ -209,6 +209,34 @@
                 <input type="hidden" id="workspaceInput">
                 <select id="modelSelect" style="display: none;"></select>
 
+                <!-- Bot Services Section -->
+                <div class="bots-section">
+                    <h3><i class="fas fa-robot"></i> Bot Services</h3>
+                    <div class="bot-controls">
+                        <div class="bot-control-item">
+                            <span class="bot-name"><i class="fab fa-slack"></i> Slack</span>
+                            <span class="bot-status" id="slackBotStatus">--</span>
+                            <div class="bot-actions">
+                                <button class="bot-btn start-btn" onclick="controlBot('slack', 'start')" title="Start"><i class="fas fa-play"></i></button>
+                                <button class="bot-btn stop-btn" onclick="controlBot('slack', 'stop')" title="Stop"><i class="fas fa-stop"></i></button>
+                            </div>
+                        </div>
+                        <div class="bot-control-item">
+                            <span class="bot-name"><i class="fab fa-telegram"></i> Telegram</span>
+                            <span class="bot-status" id="telegramBotStatus">--</span>
+                            <div class="bot-actions">
+                                <button class="bot-btn start-btn" onclick="controlBot('telegram', 'start')" title="Start"><i class="fas fa-play"></i></button>
+                                <button class="bot-btn stop-btn" onclick="controlBot('telegram', 'stop')" title="Stop"><i class="fas fa-stop"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bot-bulk-actions">
+                        <button class="bot-bulk-btn" onclick="controlBot('all', 'start')"><i class="fas fa-play"></i> Start All</button>
+                        <button class="bot-bulk-btn" onclick="controlBot('all', 'stop')"><i class="fas fa-stop"></i> Stop All</button>
+                        <button class="bot-bulk-btn" onclick="refreshBotStatus()"><i class="fas fa-sync"></i> Refresh</button>
+                    </div>
+                </div>
+
                 <!-- Reminders Section -->
                 <div class="reminders-section">
                     <h3><i class="fas fa-bell"></i> Reminders</h3>

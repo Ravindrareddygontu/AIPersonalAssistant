@@ -9,6 +9,11 @@ from backend.config import DEFAULT_WORKSPACE_PATH, BOT_MAX_MESSAGE_LENGTH_TELEGR
 
 log = logging.getLogger('telegram.bot')
 
+CONNECT_TIMEOUT = 20.0
+READ_TIMEOUT = 30.0
+WRITE_TIMEOUT = 30.0
+POOL_TIMEOUT = 10.0
+
 
 @dataclass
 class TelegramBotConfig(BaseBotConfig):
@@ -34,10 +39,23 @@ class TelegramBot(BaseBot):
 
         try:
             from telegram.ext import Application, CommandHandler, MessageHandler, filters
+            from telegram.request import HTTPXRequest
         except ImportError:
             raise ImportError("Run: pip install python-telegram-bot")
 
-        self._application = Application.builder().token(self.config.bot_token).build()
+        request = HTTPXRequest(
+            connect_timeout=CONNECT_TIMEOUT,
+            read_timeout=READ_TIMEOUT,
+            write_timeout=WRITE_TIMEOUT,
+            pool_timeout=POOL_TIMEOUT,
+        )
+
+        self._application = (
+            Application.builder()
+            .token(self.config.bot_token)
+            .request(request)
+            .build()
+        )
         self._init_executor()
 
         if self._repository is None:
@@ -45,6 +63,7 @@ class TelegramBot(BaseBot):
             self._repository = TelegramChatRepository()
 
         self._register_handlers()
+        self._register_error_handler()
         log.info("[TELEGRAM BOT] Initialized")
 
     def _register_handlers(self):
@@ -56,6 +75,23 @@ class TelegramBot(BaseBot):
         self._application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
 
         log.info("[TELEGRAM BOT] Handlers registered")
+
+    def _register_error_handler(self):
+        async def error_handler(update, context):
+            from telegram.error import TimedOut, NetworkError, Conflict
+
+            error = context.error
+            if isinstance(error, TimedOut):
+                log.warning(f"[TELEGRAM BOT] Request timed out: {error}")
+            elif isinstance(error, Conflict):
+                log.error(f"[TELEGRAM BOT] Conflict - another instance running: {error}")
+            elif isinstance(error, NetworkError):
+                log.warning(f"[TELEGRAM BOT] Network error: {error}")
+            else:
+                log.error(f"[TELEGRAM BOT] Unhandled error: {error}", exc_info=context.error)
+
+        self._application.add_error_handler(error_handler)
+        log.info("[TELEGRAM BOT] Error handler registered")
 
     async def _handle_start(self, update, _context):
         await update.message.reply_text(
@@ -126,7 +162,10 @@ class TelegramBot(BaseBot):
         self._ensure_initialized()
         log.info("[TELEGRAM BOT] Starting polling...")
         self._running = True
-        self._application.run_polling()
+        self._application.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=["message"],
+        )
 
     def stop(self):
         self._running = False

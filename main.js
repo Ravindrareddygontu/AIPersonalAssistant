@@ -27,6 +27,12 @@ if (fs.existsSync(envPath)) {
 
 app.commandLine.appendSwitch('no-sandbox');
 
+// Disable hardware acceleration to reduce CPU usage
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch('disable-gpu-compositing');
+app.commandLine.appendSwitch('disable-software-rasterizer');
+
 // Log file for debugging when running from desktop icon
 const logFile = path.join(__dirname, 'electron.log');
 function log(message) {
