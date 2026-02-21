@@ -148,7 +148,17 @@ class TelegramBot(BaseBot):
             except asyncio.CancelledError:
                 pass
 
-        await thinking_msg.edit_text(bot_response.reply, parse_mode='Markdown')
+        try:
+            log.info(f"[TELEGRAM BOT] Sending response ({len(bot_response.reply)} chars)")
+            await thinking_msg.edit_text(bot_response.reply, parse_mode='Markdown')
+            log.info("[TELEGRAM BOT] Response sent successfully")
+        except Exception as e:
+            log.warning(f"[TELEGRAM BOT] Markdown parsing failed, sending as plain text: {e}")
+            try:
+                await thinking_msg.edit_text(bot_response.reply)
+                log.info("[TELEGRAM BOT] Plain text response sent successfully")
+            except Exception as e2:
+                log.error(f"[TELEGRAM BOT] Failed to send response: {e2}")
 
     @property
     def application(self):
