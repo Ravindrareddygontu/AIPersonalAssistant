@@ -4,7 +4,7 @@ import queue
 import logging
 import threading
 
-from backend.session import SessionManager
+from backend.session.auggie import SessionManager
 from .utils import SSEFormatter, sanitize_message
 
 log = logging.getLogger('chat')

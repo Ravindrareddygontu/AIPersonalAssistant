@@ -4,7 +4,7 @@ import select
 import logging
 from typing import List, Optional, Tuple, TYPE_CHECKING
 
-from backend.services.base_session import BasePtySession
+from backend.session import BasePtySession
 
 if TYPE_CHECKING:
     from backend.services.terminal_agent.base import TerminalAgentProvider

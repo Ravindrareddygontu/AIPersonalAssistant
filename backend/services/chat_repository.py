@@ -2,8 +2,10 @@ import logging
 import threading
 from datetime import datetime
 from typing import Dict, Optional
-from backend.database import get_chats_collection, is_db_available_cached
+
+from backend.database import get_chats_collection
 from backend.services import message_service as msg_svc
+from backend.services.base_repository import BaseRepository
 
 log = logging.getLogger('chat.repository')
 
@@ -11,37 +13,13 @@ _memory_store: Dict[str, dict] = {}
 _memory_lock = threading.Lock()
 
 
-class ChatRepository:
+class ChatRepository(BaseRepository):
     def __init__(self, chat_id: str):
+        super().__init__()
         self.chat_id = chat_id
-        self._collection = None
-        self._db_available = None
 
-        # Check DB availability upfront using cached status (non-blocking)
-        if not is_db_available_cached():
-            self._db_available = False
-            log.debug(f"ChatRepository for {chat_id}: DB not available (cached)")
-
-    @property
-    def collection(self):
-        # If we already know DB is unavailable, don't try again
-        if self._db_available is False:
-            return None
-        if self._collection is None:
-            self._collection = get_chats_collection()
-            self._db_available = self._collection is not None
-        return self._collection
-
-    @property
-    def is_db_available(self) -> bool:
-        if self._db_available is None:
-            # Use cached check first
-            if not is_db_available_cached():
-                self._db_available = False
-                return False
-            # Trigger collection load to check availability
-            _ = self.collection
-        return self._db_available
+    def _get_collection(self):
+        return get_chats_collection()
 
     def get_chat(self) -> dict | None:
         if not self.chat_id:
@@ -67,7 +45,7 @@ class ChatRepository:
             # Update title if it's still "New Chat"
             title = chat.get('title', 'New Chat')
             if title == 'New Chat':
-                title = self._generate_title(question_content)
+                title = self.generate_title(question_content)
 
             self._update_chat(messages, title)
             log.info(f"Saved question to chat {self.chat_id}, message_id: {msg_id}")
@@ -198,10 +176,4 @@ class ChatRepository:
         except Exception as e:
             log.error(f"Failed to save partial answer: {e}")
             return False
-
-    @staticmethod
-    def _generate_title(question: str, max_length: int = 50) -> str:
-        if len(question) > max_length:
-            return question[:max_length] + '...'
-        return question
 

@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from typing import Optional
 
 from backend.config import settings, TERMINAL_AGENT_PROVIDERS
-from backend.session import SessionManager
+from backend.session.auggie import SessionManager
 from backend.database import get_chats_collection
 
 from .models import ChatStreamRequest, ChatResetRequest

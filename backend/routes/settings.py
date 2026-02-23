@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from backend.config import settings
-from backend.session import SessionManager
+from backend.session.auggie import SessionManager
 from backend.database import get_chats_collection, check_connection, is_db_available_cached
 from backend.services import message_service as msg_svc
 

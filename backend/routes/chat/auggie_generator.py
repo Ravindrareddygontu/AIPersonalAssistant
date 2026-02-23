@@ -4,7 +4,7 @@ import select
 import logging
 
 from backend.config import settings
-from backend.session import SessionManager
+from backend.session.auggie import SessionManager
 from backend.utils.content_cleaner import ContentCleaner
 from backend.models.stream_state import StreamState
 from backend.services.stream_processor import StreamProcessor
@@ -365,8 +365,8 @@ class AuggieStreamGenerator(BaseStreamGenerator):
         yield from self.send_final_response(final_content)
 
     def _detect_and_save_session_id(self, session=None):
-        from backend.services.session_manager import session_manager
-        from backend.session import _sessions
+        from backend.session.persistence import session_manager
+        from backend.session.auggie import _sessions
 
         log.info(f"[DETECT_SESSION] Starting detection for workspace={self.workspace}")
         try:

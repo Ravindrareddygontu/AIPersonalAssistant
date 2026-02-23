@@ -9,7 +9,7 @@ import re
 from typing import List, Optional, Tuple
 
 from backend.config import get_auggie_model_id, BOT_SESSION_TIMEOUT_MINUTES
-from backend.services.base_session import BasePtySession
+from backend.session import BasePtySession
 
 log = logging.getLogger('session')
 
@@ -50,7 +50,7 @@ class AuggieSession(BasePtySession):
         cmd = [auggie_cmd]
 
         if self.session_id:
-            from backend.services.session_manager import session_manager
+            from backend.session.persistence import session_manager
             if session_manager.session_exists('auggie', self.session_id):
                 cmd.extend(['--resume', self.session_id])
                 log.info(f"[SESSION] Resuming Auggie session: {self.session_id}")

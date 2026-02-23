@@ -25,7 +25,7 @@ import pytest
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.session import AuggieSession, SessionManager
+from backend.session.auggie import AuggieSession, SessionManager
 from backend.models.stream_state import StreamState
 from backend.services.stream_processor import StreamProcessor
 from backend.utils.text import TextCleaner

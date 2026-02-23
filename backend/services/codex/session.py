@@ -1,14 +1,23 @@
 import logging
-from typing import Optional, Dict, Tuple
+from typing import Optional, Tuple
 
+from backend.session import BaseSessionManager
 from backend.services.terminal_agent.base import TerminalAgentProvider
 from backend.services.terminal_agent.session import TerminalSession
 
 log = logging.getLogger('codex.session')
 
 
-class SessionManager:
-    _sessions: Dict[str, TerminalSession] = {}
+class SessionManager(BaseSessionManager[TerminalSession]):
+    _sessions = {}
+
+    @classmethod
+    def _get_session_key(cls, provider: TerminalAgentProvider, workspace: str, model: Optional[str] = None) -> str:
+        return f"{provider.name}:{workspace}:{model or 'default'}"
+
+    @classmethod
+    def _create_session(cls, provider: TerminalAgentProvider, workspace: str, model: Optional[str] = None, session_id: Optional[str] = None) -> TerminalSession:
+        return TerminalSession(provider, workspace, model, session_id)
 
     @classmethod
     def get_or_create(
@@ -18,20 +27,13 @@ class SessionManager:
         model: Optional[str] = None,
         session_id: Optional[str] = None
     ) -> Tuple[TerminalSession, bool]:
-        key = f"{provider.name}:{workspace}:{model or 'default'}"
-        if key in cls._sessions:
-            session = cls._sessions[key]
-            if session.is_alive():
-                return session, False
-            session.cleanup()
+        key = cls._get_session_key(provider, workspace, model)
+        with cls._lock:
+            existing = cls._get_existing_session(key)
+            if existing:
+                return existing, False
 
-        session = TerminalSession(provider, workspace, model, session_id)
-        cls._sessions[key] = session
-        return session, True
-
-    @classmethod
-    def cleanup_all(cls) -> None:
-        for session in cls._sessions.values():
-            session.cleanup()
-        cls._sessions.clear()
+            session = cls._create_session(provider, workspace, model, session_id)
+            cls._sessions[key] = session
+            return session, True
 

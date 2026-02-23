@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-from backend.session import SessionManager
+from backend.session.auggie import SessionManager
 from backend.utils.text import TextCleaner
 from backend.utils.response import ResponseExtractor
 from backend.utils.content_cleaner import ContentCleaner
@@ -83,7 +83,7 @@ class AuggieExecutor:
                     response.source = source
 
                     if response.success and not session.session_id:
-                        from backend.services.session_manager import session_manager
+                        from backend.session.persistence import session_manager
                         session.session_id = session_manager.get_session('auggie', workspace)
                     response.session_id = session.session_id
                     return response

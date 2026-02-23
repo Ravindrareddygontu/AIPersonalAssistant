@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.session import AuggieSession, SessionManager, _sessions, _lock
+from backend.session.auggie import AuggieSession, SessionManager, _sessions, _lock
 
 
 class TestAuggieSessionInUse:

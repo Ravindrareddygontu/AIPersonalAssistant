@@ -222,13 +222,13 @@ class TestSavePartialAnswer:
 
 
 class TestGenerateTitle:
-    """Test _generate_title static method."""
+    """Test generate_title static method (inherited from BaseRepository)."""
 
     def test_short_question(self):
         """Test title generation for short question."""
         from backend.services.chat_repository import ChatRepository
 
-        result = ChatRepository._generate_title("What is Python?")
+        result = ChatRepository.generate_title("What is Python?")
         assert result == "What is Python?"
 
     def test_long_question_truncated(self):
@@ -236,7 +236,7 @@ class TestGenerateTitle:
         from backend.services.chat_repository import ChatRepository
 
         long_q = "A" * 100
-        result = ChatRepository._generate_title(long_q)
+        result = ChatRepository.generate_title(long_q)
 
         assert len(result) == 53  # 50 + "..."
         assert result.endswith("...")
@@ -245,7 +245,7 @@ class TestGenerateTitle:
         """Test custom max length."""
         from backend.services.chat_repository import ChatRepository
 
-        result = ChatRepository._generate_title("A" * 50, max_length=20)
+        result = ChatRepository.generate_title("A" * 50, max_length=20)
         assert len(result) == 23  # 20 + "..."
 
 
