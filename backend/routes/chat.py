@@ -292,13 +292,21 @@ class StreamGenerator:
 
         # Get existing auggie session_id for resumption
         auggie_session_id = None
+        has_messages = False
         if self.repository:
             auggie_session_id = self.repository.get_auggie_session_id()
             if auggie_session_id:
                 log.info(f"Found existing Auggie session_id: {auggie_session_id}")
+            # Check if chat already has messages (even if session_id not saved yet)
+            chat = self.repository.get_chat()
+            if chat:
+                has_messages = len(chat.get('messages', [])) > 0
+                log.info(f"Chat has_messages: {has_messages}")
 
-        # New chat (no session_id) should start fresh Auggie session
-        force_new_session = auggie_session_id is None
+        # Only force new session for truly new chats (no session_id AND no messages)
+        # This prevents killing an existing session when Q1 was aborted before session_id was saved
+        force_new_session = auggie_session_id is None and not has_messages
+        log.info(f"force_new_session={force_new_session} (session_id={auggie_session_id}, has_messages={has_messages})")
         self.session_handler = SessionHandler(workspace, settings.model, auggie_session_id, force_new_session)
         self._auggie_session_id = auggie_session_id  # Track if we already have one
         # Initialize processor with sanitized message since that's what's actually sent to terminal
@@ -378,6 +386,10 @@ class StreamGenerator:
         if self.repository:
             self.repository.set_streaming_status('pending')
             log.info(f"[BACKGROUND] Marked chat {self.chat_id} as pending for resume")
+            # Try to detect and save session_id even on disconnect (for session resumption)
+            if not self._auggie_session_id:
+                self._detect_and_save_session_id()
+                log.info(f"[BACKGROUND] Attempted to save session_id on disconnect")
 
     def _handle_session(self):
         session, is_new = self.session_handler.get_session()
@@ -481,9 +493,9 @@ class StreamGenerator:
                         chunk = os.read(fd, 8192).decode('utf-8', errors='ignore')
                         if not chunk:
                             break
-                        # New data arrived after an end-pattern signal; treat it as transient
-                        if state.end_pattern_seen:
-                            state.end_pattern_seen = False
+                        # Note: Don't reset end_pattern_seen here on raw terminal data
+                        # Only _process_content resets it when actual NEW content is detected
+                        # Terminal noise (cursor movements, redraws) shouldn't delay exit
                         state.all_output += chunk
                         if len(state.all_output) > self.RAW_BUFFER_MAX:
                             state.all_output = state.all_output[-self.RAW_BUFFER_MAX:]
@@ -511,8 +523,9 @@ class StreamGenerator:
                 yield from self._process_accumulated_data(state)
 
             # Send periodic status updates (moved outside else to update during data flow too)
+            # But stop sending status once response is complete (end_pattern_seen)
             now = time.time()
-            if now - last_status_time >= 0.3:  # Update every 0.3s for responsive activity indicators
+            if now - last_status_time >= 0.3 and not state.end_pattern_seen:
                 status_msg = self._get_current_status(state)
                 if status_msg and status_msg != last_status_msg:
                     log.debug(f"[STATUS] {status_msg}")
@@ -560,8 +573,12 @@ class StreamGenerator:
                     clean_line = re.sub(r'\x1b\[[0-9;]*m', '', line)
                     clean_line = re.sub(r'[│╭╮╯╰─┌┐└┘├┤┬┴┼]', '', clean_line)
                     clean_line = re.sub(r'\s*[•·\-–—]\s*esc to interrupt', '', clean_line, flags=re.IGNORECASE)
-                    clean_line = re.sub(r'\(\)', '', clean_line)
                     clean_line = re.sub(r'\((\d+)s\.?\s*[•·\-–—]?\s*\)', r'\1s', clean_line)
+                    # Filter out queue/manage noise from terminal UI
+                    clean_line = re.sub(r'/queue\s+to\s+manage', '', clean_line, flags=re.IGNORECASE)
+                    clean_line = re.sub(r'Message will be queued', '', clean_line, flags=re.IGNORECASE)
+                    # Remove empty parentheses LAST (after other content is removed)
+                    clean_line = re.sub(r'\(\s*\)', '', clean_line)
                     clean_line = clean_line.strip()
                     if clean_line:
                         return clean_line
@@ -707,6 +724,14 @@ class StreamGenerator:
             session.drain_output(timeout=0.5)
         except Exception as e:
             log.warning(f"Error during abort: {e}")
+
+        # Try to detect and save session_id even on abort (for session resumption)
+        if self.repository and not self._auggie_session_id:
+            self._detect_and_save_session_id(session)
+
+        # Clear streaming status
+        if self.repository:
+            self.repository.set_streaming_status(None)
 
         # Send Slack notification for stopped request
         execution_time = time.time() - self.start_time
@@ -1036,6 +1061,9 @@ class TerminalAgentStreamGenerator:
                     time.sleep(0.1)
                     session.write(b'\r')
                     time.sleep(0.05)
+
+                    # Send immediate status so UI doesn't stay on "Connecting..."
+                    yield self.sse.send({'type': 'status', 'message': 'Processing...'})
 
                     if self.repository:
                         self.message_id = self.repository.save_question(self.message)
