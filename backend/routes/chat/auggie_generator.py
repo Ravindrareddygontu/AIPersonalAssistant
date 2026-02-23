@@ -1,46 +1,31 @@
 import os
-import re
 import time
 import select
 import logging
 
 from backend.config import settings
 from backend.session import SessionManager
-from backend.utils.text import TextCleaner
-from backend.utils.response import ResponseExtractor
 from backend.utils.content_cleaner import ContentCleaner
 from backend.models.stream_state import StreamState
-from backend.services.chat_repository import ChatRepository
 from backend.services.stream_processor import StreamProcessor
 from backend.services.bots.slack.notifier import notify_completion
 
-from .utils import SSEFormatter, sanitize_message, chat_log, _abort_flag
+from .base_generator import BaseStreamGenerator
+from .utils import sanitize_message, chat_log, _abort_flag
 from .session_handler import SessionHandler
 
 log = logging.getLogger('chat')
 
 
-class AuggieStreamGenerator:
-    STREAM_TIMEOUT = 300
-    RAW_BUFFER_MAX = 300_000
-    CONTENT_SILENCE_TIMEOUT = 5.0
-    CONTENT_SILENCE_EXTENDED = 60.0
+class AuggieStreamGenerator(BaseStreamGenerator):
     CONTENT_SILENCE_INCOMPLETE = 45.0
-    END_PATTERN_SILENCE = 1.0
-    RESPONSE_MARKER_TIMEOUT = 5.0
-    WAIT_FOR_MARKER_TIMEOUT = 45.0
 
     def __init__(self, message: str, workspace: str, chat_id: str = None):
         from backend.services.auggie.provider import AuggieProvider
 
-        self.message = message
+        super().__init__(message, workspace, chat_id)
         self.workspace = workspace
-        self.chat_id = chat_id
-        self.message_id = None
-        self.start_time = time.time()
         self.echo_search_message = message
-
-        self.repository = ChatRepository(chat_id) if (chat_id and settings.history_enabled) else None
 
         auggie_session_id = None
         has_messages = False
@@ -58,8 +43,10 @@ class AuggieStreamGenerator:
         self.session_handler = SessionHandler(workspace, settings.model, auggie_session_id, force_new_session)
         self._auggie_session_id = auggie_session_id
         self.processor = StreamProcessor(sanitize_message(message))
-        self.sse = SSEFormatter()
         self.provider = AuggieProvider()
+
+    def get_provider(self):
+        return self.provider
 
     def generate(self):
         log.info(f"Starting generate for: {self.message[:50]}...")
@@ -203,32 +190,7 @@ class AuggieStreamGenerator:
             ready = select.select([fd], [], [], 0.05)[0]
 
             if ready:
-                while True:
-                    try:
-                        chunk = os.read(fd, 8192).decode('utf-8', errors='ignore')
-                        if not chunk:
-                            break
-                        state.all_output += chunk
-                        if len(state.all_output) > self.RAW_BUFFER_MAX:
-                            state.all_output = state.all_output[-self.RAW_BUFFER_MAX:]
-                        combined = state._raw_tail + chunk
-                        clean_combined = TextCleaner.strip_ansi(combined)
-                        if state._clean_tail and clean_combined.startswith(state._clean_tail):
-                            append_clean = clean_combined[len(state._clean_tail):]
-                        else:
-                            append_clean = clean_combined
-                        if append_clean:
-                            state.clean_output += append_clean
-                        state._raw_tail = combined[-64:] if len(combined) > 64 else combined
-                        state._clean_tail = TextCleaner.strip_ansi(state._raw_tail)
-                        state.update_data_time()
-                    except BlockingIOError:
-                        break
-                    except OSError:
-                        break
-                    if not select.select([fd], [], [], 0)[0]:
-                        break
-
+                self.read_chunks(fd, state)
                 yield from self._process_accumulated_data(state)
 
             now = time.time()
@@ -252,32 +214,7 @@ class AuggieStreamGenerator:
 
     def _get_current_status(self, state: StreamState) -> str:
         output_tail = state.all_output[-3000:] if len(state.all_output) > 3000 else state.all_output
-        activity_msg = self._detect_activity(output_tail)
-        if activity_msg:
-            return activity_msg
-        return None
-
-    def _detect_activity(self, output: str) -> str | None:
-        activity_patterns = self.provider.get_status_patterns()
-        if not activity_patterns:
-            return None
-
-        lines = [line.strip() for line in output.splitlines() if line.strip()]
-        for line in reversed(lines):
-            line_lower = line.lower()
-            for pattern in activity_patterns:
-                if pattern.lower() in line_lower:
-                    clean_line = re.sub(r'\x1b\[[0-9;]*m', '', line)
-                    clean_line = re.sub(r'[│╭╮╯╰─┌┐└┘├┤┬┴┼]', '', clean_line)
-                    clean_line = re.sub(r'\s*[•·\-–—]\s*esc to interrupt', '', clean_line, flags=re.IGNORECASE)
-                    clean_line = re.sub(r'\((\d+)s\.?\s*[•·\-–—]?\s*\)', r'\1s', clean_line)
-                    clean_line = re.sub(r'/queue\s+to\s+manage', '', clean_line, flags=re.IGNORECASE)
-                    clean_line = re.sub(r'Message will be queued', '', clean_line, flags=re.IGNORECASE)
-                    clean_line = re.sub(r'\(\s*\)', '', clean_line)
-                    clean_line = clean_line.strip()
-                    if clean_line:
-                        return clean_line
-        return None
+        return self.detect_activity(output_tail)
 
     def _process_accumulated_data(self, state: StreamState):
         clean = state.clean_output
@@ -382,32 +319,12 @@ class AuggieStreamGenerator:
     def _handle_abort(self, session, state: StreamState):
         log.info("Abort signal received")
         state.aborted = True
-        _abort_flag.clear()
-
-        try:
-            os.write(session.master_fd, b'\x03')
-            time.sleep(0.2)
-            session.drain_output(timeout=0.5)
-        except Exception as e:
-            log.warning(f"Error during abort: {e}")
+        self.handle_abort_signal(session.master_fd, session)
 
         if self.repository and not self._auggie_session_id:
             self._detect_and_save_session_id(session)
 
-        if self.repository:
-            self.repository.set_streaming_status(None)
-
-        execution_time = time.time() - self.start_time
-        notify_completion(
-            question=self.message,
-            content="",
-            success=False,
-            stopped=True,
-            execution_time=execution_time
-        )
-
-        yield self.sse.send({'type': 'aborted', 'message': 'Request aborted'})
-        yield self.sse.send({'type': 'done'})
+        yield from self.send_abort_response()
 
     def _finalize_response(self, session, state: StreamState):
         if state.aborted:
@@ -417,75 +334,35 @@ class AuggieStreamGenerator:
 
         log.info(f"[DEBUG_FINAL] relevant_output length: {len(relevant_output)}")
         log.info(f"[DEBUG_FINAL] Last 500 chars: {repr(relevant_output[-500:])}")
-        log.info(f"[DEBUG_FINAL] state.current_full_content: {repr(state.current_full_content[:300] if state.current_full_content else 'None')}")
-        log.info(f"[DEBUG_FINAL] state.last_streamed_content: {repr(state.last_streamed_content[:300] if state.last_streamed_content else 'None')}")
 
         sanitized_message = sanitize_message(self.message)
-        markers = self.provider.get_response_markers()
-        response_marker = markers[0] if markers else None
-        response_text = ResponseExtractor.extract_full(
-            relevant_output, sanitized_message,
-            response_marker=response_marker,
-            thinking_marker=self.provider.get_thinking_marker(),
-            continuation_marker=self.provider.get_continuation_marker(),
-        )
-        log.info(f"[DEBUG_FINAL] Extracted response_text: {repr(response_text[:200] if response_text else 'None')}")
+        response_text = self.extract_final_response(relevant_output, sanitized_message)
 
         raw_content = state.current_full_content or state.last_streamed_content or response_text
-        raw_content = ContentCleaner.strip_previous_response(raw_content, state.prev_response)
-
-        final_content = ContentCleaner.clean_assistant_content(raw_content)
+        final_content = self.clean_final_content(raw_content, state.prev_response)
         final_content = ContentCleaner.strip_previous_response(final_content, state.prev_response)
 
         chat_log(f"Response complete - raw: {len(raw_content) if raw_content else 0}, cleaned: {len(final_content) if final_content else 0}")
 
-        if state.streaming_started and final_content:
-            remaining = state.flush_remaining_content(final_content)
-            if remaining:
-                yield self.sse.send({'type': 'stream', 'content': remaining})
-
-        if state.streaming_started:
-            yield self.sse.send({'type': 'stream_end', 'content': final_content})
-        elif final_content:
-            yield self.sse.send({'type': 'stream_start'})
-            lines = final_content.split('\n')
-            for line in lines:
-                if line.strip():
-                    yield self.sse.send({'type': 'stream', 'content': line + '\n'})
-                    time.sleep(0.02)
-            yield self.sse.send({'type': 'stream_end', 'content': ''})
+        yield from self.finalize_content(state, final_content)
 
         session.last_used = time.time()
         session.last_message = self.message
         session.last_response = final_content or ""
         SessionManager.cleanup_old()
 
-        if self.repository:
-            if final_content and self.message_id:
-                self.repository.save_answer(self.message_id, final_content)
-            self.repository.set_streaming_status(None)
+        if not self._auggie_session_id and final_content and self.repository:
+            self._detect_and_save_session_id(session)
 
-            if not self._auggie_session_id and final_content:
-                self._detect_and_save_session_id(session)
-
-        execution_time = time.time() - self.start_time
         has_error = not final_content or "Couldn't extract response" in (final_content or "")
-        notify_completion(
-            question=self.message,
-            content=final_content or "",
+        self.save_and_notify(
+            final_content,
             success=not has_error,
-            error="Couldn't extract response" if has_error else None,
-            stopped=False,
-            execution_time=execution_time
+            error="Couldn't extract response" if has_error else None
         )
 
         chat_log("Sending done event")
-        yield self.sse.send({
-            'type': 'response',
-            'message': final_content or "Couldn't extract response. Please try again.",
-            'workspace': self.workspace
-        })
-        yield self.sse.send({'type': 'done'})
+        yield from self.send_final_response(final_content)
 
     def _detect_and_save_session_id(self, session=None):
         from backend.services.session_manager import session_manager

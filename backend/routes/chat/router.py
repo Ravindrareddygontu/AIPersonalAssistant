@@ -13,7 +13,7 @@ from .models import ChatStreamRequest, ChatResetRequest
 from .utils import _abort_flag
 from .auggie_generator import AuggieStreamGenerator
 from .openai_generator import OpenAIStreamGenerator
-from .terminal_generator import TerminalAgentStreamGenerator
+from .codex_generator import CodexStreamGenerator
 
 log = logging.getLogger('chat')
 chat_router = APIRouter()
@@ -81,7 +81,7 @@ async def chat_stream(request: Request, data: ChatStreamRequest):
         from backend.services.terminal_agent.registry import TerminalAgentRegistry
         terminal_provider = TerminalAgentRegistry.get(provider)
         provider_model = terminal_provider.config.default_model if terminal_provider else settings.model
-        generator = TerminalAgentStreamGenerator(
+        generator = CodexStreamGenerator(
             provider_name=provider,
             message=message,
             workspace=os.path.expanduser(workspace),

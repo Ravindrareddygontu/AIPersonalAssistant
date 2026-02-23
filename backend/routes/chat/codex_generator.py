@@ -1,43 +1,29 @@
 import os
-import re
 import time
 import select
 import logging
 
-from backend.config import settings
-from backend.utils.text import TextCleaner
-from backend.utils.response import ResponseExtractor
-from backend.utils.content_cleaner import ContentCleaner
-from backend.services.chat_repository import ChatRepository
 from backend.services.bots.slack.notifier import notify_completion
 
-from .utils import SSEFormatter, _abort_flag
+from .base_generator import BaseStreamGenerator
+from .utils import _abort_flag
 
 log = logging.getLogger('chat')
 
 
-class TerminalAgentStreamGenerator:
-    STREAM_TIMEOUT = 300
-    RAW_BUFFER_MAX = 300_000
-    CONTENT_SILENCE_TIMEOUT = 5.0
-    CONTENT_SILENCE_EXTENDED = 60.0
-    END_PATTERN_SILENCE = 1.0
-    RESPONSE_MARKER_TIMEOUT = 5.0
-    WAIT_FOR_MARKER_TIMEOUT = 45.0
+class CodexStreamGenerator(BaseStreamGenerator):
 
     def __init__(self, provider_name: str, message: str, workspace: str, chat_id: str = None, model: str = None):
         from backend.services.terminal_agent.registry import TerminalAgentRegistry
+
+        super().__init__(message, workspace, chat_id)
         self.provider = TerminalAgentRegistry.get(provider_name)
         if not self.provider:
             raise ValueError(f"Unknown terminal agent provider: {provider_name}")
-        self.message = message
-        self.workspace = workspace if os.path.isdir(workspace) else os.path.expanduser('~')
-        self.chat_id = chat_id
         self.model = model
-        self.message_id = None
-        self.start_time = time.time()
-        self.repository = ChatRepository(chat_id) if (chat_id and settings.history_enabled) else None
-        self.sse = SSEFormatter()
+
+    def get_provider(self):
+        return self.provider
 
     def generate(self):
         from backend.services.codex.session import SessionManager as TASessionManager
@@ -123,11 +109,9 @@ class TerminalAgentStreamGenerator:
             yield self.sse.send({'type': 'done'})
 
     def _get_status_message(self, state) -> str | None:
-        activity_patterns = self.provider.get_status_patterns()
-
-        if activity_patterns:
+        if self.provider.get_status_patterns():
             output_tail = state.all_output[-3000:] if len(state.all_output) > 3000 else state.all_output
-            return self._detect_activity(output_tail)
+            return self.detect_activity(output_tail)
 
         content = state.last_streamed_content or state.current_full_content
         if content:
@@ -136,26 +120,6 @@ class TerminalAgentStreamGenerator:
                 last_line = lines[-1][:80]
                 if last_line and len(last_line) > 3:
                     return last_line
-        return None
-
-    def _detect_activity(self, output: str) -> str | None:
-        activity_patterns = self.provider.get_status_patterns()
-        if not activity_patterns:
-            return None
-
-        clean_output = TextCleaner.strip_ansi(output)
-        lines = [line.strip() for line in clean_output.splitlines() if line.strip()]
-        for line in reversed(lines):
-            line_lower = line.lower()
-            for pattern in activity_patterns:
-                if pattern.lower() in line_lower:
-                    clean_line = re.sub(r'[│╭╮╯╰─┌┐└┘├┤┬┴┼]', '', line)
-                    clean_line = re.sub(r'\s*[•·\-–—]\s*esc to interrupt', '', clean_line, flags=re.IGNORECASE)
-                    clean_line = re.sub(r'\(\)', '', clean_line)
-                    clean_line = re.sub(r'\((\d+)s\.?\s*[•·\-–—]?\s*\)', r'\1s', clean_line)
-                    clean_line = clean_line.strip()
-                    if clean_line:
-                        return clean_line
         return None
 
     def _stream_response(self, session, sanitized_message: str, ProcessorClass):
@@ -174,48 +138,16 @@ class TerminalAgentStreamGenerator:
 
         while state.elapsed_since_message < self.STREAM_TIMEOUT:
             if _abort_flag.is_set():
-                _abort_flag.clear()
                 state.aborted = True
-                try:
-                    os.write(fd, b'\x03')
-                    session.drain_output(0.5)
-                except Exception:
-                    pass
-                notify_completion(
-                    question=self.message, content="", success=False,
-                    stopped=True, execution_time=time.time() - self.start_time
-                )
-                yield self.sse.send({'type': 'aborted', 'message': 'Request aborted'})
-                yield self.sse.send({'type': 'done'})
+                self.handle_abort_signal(fd, session)
+                yield from self.send_abort_response()
                 return
 
             ready = select.select([fd], [], [], 0.05)[0]
             if ready:
-                while True:
-                    try:
-                        chunk = os.read(fd, 8192).decode('utf-8', errors='ignore')
-                        if not chunk:
-                            break
-                        if state.end_pattern_seen:
-                            state.end_pattern_seen = False
-                        state.all_output += chunk
-                        if len(state.all_output) > self.RAW_BUFFER_MAX:
-                            state.all_output = state.all_output[-self.RAW_BUFFER_MAX:]
-                        combined = state._raw_tail + chunk
-                        clean_combined = TextCleaner.strip_ansi(combined)
-                        if state._clean_tail and clean_combined.startswith(state._clean_tail):
-                            append_clean = clean_combined[len(state._clean_tail):]
-                        else:
-                            append_clean = clean_combined
-                        if append_clean:
-                            state.clean_output += append_clean
-                        state._raw_tail = combined[-64:] if len(combined) > 64 else combined
-                        state._clean_tail = TextCleaner.strip_ansi(state._raw_tail)
-                        state.update_data_time()
-                    except (BlockingIOError, OSError):
-                        break
-                    if not select.select([fd], [], [], 0)[0]:
-                        break
+                if state.end_pattern_seen:
+                    state.end_pattern_seen = False
+                self.read_chunks(fd, state)
 
                 clean = state.clean_output
                 if not state.saw_message_echo:
@@ -227,19 +159,7 @@ class TerminalAgentStreamGenerator:
 
                 if state.saw_message_echo:
                     content = processor.process_chunk(clean, state)
-                    if content and len(content) > state.streamed_length:
-                        content = ContentCleaner.strip_previous_response(content, state.prev_response)
-                        if content:
-                            state.end_pattern_seen = False
-                            if content != state.current_full_content:
-                                state.update_content_time()
-                                state.current_full_content = content
-                            if not state.streaming_started:
-                                state.mark_streaming_started()
-                                yield self.sse.send({'type': 'stream_start'})
-                            delta = state.update_streamed_content(content)
-                            if delta:
-                                yield self.sse.send({'type': 'stream', 'content': delta})
+                    yield from self.process_content_delta(state, content)
                     if processor.check_end_pattern(clean, state):
                         state.end_pattern_seen = True
 
@@ -253,71 +173,31 @@ class TerminalAgentStreamGenerator:
                     state.update_activity(status_msg)
                 last_status_time = now
 
-            if not ready:
-                if state.end_pattern_seen and state.elapsed_since_data > self.END_PATTERN_SILENCE:
-                    break
-                if state.saw_response_marker:
-                    if state.has_recent_activity(timeout=self.CONTENT_SILENCE_EXTENDED):
-                        continue
-                    if state.content_looks_complete() and state.elapsed_since_data > 1.5:
-                        break
-                    if state.elapsed_since_data > 12.0:
-                        break
-                if state.saw_message_echo and not state.saw_response_marker:
-                    if state.elapsed_since_message > self.WAIT_FOR_MARKER_TIMEOUT:
-                        break
+            if not ready and self.should_exit_streaming(state):
+                break
 
         session.drain_output(0.5)
-        clean_all = state.clean_output
-        relevant = clean_all[state.output_start_pos:] if state.output_start_pos > 0 else clean_all
-        markers = self.provider.get_response_markers()
-        response_marker = markers[0] if markers else None
-        response_text = ResponseExtractor.extract_full(
-            relevant, sanitized_message,
-            response_marker=response_marker,
-            thinking_marker=self.provider.get_thinking_marker(),
-            continuation_marker=self.provider.get_continuation_marker(),
-        )
+        yield from self._finalize_response(session, state, sanitized_message)
+
+    def _finalize_response(self, session, state, sanitized_message: str):
+        relevant = state.clean_output[state.output_start_pos:] if state.output_start_pos > 0 else state.clean_output
+        response_text = self.extract_final_response(relevant, sanitized_message)
 
         raw_content = state.current_full_content or state.last_streamed_content or response_text
-        raw_content = ContentCleaner.strip_previous_response(raw_content, state.prev_response)
-        final_content = ContentCleaner.clean_assistant_content(raw_content)
+        final_content = self.clean_final_content(raw_content, state.prev_response)
 
-        if state.streaming_started and final_content:
-            remaining = state.flush_remaining_content(final_content)
-            if remaining:
-                yield self.sse.send({'type': 'stream', 'content': remaining})
-
-        if state.streaming_started:
-            yield self.sse.send({'type': 'stream_end', 'content': final_content})
-        elif final_content:
-            yield self.sse.send({'type': 'stream_start'})
-            for line in final_content.split('\n'):
-                if line.strip():
-                    yield self.sse.send({'type': 'stream', 'content': line + '\n'})
-                    time.sleep(0.02)
-            yield self.sse.send({'type': 'stream_end', 'content': ''})
+        yield from self.finalize_content(state, final_content)
 
         session.last_message = self.message
         session.last_response = final_content or ""
 
-        if self.repository:
-            if final_content and self.message_id:
-                self.repository.save_answer(self.message_id, final_content)
-            self.repository.set_streaming_status(None)
-
-        notify_completion(
-            question=self.message, content=final_content or "", success=bool(final_content),
-            error=None if final_content else "Couldn't extract response",
-            stopped=False, execution_time=time.time() - self.start_time
+        self.save_and_notify(
+            final_content,
+            success=bool(final_content),
+            error=None if final_content else "Couldn't extract response"
         )
 
-        yield self.sse.send({
-            'type': 'response',
-            'message': final_content or "Couldn't extract response. Please try again.",
-            'workspace': self.workspace
-        })
-        yield self.sse.send({'type': 'done'})
+        yield from self.send_final_response(final_content)
 
     def _generate_exec_mode(self):
         import subprocess
