@@ -66,9 +66,26 @@ function createSplashWindow() {
     splashWindow.on('closed', () => { splashWindow = null; });
 }
 
-function startFlaskServer() {
+function checkServerRunning(url) {
+    return new Promise((resolve) => {
+        const req = http.get(url, (res) => {
+            resolve(res.statusCode === 200);
+        });
+        req.on('error', () => resolve(false));
+        req.setTimeout(1000, () => { req.destroy(); resolve(false); });
+    });
+}
+
+async function startFlaskServer() {
     const venvPython = path.join(__dirname, 'venv', 'bin', 'python');
     const appPath = path.join(__dirname, 'backend', 'app.py');
+
+    // Check if backend is already running (e.g., via systemd service)
+    const alreadyRunning = await checkServerRunning('http://localhost:5001/health');
+    if (alreadyRunning) {
+        log(`Backend already running on port 5001, skipping server start`);
+        return Promise.resolve();
+    }
 
     log(`Starting Flask server...`);
     log(`__dirname: ${__dirname}`);
@@ -108,9 +125,25 @@ function startFlaskServer() {
     return new Promise((resolve) => setTimeout(resolve, 2500));
 }
 
+function isSlackBotRunning() {
+    try {
+        const { execSync } = require('child_process');
+        const result = execSync('systemctl --user is-active digistant-slack.service 2>/dev/null', { encoding: 'utf8' });
+        return result.trim() === 'active';
+    } catch (e) {
+        return false;
+    }
+}
+
 function startSlackBot() {
     const venvPython = path.join(__dirname, 'venv', 'bin', 'python');
     const slackScript = path.join(__dirname, 'start_slack.py');
+
+    // Check if Slack bot is already running via systemd
+    if (isSlackBotRunning()) {
+        log('Slack bot already running via systemd, skipping');
+        return;
+    }
 
     // Check if Slack tokens are configured
     if (!process.env.SLACK_BOT_TOKEN || !process.env.SLACK_APP_TOKEN) {
@@ -352,7 +385,22 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
+function killProcessOnPort(port) {
+    try {
+        const { execSync } = require('child_process');
+        const result = execSync(`lsof -t -i:${port} 2>/dev/null`, { encoding: 'utf8' });
+        const pids = result.trim().split('\n').filter(p => p);
+        pids.forEach(pid => {
+            try {
+                process.kill(parseInt(pid), 'SIGKILL');
+                log(`Killed process ${pid} on port ${port}`);
+            } catch (e) {}
+        });
+    } catch (e) {}
+}
+
 app.on('before-quit', () => {
+    log('App quitting, cleaning up...');
     if (flaskProcess && !flaskProcess.killed) try { flaskProcess.kill('SIGTERM'); } catch (e) {}
     if (slackBotProcess && !slackBotProcess.killed) try { slackBotProcess.kill('SIGTERM'); } catch (e) {}
 });
@@ -360,4 +408,5 @@ app.on('before-quit', () => {
 app.on('quit', () => {
     if (flaskProcess && !flaskProcess.killed) try { flaskProcess.kill('SIGKILL'); } catch (e) {}
     if (slackBotProcess && !slackBotProcess.killed) try { slackBotProcess.kill('SIGKILL'); } catch (e) {}
+    killProcessOnPort(5001);
 });

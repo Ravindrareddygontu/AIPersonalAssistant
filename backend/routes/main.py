@@ -37,6 +37,11 @@ async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+@main_router.get('/health')
+async def health_check():
+    return {'status': 'healthy', 'service': 'digistant-backend'}
+
+
 @main_router.get('/api/check-auth')
 async def check_auth(request: Request):
     url = str(request.url)
