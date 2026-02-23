@@ -1,7 +1,8 @@
 # Codex CLI integration services
 from .provider import CodexProvider
+from .session import SessionManager
 
-__all__ = ['CodexProvider']
+__all__ = ['CodexProvider', 'SessionManager']
 
 
 def register_codex_provider():

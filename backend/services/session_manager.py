@@ -93,15 +93,19 @@ class SessionManager:
 
     def get_session(self, provider: str, workspace: str, model: Optional[str] = None) -> Optional[str]:
         key = self._make_key(provider, workspace, model)
+        log.info(f"[GET_SESSION] provider={provider}, workspace={workspace}, model={model}, key={key}")
         info = self._sessions.get(key)
         if info:
+            log.info(f"[GET_SESSION] Found in cache: {info.session_id}")
             if provider == 'auggie' and not self._auggie_session_exists(info.session_id):
-                log.info(f"Auggie session {info.session_id} no longer exists on disk")
+                log.info(f"[GET_SESSION] Auggie session {info.session_id} no longer exists on disk")
                 self.clear_session(provider, workspace, model)
                 return None
             return info.session_id
+        log.info(f"[GET_SESSION] Not in cache, searching filesystem...")
         if provider == 'auggie':
             session_id = self._find_auggie_session(workspace)
+            log.info(f"[GET_SESSION] _find_auggie_session returned: {session_id}")
             if session_id:
                 self.store_session(provider, workspace, session_id, model)
             return session_id

@@ -327,7 +327,6 @@ class SessionManager:
                         session.cleanup()
                         _sessions[workspace] = AuggieSession(workspace, model, session_id)
                         return _sessions[workspace], True
-                    # If session_id changed (switching between chats), restart with correct session
                     if session_id and session.session_id != session_id:
                         log.info(f"[SESSION] Session ID changed from {session.session_id} to {session_id}, restarting to resume correct session")
                         session.cleanup()

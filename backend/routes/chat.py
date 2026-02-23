@@ -839,18 +839,25 @@ class StreamGenerator:
 
     def _detect_and_save_session_id(self, session=None):
         from backend.services.session_manager import session_manager
+        from backend.session import _sessions
 
+        log.info(f"[DETECT_SESSION] Starting detection for workspace={self.workspace}")
         try:
             session_id = session_manager.get_session('auggie', self.workspace)
+            log.info(f"[DETECT_SESSION] session_manager.get_session returned: {session_id}")
             if session_id:
                 self.repository.save_auggie_session_id(session_id)
                 self._auggie_session_id = session_id
+                if session is None:
+                    session = _sessions.get(self.workspace)
                 if session:
                     session.session_id = session_id
-                    log.info(f"Updated in-memory session.session_id to: {session_id}")
-                log.info(f"Saved new Auggie session_id: {session_id}")
+                    log.info(f"[DETECT_SESSION] Updated in-memory session.session_id to: {session_id}")
+                log.info(f"[DETECT_SESSION] Saved new Auggie session_id: {session_id}")
+            else:
+                log.warning(f"[DETECT_SESSION] No session found for workspace={self.workspace}")
         except Exception as e:
-            log.warning(f"Failed to detect Auggie session_id: {e}")
+            log.warning(f"[DETECT_SESSION] Failed to detect Auggie session_id: {e}")
 
 
 class OpenAIStreamGenerator:
@@ -998,7 +1005,7 @@ class TerminalAgentStreamGenerator:
         self.sse = SSEFormatter()
 
     def generate(self):
-        from backend.services.terminal_agent.executor import SessionManager as TASessionManager
+        from backend.services.codex.session import SessionManager as TASessionManager
         from backend.services.terminal_agent.processor import BaseStreamProcessor
 
         log.info(f"[{self.provider.name.upper()}] Starting stream for: {self.message[:50]}...")
@@ -1416,6 +1423,9 @@ class TerminalAgentStreamGenerator:
                 if _abort_flag.is_set():
                     _abort_flag.clear()
                     process.kill()
+                    if session_id and hasattr(self.provider, 'store_session_id'):
+                        self.provider.store_session_id(self.workspace, session_id, self.model)
+                        log.info(f"[{self.provider.name.upper()}] Saved session_id on abort: {session_id}")
                     yield self.sse.send({'type': 'aborted', 'message': 'Request aborted'})
                     yield self.sse.send({'type': 'done'})
                     return
@@ -1438,7 +1448,7 @@ class TerminalAgentStreamGenerator:
                     if new_session_id and new_session_id != session_id:
                         session_id = new_session_id
                         if hasattr(self.provider, 'store_session_id'):
-                            self.provider.store_session_id(self.workspace, self.model, session_id)
+                            self.provider.store_session_id(self.workspace, session_id, self.model)
 
                 elif event_type == 'turn.started':
                     yield self.sse.send({'type': 'status', 'message': 'Thinking...'})

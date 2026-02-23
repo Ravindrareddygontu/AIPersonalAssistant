@@ -6,7 +6,6 @@ from backend.services.terminal_agent.base import (
 from backend.services.terminal_agent.session import TerminalSession
 from backend.services.terminal_agent.processor import BaseStreamProcessor
 from backend.services.terminal_agent.registry import TerminalAgentRegistry
-from backend.services.terminal_agent.executor import TerminalAgentExecutor, SessionManager
 
 __all__ = [
     'TerminalAgentProvider',
@@ -15,7 +14,5 @@ __all__ = [
     'TerminalSession',
     'BaseStreamProcessor',
     'TerminalAgentRegistry',
-    'TerminalAgentExecutor',
-    'SessionManager',
 ]
 
