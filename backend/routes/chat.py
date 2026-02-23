@@ -406,6 +406,9 @@ class StreamGenerator:
                     yield self.sse.send({'type': 'done'})
                     return
 
+                # Send immediate status so UI doesn't stay on "Connecting..."
+                yield self.sse.send({'type': 'status', 'message': 'Processing...'})
+
                 # Update processor's search pattern if message changed (for image commands)
                 # Always use sanitized version since that's what's actually sent to terminal
                 if self.echo_search_message != self.message:
@@ -417,7 +420,6 @@ class StreamGenerator:
 
                 # Stream response
                 state = self._create_initial_state(session)
-                # Don't send hardcoded status - let auggie's actual indicators flow through
                 yield from self._stream_response(session, state)
             finally:
                 # Clear in_use flag when streaming is complete (or on error)
@@ -787,7 +789,7 @@ class StreamGenerator:
 
             # Detect and save Auggie session_id for session resumption
             if not self._auggie_session_id and final_content:
-                self._detect_and_save_session_id()
+                self._detect_and_save_session_id(session)
 
         # Send Slack notification for completed request
         execution_time = time.time() - self.start_time
@@ -810,7 +812,7 @@ class StreamGenerator:
         })
         yield self.sse.send({'type': 'done'})
 
-    def _detect_and_save_session_id(self):
+    def _detect_and_save_session_id(self, session=None):
         from datetime import datetime, timedelta
         from backend.services.auggie.session_tracker import get_latest_session_for_workspace
 
@@ -820,6 +822,10 @@ class StreamGenerator:
             if session_id:
                 self.repository.save_auggie_session_id(session_id)
                 self._auggie_session_id = session_id
+                # Also update the in-memory session so subsequent questions don't see a mismatch
+                if session:
+                    session.session_id = session_id
+                    log.info(f"Updated in-memory session.session_id to: {session_id}")
                 log.info(f"Saved new Auggie session_id: {session_id}")
         except Exception as e:
             log.warning(f"Failed to detect Auggie session_id: {e}")

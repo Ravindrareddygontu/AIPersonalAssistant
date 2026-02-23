@@ -191,14 +191,25 @@ function finalizeStreamingMessage(finalContent, requestId) {
             .then(() => markCacheSynced(state.currentChatId));
     }
 
+    cleanupStreamingState();
+    hideStopButton();
+}
+
+function cleanupStreamingState() {
+    if (streamingMessageDiv) {
+        streamingMessageDiv.classList.remove('streaming');
+        const streamingStatus = streamingMessageDiv.querySelector('.streaming-status');
+        if (streamingStatus) streamingStatus.remove();
+    }
     streamingMessageDiv = null;
     streamingContent = '';
     displayedContent = '';
     typingQueue = [];
+    streamingFinalized = false;
+    streamingRequestId = null;
     state.streamingMessageDiv = null;
     const providerDropdown = document.getElementById('providerDropdown');
     if (providerDropdown) providerDropdown.classList.remove('disabled');
-    hideStopButton();
 }
 
 function showStopButton() {
@@ -343,10 +354,18 @@ export async function sendMessage() {
                             break;
 
                         case 'aborted':
-                            if (!isBackground && streamingContent) {
-                                const partialContent = streamingContent + '\n\n*(stopped)*';
-                                finalizeStreamingMessage(partialContent, thisRequestId);
-                                completeActiveRequest(thisChatId, partialContent, false);
+                            if (!isBackground) {
+                                if (streamingContent) {
+                                    const partialContent = streamingContent + '\n\n*(stopped)*';
+                                    finalizeStreamingMessage(partialContent, thisRequestId);
+                                    completeActiveRequest(thisChatId, partialContent, false);
+                                } else {
+                                    // Aborted before any content - remove the empty streaming message
+                                    if (streamingMessageDiv) {
+                                        streamingMessageDiv.remove();
+                                    }
+                                    cleanupStreamingState();
+                                }
                             }
                             activeRequests.delete(thisChatId);
                             hideTypingIndicator();
@@ -378,6 +397,12 @@ export async function sendMessage() {
         if (error.name !== 'AbortError') {
             console.error('[STREAM] Error:', error);
             showNotification('Connection error', 'error');
+        } else {
+            // AbortError - clean up the streaming message if no content
+            if (!streamingContent && streamingMessageDiv) {
+                streamingMessageDiv.remove();
+            }
+            cleanupStreamingState();
         }
         activeRequests.delete(thisChatId);
         hideTypingIndicator();
@@ -393,6 +418,11 @@ export function stopCurrentRequest() {
         state.currentAbortController = null;
         fetch('/api/chat/abort', { method: 'POST' }).catch(() => {});
     }
+    // Clean up streaming state when stop is requested
+    if (!streamingContent && streamingMessageDiv) {
+        streamingMessageDiv.remove();
+    }
+    cleanupStreamingState();
     hideTypingIndicator();
     hideStopButton();
     state.isProcessing = false;
