@@ -1,13 +1,15 @@
 import os
-import pty
 import time
 import signal
 import select
 import subprocess
 import threading
 import logging
+import re
+from typing import List, Optional, Tuple
 
 from backend.config import get_auggie_model_id, BOT_SESSION_TIMEOUT_MINUTES
+from backend.services.base_session import BasePtySession
 
 log = logging.getLogger('session')
 
@@ -16,53 +18,24 @@ _lock = threading.Lock()
 _cleanup_thread = None
 _cleanup_stop_event = threading.Event()
 
-# Configuration for stale process cleanup
-STALE_PROCESS_AGE_MINUTES = BOT_SESSION_TIMEOUT_MINUTES  # Kill auggie processes older than this
-CLEANUP_INTERVAL_SECONDS = 300  # Run cleanup every 5 minutes
-MAX_AUGGIE_PROCESSES = 3  # Maximum number of auggie processes allowed
+STALE_PROCESS_AGE_MINUTES = BOT_SESSION_TIMEOUT_MINUTES
+CLEANUP_INTERVAL_SECONDS = 300
+MAX_AUGGIE_PROCESSES = 3
+
+AUGGIE_PROMPT_PATTERNS = [
+    re.compile(r'›\s*$'),
+    re.compile(r'>\s*$'),
+]
 
 
-class AuggieSession:
-    def __init__(self, workspace, model=None, session_id=None):
-        self.workspace = workspace
-        self.model = model
-        self.session_id = session_id
-        self.process = None
-        self.master_fd = None
-        self.last_used = time.time()
-        self.lock = threading.Lock()
-        self.initialized = False
-        self.last_response = ""
-        self.last_message = ""
-        self.in_use = False  # Track if terminal is actively being used (streaming)
+class AuggieSession(BasePtySession):
+    def __init__(self, workspace: str, model: Optional[str] = None, session_id: Optional[str] = None):
+        super().__init__(workspace, model, session_id)
 
-    def start(self):
-        import os
-        import pty
-        import time
-        import struct
-        import fcntl
-        import termios
+    def get_window_size(self) -> Tuple[int, int]:
+        return 100, 200
 
-        master_fd, slave_fd = pty.openpty()
-
-        # Properly set PTY window size
-        rows = 100
-        cols = 200
-        winsize = struct.pack("HHHH", rows, cols, 0, 0)
-        fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, winsize)
-
-        env = os.environ.copy()
-
-        nvm_bin = '/home/dell/.nvm/versions/node/v22.22.0/bin'
-        if nvm_bin not in env.get('PATH', ''):
-            env['PATH'] = nvm_bin + ':' + env.get('PATH', '/usr/bin:/bin')
-
-        env.update({
-            'TERM': 'xterm-256color',
-            'AUGMENT_WORKSPACE': self.workspace
-        })
-
+    def get_command(self) -> List[str]:
         auggie_cmd = 'auggie'
         for path in [
             '/home/dell/.nvm/versions/node/v22.22.0/bin/auggie',
@@ -84,67 +57,28 @@ class AuggieSession:
             else:
                 log.warning(f"[SESSION] Session {self.session_id} not found, starting fresh")
 
-        auggie_model_id = None
         if self.model:
             auggie_model_id = get_auggie_model_id(self.model)
             cmd.extend(['-m', auggie_model_id])
+            log.info(f"[SESSION] Using model: {self.model} (auggie_id: {auggie_model_id})")
 
-        log.info(f"[SESSION] Starting auggie from: {auggie_cmd}, workspace: {self.workspace}, model: {self.model} (auggie_id: {auggie_model_id})")
+        return cmd
 
-        self.process = subprocess.Popen(
-            cmd,
-            stdin = slave_fd,
-            stdout = slave_fd,
-            stderr = slave_fd,
-            cwd = self.workspace,
-            env = env,
-            preexec_fn = os.setsid,
-            close_fds = True
-        )
+    def get_env(self) -> dict:
+        env = os.environ.copy()
+        nvm_bin = '/home/dell/.nvm/versions/node/v22.22.0/bin'
+        if nvm_bin not in env.get('PATH', ''):
+            env['PATH'] = nvm_bin + ':' + env.get('PATH', '/usr/bin:/bin')
+        env.update({
+            'TERM': 'xterm-256color',
+            'AUGMENT_WORKSPACE': self.workspace
+        })
+        return env
 
-        os.close(slave_fd)
+    def get_prompt_patterns(self) -> List:
+        return AUGGIE_PROMPT_PATTERNS
 
-        # Set window size on master_fd as well (some apps read from master side)
-        fcntl.ioctl(master_fd, termios.TIOCSWINSZ, winsize)
-
-        # Set master_fd to non-blocking mode for proper async reads
-        flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
-        fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
-
-        self.master_fd = master_fd
-        self.last_used = time.time()
-
-        log.info(f"[SESSION] Process started with PID: {self.process.pid}")
-
-        return self.master_fd
-
-    def is_alive(self):
-        if not self.process:
-            return False
-        exit_code = self.process.poll()
-        if exit_code is not None:
-            log.warning(f"[SESSION] Process {self.process.pid} exited with code {exit_code}")
-        return exit_code is None
-
-    def cleanup(self):
-        if self.process:
-            try:
-                os.kill(self.process.pid, signal.SIGTERM)
-                self.process.wait(timeout=2)
-            except:
-                try:
-                    os.kill(self.process.pid, signal.SIGKILL)
-                except:
-                    pass
-        if self.master_fd:
-            try:
-                os.close(self.master_fd)
-            except:
-                pass
-        self.process = self.master_fd = None
-        self.initialized = False
-
-    def wait_for_prompt(self, timeout=60, status_callback=None):
+    def wait_for_prompt(self, timeout: float = 60, status_callback=None) -> Tuple[bool, str]:
         start, output = time.time(), ""
         prompt_seen = False
         indexing_complete = False
@@ -156,7 +90,6 @@ class AuggieSession:
         def send_status(msg):
             nonlocal last_status_time
             now = time.time()
-            # Throttle status updates to every 0.5 seconds
             if status_callback and (now - last_status_time) >= 0.5:
                 status_callback(msg)
                 last_status_time = now
@@ -168,11 +101,9 @@ class AuggieSession:
                     output += chunk
                     log.debug(f"[SESSION] Received chunk: {repr(chunk[:100])}")
 
-                    # Check for prompt
                     if '›' in chunk or '>' in chunk:
                         prompt_seen = True
 
-                    # Check for indexing status
                     if 'Indexing...' in chunk or 'Indexing' in output:
                         if not indexing_started:
                             log.info(f"[SESSION] Indexing started")
@@ -185,7 +116,6 @@ class AuggieSession:
                         log.info(f"[SESSION] Indexing complete after {time.time()-start:.1f}s")
                         send_status("Indexing complete!")
 
-                    # Ready when: prompt seen AND (indexing complete OR no indexing started after 5s)
                     if prompt_seen:
                         if indexing_complete:
                             log.info(f"[SESSION] Ready (indexing complete) after {time.time()-start:.1f}s")
@@ -193,7 +123,6 @@ class AuggieSession:
                             self.drain_output()
                             return True, output
                         elif not indexing_started and (time.time() - start) > 5:
-                            # No indexing seen after 5s, probably already indexed
                             log.info(f"[SESSION] Ready (no indexing needed) after {time.time()-start:.1f}s")
                             time.sleep(0.5)
                             self.drain_output()
@@ -203,12 +132,10 @@ class AuggieSession:
                     log.error(f"[SESSION] OSError reading: {e}")
                     break
             else:
-                # No data, but send periodic status if indexing
                 if indexing_started and not indexing_complete:
                     elapsed = time.time() - start
                     send_status(f"Indexing codebase... ({elapsed:.0f}s)")
 
-        # Timeout - but if prompt was seen, still try to proceed
         if prompt_seen:
             log.warning(f"[SESSION] Timeout but prompt seen, proceeding anyway")
             self.drain_output()
@@ -217,22 +144,11 @@ class AuggieSession:
         log.warning(f"[SESSION] Timeout waiting for prompt. Output so far: {repr(output[:200])}")
         return False, output
 
-    def drain_output(self, timeout=1.0):
-        end = time.time() + timeout
-        drained = 0
-        while time.time() < end:
-            if select.select([self.master_fd], [], [], 0.1)[0]:
-                try:
-                    data = os.read(self.master_fd, 8192)
-                    drained += len(data)
-                except:
-                    break
-            else:
-                # No more data available, wait a bit and check again
-                time.sleep(0.1)
-                if not select.select([self.master_fd], [], [], 0.1)[0]:
-                    break  # Still no data, we're done
-        log.info(f"[SESSION] drain_output: drained {drained} bytes")
+    def drain_output(self, timeout: float = 1.0) -> int:
+        output = super().drain_output(timeout)
+        drained = len(output.encode('utf-8'))
+        if drained > 0:
+            log.info(f"[SESSION] drain_output: drained {drained} bytes")
         return drained
 
 
