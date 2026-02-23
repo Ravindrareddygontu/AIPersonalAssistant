@@ -129,3 +129,19 @@ class TerminalAgentProvider(ABC):
         env['LINES'] = '50'
         return env
 
+    def get_session_id(self, workspace: str, model: Optional[str] = None) -> Optional[str]:
+        from backend.services.session_manager import session_manager
+        return session_manager.get_session(self.name, workspace, model)
+
+    def store_session_id(self, workspace: str, session_id: str, model: Optional[str] = None):
+        from backend.services.session_manager import session_manager
+        session_manager.store_session(self.name, workspace, session_id, model)
+
+    def clear_session(self, workspace: str, model: Optional[str] = None):
+        from backend.services.session_manager import session_manager
+        session_manager.clear_session(self.name, workspace, model)
+
+    def session_exists(self, session_id: str) -> bool:
+        from backend.services.session_manager import session_manager
+        return session_manager.session_exists(self.name, session_id)
+

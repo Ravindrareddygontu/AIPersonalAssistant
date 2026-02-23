@@ -1,6 +1,6 @@
 import re
 import logging
-from typing import List, Optional, Pattern, Dict
+from typing import List, Optional, Pattern
 
 from backend.services.terminal_agent.base import TerminalAgentProvider, TerminalAgentConfig
 
@@ -18,7 +18,6 @@ CODEX_TOOL_CONNECTOR = '└'
 
 
 class CodexProvider(TerminalAgentProvider):
-    _session_ids: Dict[str, str] = {}
 
     def __init__(self):
         config = TerminalAgentConfig(
@@ -44,8 +43,7 @@ class CodexProvider(TerminalAgentProvider):
         ]
 
     def get_command(self, workspace: str, model: Optional[str] = None, message: str = None) -> List[str]:
-        session_key = f"{workspace}:{model or 'default'}"
-        session_id = self._session_ids.get(session_key)
+        session_id = self.get_session_id(workspace, model)
 
         if session_id:
             cmd = [self.get_binary(), 'exec', '--json', 'resume', session_id]
@@ -57,22 +55,6 @@ class CodexProvider(TerminalAgentProvider):
         if message:
             cmd.append(message)
         return cmd
-
-    def get_session_id(self, workspace: str, model: Optional[str] = None) -> Optional[str]:
-        session_key = f"{workspace}:{model or 'default'}"
-        return self._session_ids.get(session_key)
-
-    def store_session_id(self, workspace: str, model: Optional[str], session_id: str):
-        session_key = f"{workspace}:{model or 'default'}"
-        if self._session_ids.get(session_key) != session_id:
-            self._session_ids[session_key] = session_id
-            log.info(f"[CODEX] Stored session ID {session_id} for {session_key}")
-
-    def clear_session(self, workspace: str, model: Optional[str] = None):
-        session_key = f"{workspace}:{model or 'default'}"
-        if session_key in self._session_ids:
-            del self._session_ids[session_key]
-            log.info(f"[CODEX] Cleared session for {session_key}")
 
     @property
     def is_exec_mode(self) -> bool:

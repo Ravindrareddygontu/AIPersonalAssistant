@@ -50,8 +50,8 @@ class AuggieSession(BasePtySession):
         cmd = [auggie_cmd]
 
         if self.session_id:
-            from backend.services.auggie.session_tracker import session_exists
-            if session_exists(self.session_id):
+            from backend.services.session_manager import session_manager
+            if session_manager.session_exists('auggie', self.session_id):
                 cmd.extend(['--resume', self.session_id])
                 log.info(f"[SESSION] Resuming Auggie session: {self.session_id}")
             else:

@@ -82,10 +82,9 @@ class AuggieExecutor:
                     response.execution_time = time.time() - start_time
                     response.source = source
 
-                    # Get the auggie session ID
                     if response.success and not session.session_id:
-                        from backend.services.auggie.session_tracker import get_latest_session_for_workspace
-                        session.session_id = get_latest_session_for_workspace(workspace)
+                        from backend.services.session_manager import session_manager
+                        session.session_id = session_manager.get_session('auggie', workspace)
                     response.session_id = session.session_id
                     return response
                     

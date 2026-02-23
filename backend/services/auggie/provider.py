@@ -33,10 +33,9 @@ class AuggieProvider(TerminalAgentProvider):
     def get_command(self, workspace: str, model: Optional[str] = None, session_id: Optional[str] = None) -> List[str]:
         cmd = [self.get_binary()]
         if session_id:
-            from backend.services.auggie.session_tracker import session_exists
-            if session_exists(session_id):
+            if self.session_exists(session_id):
                 cmd.extend(['--resume', session_id])
-                log.info(f"Resuming Auggie session: {session_id}")
+                log.info(f"Resuming {self.name} session: {session_id}")
             else:
                 log.warning(f"Session {session_id} not found, starting fresh")
         if model:

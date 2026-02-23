@@ -838,16 +838,13 @@ class StreamGenerator:
         yield self.sse.send({'type': 'done'})
 
     def _detect_and_save_session_id(self, session=None):
-        from datetime import datetime, timedelta
-        from backend.services.auggie.session_tracker import get_latest_session_for_workspace
+        from backend.services.session_manager import session_manager
 
         try:
-            after_time = datetime.fromtimestamp(self.start_time) - timedelta(seconds=5)
-            session_id = get_latest_session_for_workspace(self.workspace, after_time)
+            session_id = session_manager.get_session('auggie', self.workspace)
             if session_id:
                 self.repository.save_auggie_session_id(session_id)
                 self._auggie_session_id = session_id
-                # Also update the in-memory session so subsequent questions don't see a mismatch
                 if session:
                     session.session_id = session_id
                     log.info(f"Updated in-memory session.session_id to: {session_id}")
