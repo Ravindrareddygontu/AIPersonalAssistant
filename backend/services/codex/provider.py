@@ -1,37 +1,19 @@
-import os
 import re
-import json
 import logging
 from typing import List, Optional, Pattern, Dict
 
-from backend.services.terminal_agent.base import (
-    TerminalAgentProvider,
-    TerminalAgentConfig,
-)
+from backend.services.terminal_agent.base import TerminalAgentProvider, TerminalAgentConfig
 
 log = logging.getLogger('codex.provider')
 
-
 CODEX_SKIP_PATTERNS: List[str] = [
-    'Codex CLI',
-    'Press Enter',
-    'Use /help',
-    '/model',
-    '/exit',
-    'approval mode',
-    'Suggest',
-    'Auto Edit',
-    'Full Auto',
-    'GPT-5',
-    'gpt-5',
-    'Processing',
-    'Thinking',
-    'Tip:',
+    'Codex CLI', 'Press Enter', 'Use /help', '/model', '/exit',
+    'approval mode', 'Suggest', 'Auto Edit', 'Full Auto',
+    'GPT-5', 'gpt-5', 'Processing', 'Thinking', 'Tip:',
     '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏',
 ]
 
 CODEX_RESPONSE_MARKER = '•'
-CODEX_USER_INPUT_MARKER = '›'
 CODEX_TOOL_CONNECTOR = '└'
 
 
@@ -62,14 +44,13 @@ class CodexProvider(TerminalAgentProvider):
         ]
 
     def get_command(self, workspace: str, model: Optional[str] = None, message: str = None) -> List[str]:
-        codex_cmd = self._find_codex_binary()
         session_key = f"{workspace}:{model or 'default'}"
         session_id = self._session_ids.get(session_key)
 
         if session_id:
-            cmd = [codex_cmd, 'exec', '--json', 'resume', session_id]
+            cmd = [self.get_binary(), 'exec', '--json', 'resume', session_id]
         else:
-            cmd = [codex_cmd, 'exec', '--json']
+            cmd = [self.get_binary(), 'exec', '--json']
 
         if model:
             cmd.extend(['--model', model])
@@ -100,24 +81,6 @@ class CodexProvider(TerminalAgentProvider):
     @property
     def uses_json_output(self) -> bool:
         return True
-
-    def _find_codex_binary(self) -> str:
-        for path in [
-            '/home/dell/.nvm/versions/node/v22.22.0/bin/codex',
-            os.path.expanduser('~/.nvm/versions/node/v22.22.0/bin/codex'),
-            '/usr/local/bin/codex',
-            '/usr/bin/codex',
-        ]:
-            if os.path.exists(path):
-                return path
-        return 'codex'
-
-    def get_env(self) -> dict:
-        env = super().get_env()
-        nvm_bin = '/home/dell/.nvm/versions/node/v22.22.0/bin'
-        if nvm_bin not in env.get('PATH', ''):
-            env['PATH'] = nvm_bin + ':' + env.get('PATH', '/usr/bin:/bin')
-        return env
 
     def get_prompt_patterns(self) -> List[Pattern]:
         return self._prompt_patterns
@@ -161,13 +124,7 @@ class CodexProvider(TerminalAgentProvider):
         ]
 
     def get_status_patterns(self) -> List[str]:
-        # Codex status lines start with • - we detect by prefix and stream as-is
         return ['•']
-
-    def sanitize_message(self, message: str) -> str:
-        sanitized = message.replace('\n', ' ').replace('\r', ' ')
-        sanitized = re.sub(r'[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠛⠓⠚⠖⠲⠳⠞]', '', sanitized)
-        return sanitized
 
     def extract_response(self, raw_output: str, user_message: str) -> Optional[str]:
         lines = raw_output.split('\n')

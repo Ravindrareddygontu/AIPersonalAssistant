@@ -1,3 +1,4 @@
+import os
 import re
 import logging
 from abc import ABC, abstractmethod
@@ -5,6 +6,10 @@ from dataclasses import dataclass, field
 from typing import Optional, List, Pattern
 
 log = logging.getLogger('terminal_agent.base')
+
+NVM_BIN_PATH = '/home/dell/.nvm/versions/node/v22.22.0/bin'
+SPINNER_CHARS = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠛⠓⠚⠖⠲⠳⠞'
+SPINNER_PATTERN = re.compile(f'[{SPINNER_CHARS}]')
 
 
 @dataclass
@@ -32,53 +37,64 @@ class TerminalAgentProvider(ABC):
 
     def __init__(self, config: TerminalAgentConfig):
         self.config = config
+        self._binary_path: Optional[str] = None
 
     @property
     def name(self) -> str:
         return self.config.name
 
+    def _find_binary(self, name: str, extra_paths: Optional[List[str]] = None) -> str:
+        paths = [
+            os.path.join(NVM_BIN_PATH, name),
+            os.path.expanduser(f'~/.nvm/versions/node/v22.22.0/bin/{name}'),
+            f'/usr/local/bin/{name}',
+            f'/usr/bin/{name}',
+        ]
+        if extra_paths:
+            paths = extra_paths + paths
+        for path in paths:
+            if os.path.exists(path):
+                return path
+        return name
+
+    def get_binary(self) -> str:
+        if not self._binary_path:
+            self._binary_path = self._find_binary(self.config.command)
+        return self._binary_path
+
     @abstractmethod
     def get_command(self, workspace: str, model: Optional[str] = None, session_id: Optional[str] = None) -> List[str]:
-        """Return the CLI command to start the agent as a list of arguments."""
-        ...
+        pass
 
     @abstractmethod
     def get_prompt_patterns(self) -> List[Pattern]:
-        """Patterns that indicate the agent is ready for input."""
-        ...
+        pass
 
     @abstractmethod
     def get_end_patterns(self) -> List[Pattern]:
-        """Patterns that indicate response is complete."""
-        ...
+        pass
 
     @abstractmethod
     def get_response_markers(self) -> List[str]:
-        """Markers that indicate the start of actual response content (e.g., '●' for Auggie)."""
-        ...
+        pass
 
     @abstractmethod
     def get_activity_indicators(self) -> List[str]:
-        """Indicators that the agent is still processing (extend timeout)."""
-        ...
+        pass
 
     @abstractmethod
     def get_skip_patterns(self) -> List[str]:
-        """Patterns to skip when extracting response content."""
-        ...
-
-    @abstractmethod
-    def sanitize_message(self, message: str) -> str:
-        """Sanitize user message before sending to terminal."""
-        ...
+        pass
 
     @abstractmethod
     def extract_response(self, raw_output: str, user_message: str) -> Optional[str]:
-        """Extract the actual response content from raw terminal output."""
-        ...
+        pass
+
+    def sanitize_message(self, message: str) -> str:
+        sanitized = message.replace('\n', ' ').replace('\r', ' ')
+        return SPINNER_PATTERN.sub('', sanitized)
 
     def get_tool_executing_patterns(self) -> List[str]:
-        """Patterns indicating tools are executing (extended timeout)."""
         return [
             'Executing tools',
             'executing tools',
@@ -87,33 +103,26 @@ class TerminalAgentProvider(ABC):
         ]
 
     def get_status_patterns(self) -> List[str]:
-        """Patterns to detect for frontend status display.
-        Override in subclass to provide provider-specific patterns.
-        """
         return []
 
     def get_thinking_marker(self) -> Optional[str]:
-        """Marker for internal reasoning/thinking (e.g., '~' for Auggie)."""
         return None
 
     def get_continuation_marker(self) -> Optional[str]:
-        """Marker for tool results/continuations (e.g., '⎿' for Auggie, '└' for Codex)."""
         return None
 
     @property
     def is_exec_mode(self) -> bool:
-        """Return True if provider uses exec mode (one-shot command per message)."""
         return False
 
     @property
     def uses_json_output(self) -> bool:
-        """Return True if provider outputs JSONL format."""
         return False
 
     def get_env(self) -> dict:
-        """Get environment variables for the agent process."""
-        import os
         env = os.environ.copy()
+        if NVM_BIN_PATH not in env.get('PATH', ''):
+            env['PATH'] = NVM_BIN_PATH + ':' + env.get('PATH', '/usr/bin:/bin')
         env.update(self.config.env_vars)
         env['TERM'] = 'xterm-256color'
         env['COLUMNS'] = '200'
